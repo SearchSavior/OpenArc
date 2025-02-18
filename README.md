@@ -5,7 +5,7 @@ It has been designed with agentic use cases in mind.
 
 OpenArc serves inference and integrates well with Transformers!
 
-Under the hood it's a strongly typed fastAPI implementation of [OVModelForCausalLM](https://huggingface.co/docs/optimum/main/en/intel/openvino/reference#optimum.intel.OVModelForCausalLM) from Optimum-Intel. So, deploying inference use less of the same code, while reaping the benefits of fastAPI type safety and ease of use. Keep your application code seperate from inference code no matter what hardware configuration has been chosen for deployment.
+Under the hood it's a strongly typed fastAPI implementation of [OVModelForCausalLM](https://huggingface.co/docs/optimum/main/en/intel/openvino/reference#optimum.intel.OVModelForCausalLM) from Optimum-Intel. So, deploying inference use less of the same code, while reaping the benefits of fastAPI type safety and ease of use. Keep your application code separate from inference code no matter what hardware configuration has been chosen for deployment.
 
 Here are some features:
 
