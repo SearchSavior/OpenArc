@@ -55,6 +55,7 @@ class OV_GenerationConfig(BaseModel):
 class OV_PerformanceConfig(BaseModel):
     generation_time: Optional[float] = Field(None, description="Generation time in seconds")
     input_tokens: Optional[int] = Field(None, description="Number of input tokens")
+    output_tokens: Optional[int] = Field(None, description="Number of output tokens")
     new_tokens: Optional[int] = Field(None, description="Number of new tokens generated")
     eval_time: Optional[float] = Field(None, description="Evaluation time in seconds")
 
