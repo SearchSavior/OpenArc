@@ -34,6 +34,69 @@ For this reason only _conversation_ has been exposed but more options are easy t
 
 Notice the typing; if your custom model uses something other than system, user and asssistant roles at inference time you must match the typing to use OpenArc- and that's it!
 
+## System Requirments
+
+OpenArc has been built on top of the OpenVINO runtime; as a result OpenArc supports the same range of hardware.
+
+
+
+<details>
+  <summary>CPU</summary>
+	
+	Intel® Core™ Ultra Series 1 and Series 2 (Windows only)
+	
+	Intel® Xeon® 6 processor (preview)
+	
+	Intel Atom® Processor X Series
+	    
+	Intel Atom® processor with Intel® SSE4.2 support
+	
+	Intel® Pentium® processor N4200/5, N3350/5, N3450/5 with Intel® HD Graphics
+	
+	6th - 14th generation Intel® Core™ processors
+	
+	1st - 5th generation Intel® Xeon® Scalable Processors
+
+	ARM CPUs with armv7a and higher, ARM64 CPUs with arm64-v8a and higher, Apple® Mac with Apple silicon
+
+</details>
+
+<details>
+  <summary>GPU</summary>
+	
+    Intel® Arc™ GPU Series
+
+    Intel® HD Graphics
+
+    Intel® UHD Graphics
+
+    Intel® Iris® Pro Graphics
+
+    Intel® Iris® Xe Graphics
+
+    Intel® Iris® Xe Max Graphics
+
+    Intel® Data Center GPU Flex Series
+
+    Intel® Data Center GPU Max Series
+
+</details>
+
+<details>
+  <summary>**NPU**</summary>
+
+    Intel® Core Ultra Series
+
+    This was a bit harder to list out as the system requirments page does not include an itemized list. However, it is safe to assume that if a device contains an Intel NPU it will be supported.
+
+    The Gradio dashboard has tools for this and accompanying CPU/GPU will almost certainly supported.
+
+
+
+ 
+	
+</details>
+
 ## Install
 
 A proper .toml will be pushed soon. For now use the provided conda .yaml file;
