@@ -34,11 +34,16 @@ For this reason only _conversation_ has been exposed but more options are easy t
 
 Notice the typing; if your custom model uses something other than system, user and asssistant roles at inference time you must match the typing to use OpenArc- and that's it!
 
-## System Requirments
+## System Requirments 
 
 OpenArc has been built on top of the OpenVINO runtime; as a result OpenArc supports the same range of hardware.
 
+Operating system support are a bit different for each class of device. Please review [OpenVINO 2025.0.0.0](https://docs.openvino.ai/2025/about-openvino/release-notes-openvino/system-requirements.html#cpu) to learn which
 
+- Linux distributions are supported
+- kernel versions
+- commands for different packacge managers
+- other required dependencies  
 
 <details>
   <summary>CPU</summary>
@@ -83,19 +88,28 @@ OpenArc has been built on top of the OpenVINO runtime; as a result OpenArc suppo
 </details>
 
 <details>
-  <summary>**NPU**</summary>
+  <summary>NPU</summary>
 
     Intel® Core Ultra Series
 
     This was a bit harder to list out as the system requirments page does not include an itemized list. However, it is safe to assume that if a device contains an Intel NPU it will be supported.
 
-    The Gradio dashboard has tools for this and accompanying CPU/GPU will almost certainly supported.
+    The Gradio dashboard has tools for querying your device.
 
 
 
  
 	
 </details>
+
+### Working with Intel devices and troubleshooting
+
+Outside of Windows there is a bit of nuance to working with Intel GPUs in Linux. So, it is more valuable to share a blend of "lessons learned" and procedures instead of repeating driver installation documentation.
+
+This documentation lives in the OpenArc dashboard but can be found [here]().
+
+
+
 
 ## Install
 
