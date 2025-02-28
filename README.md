@@ -1,7 +1,7 @@
 # Welcome to OpenARC
 
-**OpenArc** is a lightweight inference API backend for Optimum-Intel from Transformers to leverage hardware acceleration on Intel CPUs, GPUs and NPUs through the OpenVINO runtime using OpenCL drivers.
-It has been designed with agentic use cases in mind.
+**OpenArc** is a lightweight inference API backend for Optimum-Intel from Transformers to leverage hardware acceleration on Intel CPUs, GPUs and NPUs through the OpenVINO runtime.
+It has been designed with agentic and chat use cases in mind. 
 
 OpenArc serves inference and integrates well with Transformers!
 
@@ -16,6 +16,7 @@ Here are some features:
 	- optimum/status: see the loaded model 
 - Each endpoint has a pydantic model keeping exposed parameters easy to maintain or extend.
 - Native chat templating
+- 
 
 ## Usage
 
@@ -26,11 +27,13 @@ Exposing the _conversation_ parameter from [apply_chat_template](https://hugging
 	conversation (Union[List[Dict[str, str]], List[List[Dict[str, str]]]]) — A list of dicts with “role” and “content” keys, representing the chat history so far.
 
 
-Use parameters defined in the [Pydanitc models here](https://github.com/SearchSavior/OpenArc/blob/main/src/engine/optimum_inference_core.py) to build a frontend and construct a request body based on inputs from buttons. You can even dump the pydantic models into a prompt and get strong boilerplate for your usecase since each BaseModel directly defines each request type. 
+Use parameters defined in the [Pydanitc models here](https://github.com/SearchSavior/OpenArc/blob/main/src/engine/optimum_inference_core.py) to build a frontend and construct a request body based on inputs from buttons.
 
-As the AI space moves forward we are seeing all sorts of different paradigms emerge in CoT, agents, etc. From the engineering side of developing systems from a low level, the _conversation_ object seems to be unchanging across both the literature and open source projects. For example, the Deepseek series achieve CoT inside of the same role-based input sequence labels and nearly all training data follows this format. 
+As the AI space moves forward we are seeing all sorts of different paradigms emerge in CoT, agents, etc. From the engineering side of developing systems from a low level, the _conversation_ object seems to be unchanging across both the literature from labs, instituions and open source projects. 
 
-For this reason only _conversation_ has been exposed but more options are easy to add.
+For example, the Deepseek series achieve CoT inside of the same role-based input sequence labels. Nearly all training data follows this format. As Feb 2025, reasoning happens inside of <think> tags which themsleves are part of the assistant role; this is why sometimes the little accordian which contains "thoughts" sometimes fails to trigger in open source frontends- no <think> tag was generated but we still get CoT as part of the assistant role content. Moreover, _conversation_ is inherited from Transformers; as SOTA advances we can expect it to change without breaking OpenArc.
+
+For this reason only _conversation_ has been exposed for now. There are two other options; _tools_ and _documents_ which will be added in future releases- these are much harder to test ad hoc and require knowing model-specifc facts about training, its tokenizer
 
 Notice the typing; if your custom model uses something other than system, user and asssistant roles at inference time you must match the typing to use OpenArc- and that's it!
 
@@ -155,7 +158,7 @@ Additionally,
 Learn more about model conversion and working with Intel Devices in the [openvino_utilities](https://github.com/SearchSavior/OpenArc/blob/main/docs/openvino_utils.ipynb) notebook.
 
 
-NOTE: The optimum CLI tool integrates several different APIs from several different Intel projects; it is a better alternative than using APIs in the from_pretrained() methods. Also, it references prebuilt configurations for each supported model architecture meaning that **not all models are natively supported** but most are. If you use the CLI tool and get an error about an unsupported architecture follow the link, open an issue with references to the model card and the maintainers will get back to you.  
+NOTE: The optimum CLI tool integrates several different APIs from several different Intel projects; it is a better alternative than using APIs in from_pretrained() methods. Also, it references prebuilt configurations for each supported model architecture meaning that **not all models are natively supported** but most are. If you use the CLI tool and get an error about an unsupported architecture follow the link, open an issue with references to the model card and the maintainers will get back to you.  
 
 ## Known Issues
 
