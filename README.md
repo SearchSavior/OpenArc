@@ -51,7 +51,7 @@ Operating system support are a bit different for each class of device. Please re
 <details>
   <summary>CPU</summary>
 	
-	Intel® Core™ Ultra Series 1 and Series 2 (Windows only)
+	Intel® Core™ Ultra Series 1 and Series 2 (Windows only )
 	
 	Intel® Xeon® 6 processor (preview)
 	
