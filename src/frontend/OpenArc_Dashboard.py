@@ -10,6 +10,7 @@ from components.model_conversion import ConversionTool
 
 
 
+
 OPENARC_URL =  "http://localhost:8000"
 
 class Payload_Constructor:
@@ -500,11 +501,11 @@ class ChatUI:
         self.setup_interface()
 
     def setup_generation_config(self):
-        with gr.Accordion("**Generation Config**", open=False):
+        with gr.Accordion("Generation Config", open=False):
             gr.Markdown("")
             # Store the Gradio components
             self.generation_config_components.update({
-                'max_new_tokens': gr.Slider(minimum=0, maximum=128000, label="Maximum number of tokens to generate"),
+                'max_new_tokens': gr.Textbox(minimum=0, maximum=128000, label="Maximum number of tokens to generate"),
                 'temperature': gr.Slider(minimum=0, maximum=100, label="Temperature"),
                 'top_k': gr.Slider(minimum=0, maximum=100, label="Top-k"),
                 'top_p': gr.Slider(minimum=0, maximum=100, label="Top-p"),
