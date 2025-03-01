@@ -1,3 +1,7 @@
-This directory contains documentation to help users understand the configuration options for OpenVINO models as they are exposed in the OpenArc API.
+### OpenVINO Configuration Options: ov_config
 
-For this, we will keep each parameter in it's own file and reference them in the dashboard. That way we keep it neatly accessible through gradio but also accessible to search engines.
+
+
+'ov_config' is where all the OpenVINO specific hardware configurations live; it's the secret sauce of OpenArc and represents the interface between 'Transformers'.
+
+'ov_config' is that slope which becomes the deep end all at once; once you begin tinkering with these settings the true power of OpenVINO acceleration emerges. Learning how to achieve this took a lot of time

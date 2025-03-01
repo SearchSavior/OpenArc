@@ -15,8 +15,7 @@ from pydantic import BaseModel, Field
 # Parameters for from.pretrained
 
 class OV_Config(BaseModel):
-    
-    
+     
     NUM_STREAMS: Optional[str] = Field(None, description="Number of inference streams")
     PERFORMANCE_HINT: Optional[str] = Field(None, description="LATENCY, THROUGHPUT, CUMULATIVE_THROUGHPUT")
     PRECISION_HINT: Optional[str] = Field(None, description="Options: auto, fp32, fp16, int8")
@@ -38,11 +37,9 @@ class OV_LoadModelConfig(BaseModel):
     
 class OV_GenerationConfig(BaseModel):
     
-    
     conversation: Union[List[Dict[str, str]], List[List[Dict[str, str]]]] = Field(description="A list of dicts with 'role' and 'content' keys, representing the chat history so far")
     stream: bool = Field(False, description="Whether to stream the generated text")
-    
-   
+      
      # Inference parameters for generation
     max_new_tokens: int = Field(128, description="Maximum number of tokens to generate")
     temperature: float = Field(1.0, description="Sampling temperature")

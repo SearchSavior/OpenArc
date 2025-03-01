@@ -7,6 +7,8 @@ from typing import Optional
 
 from components.model_conversion import ConversionTool
 
+from tools.ov_device_query import DeviceDiagnosticQuery, DeviceDataQuery
+
 
 
 
@@ -249,19 +251,19 @@ class Optimum_Loader:
             with gr.Group("Token Settings"):
                 self.components.update({
                     'bos_token_id': gr.Textbox(
-                        label="BOS Token ID",
+                        label="bos_token_id",
                         value="",
-                        info="Enter the BOS token ID"
+                        
                     ),
                     'eos_token_id': gr.Textbox(
-                        label="EOS Token ID",
+                        label="eos_token_id",
                         value="",
-                        info="Enter the EOS token ID"
+                        
                     ),
                     'pad_token_id': gr.Textbox(
-                        label="PAD Token ID",
+                        label="pad_token_id",
                         value="",
-                        info="Enter the PAD token ID"
+                        
                     )
                 })
 
@@ -491,6 +493,49 @@ The configuration options are organized into categories:
                                     outputs=[self.doc_components['doc_content']]
                                 )
 
+class DeviceInfoTool:
+    def __init__(self):
+        self.device_data_query = DeviceDataQuery()
+        self.device_diagnostic_query = DeviceDiagnosticQuery()
+        
+    def get_available_devices(self):
+        """Get list of available devices from DeviceDiagnosticQuery"""
+        devices = self.device_diagnostic_query.get_available_devices()
+        return {"Available Devices": devices}
+    
+    def get_device_properties(self):
+        """Get detailed properties for all available devices from DeviceDataQuery"""
+        devices = self.device_data_query.get_available_devices()
+        result = {}
+        
+        for device in devices:
+            properties = self.device_data_query.get_device_properties(device)
+            result[device] = properties
+            
+        return result
+    
+    def create_interface(self):
+        with gr.Tab("Devices"):
+            with gr.Row():
+                with gr.Column(scale=1):
+                    gr.Markdown("## Available Devices")
+                    device_list = gr.JSON(label="Device List")
+                    refresh_button = gr.Button("Refresh Device List")
+                    refresh_button.click(
+                        fn=self.get_available_devices,
+                        inputs=[],
+                        outputs=[device_list]
+                    )
+                with gr.Column(scale=2):
+                    gr.Markdown("## Device Properties")
+                    device_properties = gr.JSON(label="Device Properties")
+                    properties_button = gr.Button("Get Device Properties")
+                    properties_button.click(
+                        fn=self.get_device_properties,
+                        inputs=[],
+                        outputs=[device_properties]
+                    )
+
 class ChatUI:
     def __init__(self):
         self.demo = None
@@ -557,6 +602,10 @@ class ChatUI:
                         with gr.Tab("Model Conversion"):
                             conversion_tool = ConversionTool()
                             conversion_tool.gradio_app()
+                            
+                        # Add Device Information tab
+                        device_info_tool = DeviceInfoTool()
+                        device_info_tool.create_interface()
                 
                 self.documentation = OpenArc_Documentation()
                 self.documentation.create_interface()

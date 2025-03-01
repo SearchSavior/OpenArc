@@ -8,3 +8,4 @@ __pycache__/
 *.egg
 .pytest_cache/
 .mypy_cache/
+.obsidian/
