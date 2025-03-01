@@ -19,7 +19,8 @@ class ConversionTool:
             label='Task',
             choices=['auto'] + [
                 'image-to-image', 
-                'image-segmentation', 
+                'image-segmentation',
+                'image-text-to-text', 
                 'inpainting',
                 'sentence-similarity', 
                 'text-to-audio', 

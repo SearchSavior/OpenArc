@@ -10,7 +10,6 @@ from components.model_conversion import ConversionTool
 
 
 
-
 OPENARC_URL =  "http://localhost:8000"
 
 class Payload_Constructor:
@@ -505,7 +504,7 @@ class ChatUI:
             gr.Markdown("")
             # Store the Gradio components
             self.generation_config_components.update({
-                'max_new_tokens': gr.Textbox(minimum=0, maximum=128000, label="Maximum number of tokens to generate"),
+                'max_new_tokens': gr.Slider(minimum=0, maximum=128000, label="Maximum number of tokens to generate"),
                 'temperature': gr.Slider(minimum=0, maximum=100, label="Temperature"),
                 'top_k': gr.Slider(minimum=0, maximum=100, label="Top-k"),
                 'top_p': gr.Slider(minimum=0, maximum=100, label="Top-p"),
@@ -533,8 +532,12 @@ class ChatUI:
                 with gr.Column(scale=3):
                     self.chat_interface = gr.ChatInterface(
                         fn=self.payload_constructor.generate_text,
-                        chatbot=gr.Chatbot(height=600),
-                        textbox=gr.Textbox(placeholder="Type your message here...", container=False, scale=7),
+                        type="messages",
+                        chatbot=gr.Chatbot(height=600,
+                                           show_copy_button=True,
+                                           autoscroll=True,
+                                           
+                                           ),
                     )
                 
                 # Accordions on the right
