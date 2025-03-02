@@ -406,13 +406,10 @@ class OpenArc_Documentation:
             "CPU Options": [
                 "Enable Hyperthreading",
                 "Inference Num Threads",
-                "Num Threads"
+                "Scheduling Core Type"
             ],
             "Streaming Options": [
                 "Num Streams"
-            ],
-            "Scheduling Options": [
-                "Scheduling Core Type"
             ]
         }
         
