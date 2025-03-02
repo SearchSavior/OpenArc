@@ -23,7 +23,6 @@ Here are some features:
 	- Openwebui
 	- SillyTavern
 
-
 - Each endpoint has a pydantic model keeping exposed parameters easy to maintain or extend.
 - Native chat templating
 
@@ -42,16 +41,15 @@ Here are some features:
 - Load the model using the /optimum/model/load endpoint OR use the Gradio dashboard
 - Manage the conversation dictionary in code somewhere else. 
 
-## OpenArc Design Philosophy: Conversation as the Atomic Unit of LLM Programming
+## Conversation as the Atomic Unit of LLM Programming
 
 OpenArc offers a lightweight approach to decoupling machine learning code from application logic by adding an API layer to serve LLMs using hardware acceleration for Intel devices; in practice OpenArc offers a similar workflow to what's possible with Ollama, LM-Studio or OpenRouter. 
 
-As the AI space moves forward we are seeing all sorts of different paradigms emerge in CoT, agents, etc. In my work I noticed a design pattern; programming with LLMs converges to manipulating the _conversation_ object, a data structure which stores the chat sequence.  Every LLM design pattern converges to some manipulation of the chat sequence stored in _conversation_ or (outside of transformers)_messages_. No matter what you build, you'll need to manipulate the chat sequence. It's how instruction tuned LLMs work.
+As the AI space moves forward we are seeing all sorts of different paradigms emerge in CoT, agents, etc. In my work I noticed a design pattern; programming with LLMs converges to manipulating the _conversation_ object, a data structure which stores the chat sequence.  Every design pattern using LLMsconverges to some manipulation of the chat sequence stored in _conversation_ or (outside of transformers)_messages_. No matter what you build, you'll need to manipulate the chat sequence in some way.
 
-Managing the _conversation_ has nothing to do with inference; by the time data has been added to _conversation_ all the linear algebra and tokenization has been taken care of.
+Managing the _conversation_ has nothing to do with inference; by the time data has been added to _conversation_ all the linear algebra and tokenization has been taken care of. 
 
-
-Exposing the _conversation_ parameter from [apply_chat_template](https://huggingface.co/docs/transformers/main/en/internal/tokenization_utils#transformers.PreTrainedTokenizerBase.apply_chat_template) method grant's complete control over what get's passed in and out of the model without any intervention required at the template or application level.
+Exposing the _conversation_ parameter from [apply_chat_template](https://huggingface.co/docs/transformers/main/en/internal/tokenization_utils#transformers.PreTrainedTokenizerBase.apply_chat_template) method grant's complete control over what get's passed in and out of the model without any intervention required at the template level; once you start manipulating the _conversation_ object you inherit different challenges.
 
 	conversation (Union[List[Dict[str, str]], List[List[Dict[str, str]]]]) — A list of dicts with “role” and “content” keys, representing the chat history so far.
 
@@ -65,6 +63,8 @@ For example, the Deepseek series achieve CoT inside of the same role-based input
 Only _conversation_ has been exposed for now. There are two other options; _tools_ and _documents_ which will be added in future releases- these are much harder to test ad hoc and require knowing model-specifc facts about training, manually mapping tools to tokens, building those tools etc.
 
 Notice the typing; if your custom model uses something other than system, user and asssistant roles at inference time you must match the typing to use OpenArc- and that's it!
+
+## Use cases
 
 ## System Requirments 
 
@@ -132,7 +132,19 @@ Operating system support are a bit different for each class of device. Please re
 
 ## Install
 
-A proper .toml will be pushed soon. For now use the provided conda .yaml file;
+This documentation will not provide guidance for setting up device drivers. Instead, I will try to help on a case-by-case basis. 
+
+Either open an issue or use dedicated discussions for your OS.
+
+Windows discussion lives [here](https://github.com/SearchSavior/OpenArc/discussions/12).
+
+Linux discussion lives [here](https://github.com/SearchSavior/OpenArc/discussions/11).
+
+Note: Do not expect zero-shot guidance. Come prepared with details about your system, errors you are experiencing and the steps you've taken so far to resolve the issue. These discussions are offer an opportunity to supplement official documentation so you should assume someone in the future needs your help.
+
+Feel free to use the Discord for this as well but be prepared to document your solution. 
+
+### Ubuntu
 
 Make it executable
 
@@ -141,6 +153,22 @@ Make it executable
 Then create the conda environment
 
 	conda env create -f environment.yaml
+
+
+### Windows
+
+1. Install Miniconda from [here](https://www.anaconda.com/docs/getting-started/miniconda/install#windows-installation)
+
+2. Navigate to the directory containing the environment.yaml file and run
+
+	conda env create -f environment.yaml
+
+### Tips
+
+- Avoid setting up the environment from IDE extensions. 
+- DO NOT USE THE ENVIRONMENT FOR ANYTHING ELSE. Soon we will have Poetry to enforce; until then expect breaking changes for anything which Transformers depends on.
+- If you are struggling 
+
 
 
 ### Convert to [OpenVINO IR](https://docs.openvino.ai/2025/documentation/openvino-ir-format.html)

@@ -24,6 +24,8 @@ def start_server(host: str = "0.0.0.0", port: int = 8000, reload: bool = False):
     logger.info("  - DELETE /model/unload    Unload current model")
     logger.info("  - GET    /status         Get model status")
     logger.info("  - GET    /docs           API documentation")
+    logger.info("  - POST   /v1/chat/completions openai compatible endpoint")
+    logger.info("  - GET    /v1/models     openai compatible endpoint")
     
     
     # Start the server
