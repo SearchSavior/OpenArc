@@ -6,7 +6,6 @@ from pydantic import BaseModel
 from typing import Optional
 
 from components.model_conversion import ConversionTool
-
 from tools.ov_device_query import DeviceDiagnosticQuery, DeviceDataQuery
 
 
@@ -17,7 +16,6 @@ OPENARC_URL =  "http://localhost:8000"
 class Payload_Constructor:
     def __init__(self):
         self.generation_config = {}  # This will store actual values, not components
-        self.performance_metrics = None  # Reference to performance metrics component
 
     def load_model(self, id_model, device, use_cache, export_model, num_streams, performance_hint, precision_hint, bos_token_id, eos_token_id, pad_token_id, enable_hyperthreading, inference_num_threads, dynamic_shapes):
         """
@@ -97,6 +95,11 @@ class Payload_Constructor:
         """
         # Convert Gradio history format to OpenAI messages format
         messages = []
+        
+        # Add system prompt if it exists
+        if "system_prompt" in self.generation_config:
+            messages.append({"role": "system", "content": self.generation_config["system_prompt"]})
+        
         for user_msg, assistant_msg in history:
             messages.append({"role": "user", "content": user_msg})
             if assistant_msg:  # Only add assistant message if it exists
@@ -108,7 +111,8 @@ class Payload_Constructor:
         # Construct payload with OpenAI format
         payload = {
             "messages": messages,
-            **self.generation_config  # Include any generation parameters
+            # Filter out system_prompt from generation_config for the API payload
+            **{k: v for k, v in self.generation_config.items() if k != "system_prompt"}
         }
         
         try:
@@ -120,7 +124,16 @@ class Payload_Constructor:
             response.raise_for_status()
             response_data = response.json()
             
-            # Extract the assistant's message from the response
+            # Update performance metrics if available
+            if self.performance_metrics and 'usage' in response_data:
+                metrics = {
+                    'generation_time': response_data.get('generation_time', 0),
+                    'input_tokens': response_data.get('usage', {}).get('prompt_tokens', 0),
+                    'output_tokens': response_data.get('usage', {}).get('completion_tokens', 0),
+                    'tokens_per_second': response_data.get('tokens_per_second', 0)
+                }
+                self.performance_metrics.update(metrics)
+            
             return response_data['choices'][0]['message']['content']
             
         except requests.exceptions.RequestException as e:
@@ -538,6 +551,7 @@ class ChatUI:
         self.demo = None
         self.chat_interface = None
         self.generation_config_components = {}  # Rename to clarify these are components
+        self.performance_metrics_component = None
         self.payload_constructor = Payload_Constructor()
         self.setup_interface()
 
@@ -563,9 +577,39 @@ class ChatUI:
                     inputs=[component]
                 )
 
+    def setup_system_prompt(self):
+        with gr.Accordion("System Prompt", open=True):
+            system_prompt = gr.Textbox(
+                label="System Prompt",
+                placeholder="Enter a system prompt to guide the model's behavior...",
+                lines=5
+            )
+            
+            apply_button = gr.Button("Apply System Prompt")
+            
+            # Set up event handler to update the system prompt in the payload constructor
+            apply_button.click(
+                fn=self.update_system_prompt,
+                inputs=[system_prompt]
+            )
+
     def update_generation_config(self, key, value):
         """Update the generation config in the payload constructor with actual values"""
         self.payload_constructor.generation_config[key] = value
+
+    def update_system_prompt(self, prompt):
+        """Update the system prompt in the payload constructor"""
+        if prompt.strip():
+            self.payload_constructor.generation_config["system_prompt"] = prompt
+            return "System prompt applied successfully."
+        else:
+            # Remove system prompt if empty
+            if "system_prompt" in self.payload_constructor.generation_config:
+                del self.payload_constructor.generation_config["system_prompt"]
+            return "System prompt cleared."
+
+
+
 
     def chat_tab(self):
         with gr.Tab("Chat"):
@@ -574,17 +618,18 @@ class ChatUI:
                 with gr.Column(scale=3):
                     self.chat_interface = gr.ChatInterface(
                         fn=self.payload_constructor.generate_text,
-                        type="messages",
                         chatbot=gr.Chatbot(height=600,
                                            show_copy_button=True,
                                            autoscroll=True,
-                                           
+                                           type="messages"
                                            ),
                     )
                 
                 # Accordions on the right
                 with gr.Column(scale=1):
+                    self.setup_system_prompt()
                     self.setup_generation_config()
+                    self.setup_performance_metrics()
 
     def setup_interface(self):
         with gr.Blocks() as self.demo:

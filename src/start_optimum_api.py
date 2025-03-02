@@ -20,10 +20,10 @@ def start_server(host: str = "0.0.0.0", port: int = 8000, reload: bool = False):
     """
     logger.info(f"Starting OpenVINO Inference API server on {host}:{port}")
     logger.info("Available endpoints:")
-    logger.info("  - POST   /model/load      Load a model")
-    logger.info("  - DELETE /model/unload    Unload current model")
-    logger.info("  - GET    /status         Get model status")
-    logger.info("  - GET    /docs           API documentation")
+    logger.info("  - POST   optimum/model/load      Load a model")
+    logger.info("  - DELETE optimum/model/unload    Unload current model")
+    logger.info("  - GET    optimum/status         Get model status")
+    logger.info("  - GET    optimum/docs           API documentation")
     logger.info("  - POST   /v1/chat/completions openai compatible endpoint")
     logger.info("  - GET    /v1/models     openai compatible endpoint")
     

@@ -1,5 +1,7 @@
 # Welcome to OpenARC
 
+NEW: Join the offical Discord
+
 **OpenArc** is a lightweight inference API backend for Optimum-Intel from Transformers to leverage hardware acceleration on Intel CPUs, GPUs and NPUs through the OpenVINO runtime.
 It has been designed with agentic and chat use cases in mind. 
 
@@ -9,7 +11,7 @@ Under the hood it's a strongly typed fastAPI implementation of [OVModelForCausal
 
 Here are some features:
 
-- **Strongly typed API with openai-compatible endpoints**
+- **Strongly typed API**
 	- optimum/model/load: loads model and accepts ov_config
 	- optimum/model/unload: use gc to purge a loaded model from device memory
 	- optimum/generate: generate text with sampling, temp
@@ -23,48 +25,31 @@ Here are some features:
 	- Openwebui
 	- SillyTavern
 
-- Each endpoint has a pydantic model keeping exposed parameters easy to maintain or extend.
-- Native chat templating
+	NOTE:
+	- API keys are not required for the endpoints
+	- The OpenArc dashboard has been built using these endpoints and contirbutor gapeleon did most of the testing.
 
 - **Gradio Dashboard**
+	- A chat interface
 	- A dashboard for loading models and interacting with OpenArc's API
 	- Tools for querying device properties
-	- GUI model conversion
-	- Querying tokenizers and model architecture
-	- A chat interface for interacting with the loaded model
-		The expection is to use this for development but it works well for testing out the acceleration benefits of OpenArc.
+	- GUI for building model conversion commands 
+	- Query tokenizers and model architecture
 
-
-## Workflow
-
-- Either download or convert an LLM to OpenVINO IR
-- Load the model using the /optimum/model/load endpoint OR use the Gradio dashboard
-- Manage the conversation dictionary in code somewhere else. 
-
-## Conversation as the Atomic Unit of LLM Programming
+## Design Philosophy: Conversation as the Atomic Unit of LLM Programming
 
 OpenArc offers a lightweight approach to decoupling machine learning code from application logic by adding an API layer to serve LLMs using hardware acceleration for Intel devices; in practice OpenArc offers a similar workflow to what's possible with Ollama, LM-Studio or OpenRouter. 
 
-As the AI space moves forward we are seeing all sorts of different paradigms emerge in CoT, agents, etc. In my work I noticed a design pattern; programming with LLMs converges to manipulating the _conversation_ object, a data structure which stores the chat sequence.  Every design pattern using LLMsconverges to some manipulation of the chat sequence stored in _conversation_ or (outside of transformers)_messages_. No matter what you build, you'll need to manipulate the chat sequence in some way.
+As the AI space moves forward we are seeing all sorts of different paradigms emerge in CoT, agents, etc. Every design pattern using LLMs converges to some manipulation of the chat sequence stored in _conversation_ or (outside of transformers)_messages_. No matter what you build, you'll need to manipulate the chat sequence in some way that has nothing to do with inference. So OpenArc keeps these things seperate by design. 
 
-Managing the _conversation_ has nothing to do with inference; by the time data has been added to _conversation_ all the linear algebra and tokenization has been taken care of. 
-
-Exposing the _conversation_ parameter from [apply_chat_template](https://huggingface.co/docs/transformers/main/en/internal/tokenization_utils#transformers.PreTrainedTokenizerBase.apply_chat_template) method grant's complete control over what get's passed in and out of the model without any intervention required at the template level; once you start manipulating the _conversation_ object you inherit different challenges.
+Exposing _conversation_ from [apply_chat_template](https://huggingface.co/docs/transformers/main/en/internal/tokenization_utils#transformers.PreTrainedTokenizerBase.apply_chat_template) method grant's complete control over what get's passed in and out of the model without any intervention required at the template level or API level. Projects using OpenArc can focus on application logic and not inference code. 
 
 	conversation (Union[List[Dict[str, str]], List[List[Dict[str, str]]]]) — A list of dicts with “role” and “content” keys, representing the chat history so far.
 
-Notice the typing; if your custom model uses something other than system, user and asssistant roles at inference time you must match the typing to use OpenArc- and that's it!
+By the time data has been added to _conversation_ all linear algebra and tokenization has been taken care of. It represents a scalable software architecture that OpenArc embraces, empowering developers to focus on application logic without completely abstracting inference code. None of this is neccessarily new; all the labs serve inference for this reason. However, very few projects are dedicated to leveraging Intel hardware acceleration and so that is where OpenArc's largest contribution can be made.
 
-
-Use parameters defined in the [Pydanitc models here](https://github.com/SearchSavior/OpenArc/blob/main/src/engine/optimum_inference_core.py) to build a frontend or construct a request body based on inputs from buttons.
-
-For example, the Deepseek series achieve CoT inside of the same role-based input sequence labels. As of Feb 2025, reasoning happens inside of <think> tags which themsleves are part of the assistant role. Features which display"thoughts" fail to trigger in open source frontends- no <think> tag was generated but we still get CoT as part of the assistant role content. Moreover, _conversation_ is inherited from Transformers; as SOTA advances we can expect it to enrich the feature set of OpenArc.
 
 Only _conversation_ has been exposed for now. There are two other options; _tools_ and _documents_ which will be added in future releases- these are much harder to test ad hoc and require knowing model-specifc facts about training, manually mapping tools to tokens, building those tools etc.
-
-Notice the typing; if your custom model uses something other than system, user and asssistant roles at inference time you must match the typing to use OpenArc- and that's it!
-
-## Use cases
 
 ## System Requirments 
 
@@ -72,9 +57,12 @@ OpenArc has been built on top of the OpenVINO runtime; as a result OpenArc suppo
 
 Operating system support are a bit different for each class of device. Please review [system requirments](https://docs.openvino.ai/2025/about-openvino/release-notes-openvino/system-requirements.html#cpu) for OpenVINO 2025.0.0.0 to learn which
 
+- Windows versions are supported
 - Linux distributions are supported
 - kernel versions
-- commands for different packacge managers
+	- My system uses version 6.9.4-060904-generic with Ubuntu 24.04 LTS.
+	- This matters more for GPU and NPU
+- commands for different package managers
 - other required dependencies  
 
 <details>
@@ -117,6 +105,10 @@ Operating system support are a bit different for each class of device. Please re
 
     Intel® Data Center GPU Max Series
 
+NOTE: 
+
+My system uses version 6.9.4-060904-generic with Ubuntu 24.04 LTS.
+
 </details>
 
 <details>
@@ -140,9 +132,9 @@ Windows discussion lives [here](https://github.com/SearchSavior/OpenArc/discussi
 
 Linux discussion lives [here](https://github.com/SearchSavior/OpenArc/discussions/11).
 
-Note: Do not expect zero-shot guidance. Come prepared with details about your system, errors you are experiencing and the steps you've taken so far to resolve the issue. These discussions are offer an opportunity to supplement official documentation so you should assume someone in the future needs your help.
+Note: Come prepared with details about your system, errors you are experiencing and the steps you've taken so far to resolve the issue. These discussions offer an opportunity to supplement official documentation so you should assume someone in the future can use your help.
 
-Feel free to use the Discord for this as well but be prepared to document your solution. 
+Feel free to use the Discord for this as well but be prepared to document your solution on GitHub if asked! 
 
 ### Ubuntu
 
@@ -166,20 +158,27 @@ Then create the conda environment
 ### Tips
 
 - Avoid setting up the environment from IDE extensions. 
-- DO NOT USE THE ENVIRONMENT FOR ANYTHING ELSE. Soon we will have Poetry to enforce; until then expect breaking changes for anything which Transformers depends on.
-- If you are struggling 
+- DO NOT USE THE ENVIRONMENT FOR ANYTHING ELSE. Soon we will have Poetry.
 
 
 
-### Convert to [OpenVINO IR](https://docs.openvino.ai/2025/documentation/openvino-ir-format.html)
+## Convert to [OpenVINO IR](https://docs.openvino.ai/2025/documentation/openvino-ir-format.html)
 
-Find over 40+ preconverted text generation models of larger variety that what's offered by the official repos from [Intel](https://huggingface.co/collections/OpenVINO/llm-6687aaa2abca3bbcec71a9bd) on my [HuggingFace](https://huggingface.co/Echo9Zulu).
+There are a few source of models which can be used with OpenArc;
 
-You can easily craft conversion commands using my HF Space, [Optimum-CLI-Tool_tool](https://huggingface.co/spaces/Echo9Zulu/Optimum-CLI-Tool_tool)! 
+[OpenVINO LLM Collection on HuggingFace](https://huggingface.co/collections/OpenVINO/llm-6687aaa2abca3bbcec71a9bd)
 
-This tool respects the positional arguments defined [here](https://huggingface.co/docs/optimum/main/en/intel/openvino/export) and is meant to be used locally in your OpenArc environment.
 
- 
+[My HuggingFace repo](https://huggingface.co/Echo9Zulu)
+	- My repo contains preconverted models for a variety of architectures and usecases
+	- OpenArc supports almost all of them 
+
+You can easily craft conversion commands using my HF Space, [Optimum-CLI-Tool_tool](https://huggingface.co/spaces/Echo9Zulu/Optimum-CLI-Tool_tool) or in the OpenArc Dashboard.
+
+This tool respects the positional arguments defined [here](https://huggingface.co/docs/optimum/main/en/intel/openvino/export), then execute commands in the OpenArc environment.
+
+ Benchmarks for CPU, GPU and code examples are coming soon.
+
 | Models                                                                                                                                      | Compressed Weights |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
 | [Ministral-3b-instruct-int4_asym-ov](https://huggingface.co/Echo9Zulu/Ministral-3b-instruct-int4_asym-ov)                                   | 1.85 GB            |
@@ -189,25 +188,22 @@ This tool respects the positional arguments defined [here](https://huggingface.c
 | [DeepSeek-R1-Distill-Qwen-14B-int4-awq-ov](https://huggingface.co/Echo9Zulu/DeepSeek-R1-Distill-Qwen-14B-int4-awq-ov/tree/main)             | 7.68 GB            |
 | [Phi-4-o1-int4_asym-awq-weight_quantization_error-ov](https://huggingface.co/Echo9Zulu/Phi-4-o1-int4_asym-awq-weight_quantization_error-ov) | 8.11 GB            |
 | [Mistral-Small-24B-Instruct-2501-int4_asym-ov](https://huggingface.co/Echo9Zulu/Mistral-Small-24B-Instruct-2501-int4_asym-ov)		| 12.9 GB	     |	
-| [Qwen2.5-72B-Instruct-int4-ns-ov](https://huggingface.co/Echo9Zulu/Qwen2.5-72B-Instruct-int4-ns-ov/tree/main))                              | 39 GB              |
+| [Qwen2.5-72B-Instruct-int4-ns-ov](https://huggingface.co/Echo9Zulu/Qwen2.5-72B-Instruct-int4-ns-ov/tree/main)                              | 39 GB              |
 
-Additionally, 
-Learn more about model conversion and working with Intel Devices in the [openvino_utilities](https://github.com/SearchSavior/OpenArc/blob/main/docs/openvino_utils.ipynb) notebook.
+Documentation on choosing parameters for conversion is coming soon. 
 
+NOTE: The optimum CLI tool integrates several different APIs from several different Intel projects; it is a better alternative than using APIs in from_pretrained() methods. 
 
-NOTE: The optimum CLI tool integrates several different APIs from several different Intel projects; it is a better alternative than using APIs in from_pretrained() methods. Also, it references prebuilt configurations for each supported model architecture meaning that **not all models are supported** but most are. If you use the CLI tool and get an error about an unsupported architecture follow the link, open an issue with references to the model card and the maintainers will get back to you.  
-
-## Known Issues
-
-- Streaming does not return performance metrics
+It references prebuilt export configurations for each supported model architecture meaning **not all models are supported** but most are. If you use the CLI tool and get an error about an unsupported architecture follow the link, [open an issue](https://github.com/huggingface/optimum-intel/issues) with references to the model card and the maintainers will get back to you.  
 
 ## Planned Features
 
-- Define a pyprojectoml
+
 - Improve OpenAI API compatibility for different tooling
 - Add benchmarking tools
 - More documentation about how to use ov_config
-- Add robust feature support for Qwen2-VL from [OVModelForVisualCausalLM](https://github.com/huggingface/optimum-intel/blob/c9ff040327bda796458d7f105979be3665431f1c/optimum/intel/openvino/modeling_visual_language.py#L287)
+- More documentation about how to use the CLI tool for converting models for different types of hardware
+- Add robust feature support for Qwen2-VL from [OVModelForVisualCausalLM](https://github.com/huggingface/optimum-intel/blob/c9ff040327bda796458d7f105979be3665431f1c/optimum/intel/openvino/modeling_visual_language.py#L287) i.e, bouding boxes, bas64 encoding images, maybe video?
 - Add support for loading multiple models into memory and on different devices
 - Add docker-compose examples
 
@@ -224,6 +220,8 @@ Learn more about how to leverage your Intel devices for Machine Learning:
 ### Other Resources
 
 [smolagents](https://huggingface.co/blog/smolagents)- [CodeAgent](https://github.com/huggingface/smolagents/blob/main/src/smolagents/agents.py#L1155) is especially interesting.
+
+
 
 
 
