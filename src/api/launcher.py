@@ -1,6 +1,6 @@
 import uvicorn
 import logging
-from api.optimum_api import app
+from src.api.optimum_api import app
 
 # Configure logging
 logging.basicConfig(
@@ -9,7 +9,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ov_api")
 
-def start_server(host: str = "0.0.0.0", port: int = 8000, reload: bool = False):
+def start_server(host: str = "0.0.0.0", openarc_port: int = 8000, reload: bool = False):
     """
     Start the OpenVINO Inference API server
     
@@ -18,7 +18,7 @@ def start_server(host: str = "0.0.0.0", port: int = 8000, reload: bool = False):
         port: Port to bind the server to
         reload: Whether to enable auto-reload on code changes
     """
-    logger.info(f"Starting OpenVINO Inference API server on {host}:{port}")
+    logger.info(f"Starting OpenVINO Inference API server on {host}:{openarc_port}")
     logger.info("Available endpoints:")
     logger.info("  - POST   optimum/model/load      Load a model")
     logger.info("  - DELETE optimum/model/unload    Unload current model")
@@ -30,12 +30,9 @@ def start_server(host: str = "0.0.0.0", port: int = 8000, reload: bool = False):
     
     # Start the server
     uvicorn.run(
-        "api.optimum_api:app",
+        "src.api.optimum_api:app",
         host=host,
-        port=port,
+        port=openarc_port,
         reload=reload,
         log_level="info"
     )
-
-if __name__ == "__main__":
-    start_server() 

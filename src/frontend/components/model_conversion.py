@@ -304,13 +304,13 @@ class ConversionTool:
             fn=self.construct_command,
             inputs=inputs,
             outputs=self.command_output,
-            title="OpenVINO Conversion Tool",
+            title="OpenVINO IR Model Conversion Tool",
             description="""
             Enter model information to generate an `optimum-cli` export command.
             Then run the command in the terminal where your OpenArc environment is activated.
             """,
             # article=INTRODUCTION,
-            allow_flagging='auto'
+            flagging_mode='auto'
         )
 
 

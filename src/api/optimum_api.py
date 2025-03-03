@@ -11,7 +11,7 @@ import time
 import uuid
 import json
 
-from engine.optimum.optimum_inference_core import (
+from src.engine.optimum.optimum_inference_core import (
     OV_LoadModelConfig,
     OV_Config,
     OV_GenerationConfig,

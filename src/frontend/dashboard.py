@@ -5,13 +5,17 @@ from pathlib import Path
 from pydantic import BaseModel
 from typing import Optional
 
-from components.model_conversion import ConversionTool
-from tools.ov_device_query import DeviceDiagnosticQuery, DeviceDataQuery
+from src.frontend.components.model_conversion import ConversionTool
+from src.frontend.tools.ov_device_query import DeviceDiagnosticQuery, DeviceDataQuery
 
+# Default OpenARC URL
+DEFAULT_OPENARC_PORT = 8000
+OPENARC_URL = f"http://localhost:{DEFAULT_OPENARC_PORT}"
 
-
-
-OPENARC_URL =  "http://localhost:8000"
+# Update URL if custom port is provided
+def update_openarc_url(openarc_port=DEFAULT_OPENARC_PORT):
+    global OPENARC_URL
+    OPENARC_URL = f"http://localhost:{openarc_port}"
 
 class Payload_Constructor:
     def __init__(self):
@@ -102,7 +106,7 @@ class Payload_Constructor:
         
         for user_msg, assistant_msg in history:
             messages.append({"role": "user", "content": user_msg})
-            if assistant_msg:  # Only add assistant message if it exists
+            if assistant_msg:  
                 messages.append({"role": "assistant", "content": assistant_msg})
         
         # Add the current message
@@ -547,13 +551,13 @@ class DeviceInfoTool:
                     )
 
 class ChatUI:
-    def __init__(self):
+    def __init__(self, openarc_port=DEFAULT_OPENARC_PORT):
         self.demo = None
         self.chat_interface = None
         self.generation_config_components = {}  # Rename to clarify these are components
-        self.performance_metrics_component = None
         self.payload_constructor = Payload_Constructor()
         self.setup_interface()
+        update_openarc_url(openarc_port)
 
     def setup_generation_config(self):
         with gr.Accordion("Generation Config", open=False):
@@ -608,9 +612,6 @@ class ChatUI:
                 del self.payload_constructor.generation_config["system_prompt"]
             return "System prompt cleared."
 
-
-
-
     def chat_tab(self):
         with gr.Tab("Chat"):
             with gr.Row():
@@ -621,7 +622,6 @@ class ChatUI:
                         chatbot=gr.Chatbot(height=600,
                                            show_copy_button=True,
                                            autoscroll=True,
-                                           type="messages"
                                            ),
                     )
                 
@@ -629,7 +629,6 @@ class ChatUI:
                 with gr.Column(scale=1):
                     self.setup_system_prompt()
                     self.setup_generation_config()
-                    self.setup_performance_metrics()
 
     def setup_interface(self):
         with gr.Blocks() as self.demo:
@@ -672,6 +671,4 @@ class OVConfig(BaseModel):
     INFERENCE_NUM_THREADS: Optional[str] = None
     PRECISION_HINT: Optional[str] = None
 
-if __name__ == "__main__":
-    app = ChatUI()
-    app.launch()
+

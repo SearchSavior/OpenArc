@@ -160,7 +160,48 @@ Then create the conda environment
 - Avoid setting up the environment from IDE extensions. 
 - DO NOT USE THE ENVIRONMENT FOR ANYTHING ELSE. Soon we will have Poetry.
 
+## Usage
 
+OpenArc has two components:
+
+- start_server.py - launches the inference server
+- start_dashboard.py - launches the dashboard, which manages the server
+
+
+To launch the inference server run
+
+		python start_server.py --host 0.0.0.0 --openarc-port 8000
+
+    host: defines the ip address to bind the server to
+	openarc_port: defines the port which can be used to access the server			
+
+To launch the dashboard run
+
+		python start_dashboard.py --openarc-port 8000
+
+	openarc_port: defines the port which can be used to access the server
+
+
+
+
+
+
+
+		
+
+
+
+
+
+
+
+Run these in two different terminals.
+
+Some notes about the current version:
+
+- To see performance metrics read the logs displayed where start_server.py is running.
+- I reccomend using these together but they are independent.
+- The dashboard has a lot of documentation 
 
 ## Convert to [OpenVINO IR](https://docs.openvino.ai/2025/documentation/openvino-ir-format.html)
 
@@ -197,7 +238,6 @@ NOTE: The optimum CLI tool integrates several different APIs from several differ
 It references prebuilt export configurations for each supported model architecture meaning **not all models are supported** but most are. If you use the CLI tool and get an error about an unsupported architecture follow the link, [open an issue](https://github.com/huggingface/optimum-intel/issues) with references to the model card and the maintainers will get back to you.  
 
 ## Planned Features
-
 
 - Improve OpenAI API compatibility for different tooling
 - Add benchmarking tools
