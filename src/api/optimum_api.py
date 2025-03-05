@@ -157,6 +157,12 @@ async def openai_chat_completions(request: ChatCompletionRequest):
         print("Raw messages:", request.messages)
         print("Params - temperature:", request.temperature)
         print("Params - max_tokens:", request.max_tokens)
+        try:
+            from transformers import AutoTokenizer
+            tokenizer = AutoTokenizer.from_pretrained(request.model)
+            prompt_len=len(tokenizer.apply_chat_template(request.messages))
+        except Exception as e:
+            print(f"Token counting error: {e}")
 
     try:
         # Convert OpenAI-style messages to conversation format
@@ -181,8 +187,19 @@ async def openai_chat_completions(request: ChatCompletionRequest):
 
         if request.stream:
             async def stream_generator():
+                # Performance tracking variables
+                start_time = time.perf_counter()
+                first_token_time = None
+                token_count = 0
                 try:
                     async for token in model_instance.generate_stream(generation_config):
+                        token_count += 1
+
+                        # Record time of first token
+                        if token_count == 1:
+                            first_token_time = time.perf_counter()
+                            eval_time = first_token_time - start_time
+
                         # Properly escape the content for JSON, preserving all whitespace
                         escaped_token = json.dumps(token)[1:-1]  # Remove surrounding quotes
                         yield f"data: {{\"object\": \"chat.completion.chunk\", \"choices\": [{{\"delta\": {{\"content\": \"{escaped_token}\"}}}}]}}\n\n"
@@ -190,6 +207,20 @@ async def openai_chat_completions(request: ChatCompletionRequest):
                 except Exception as e:
                     print(f"Error during streaming: {str(e)}")
                 finally:
+                    # Calculate final metrics
+                    end_time = time.perf_counter()
+                    total_time = end_time - start_time
+
+                    if first_token_time:
+                        tokens_per_second = token_count / (end_time - start_time)
+                        eval_tokens_per_second = prompt_len / eval_time
+
+                        if DEBUG:
+                            print("\n=== Streaming Performance ===")
+                            print(f"Total generation time: {total_time:.3f} seconds")
+                            print(f"Prompt evaluation: {prompt_len} tokens in {eval_time:.3f} seconds ({eval_tokens_per_second:.2f} T/s)")
+                            print(f"Response generation: {token_count} tokens in ({tokens_per_second:.2f} T/s)")
+
                     yield "data: [DONE]\n\n"
 
 
