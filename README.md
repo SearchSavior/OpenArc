@@ -1,13 +1,13 @@
 # Welcome to OpenARC
 
-NEW: Join the offical Discord
+NEW: Join the offical Discord!
 
 **OpenArc** is a lightweight inference API backend for Optimum-Intel from Transformers to leverage hardware acceleration on Intel CPUs, GPUs and NPUs through the OpenVINO runtime.
 It has been designed with agentic and chat use cases in mind. 
 
 OpenArc serves inference and integrates well with Transformers!
 
-Under the hood it's a strongly typed fastAPI implementation of [OVModelForCausalLM](https://huggingface.co/docs/optimum/main/en/intel/openvino/reference#optimum.intel.OVModelForCausalLM) from Optimum-Intel. So, deploying inference use less of the same code, while reaping the benefits of fastAPI type safety and ease of use. Keep your application code separate from inference code no matter what hardware configuration has been chosen for deployment.
+Under the hood it's a strongly typed fastAPI implementation of [OVModelForCausalLM](https://huggingface.co/docs/optimum/main/en/intel/openvino/reference#optimum.intel.OVModelForCausalLM) from Optimum-Intel. So, deploying inference uses less of the same code, while reaping the benefits of hardware acceleration on Intel devices. Keep your application code separate from inference code no matter what hardware configuration has been chosen for deployment.
 
 Here are some features:
 
@@ -27,7 +27,7 @@ Here are some features:
 
 	NOTE:
 	- API keys are not required for the endpoints
-	- The OpenArc dashboard has been built using these endpoints and contirbutor gapeleon did most of the testing.
+	- The OpenArc dashboard has been built using these endpoints and contirbutor gapeleon did most of the testing for community tools. However, I wrote OpenArc intending to use it for scripting.
 
 - **Gradio Dashboard**
 	- A chat interface
@@ -38,32 +38,33 @@ Here are some features:
 
 ## Design Philosophy: Conversation as the Atomic Unit of LLM Programming
 
-OpenArc offers a lightweight approach to decoupling machine learning code from application logic by adding an API layer to serve LLMs using hardware acceleration for Intel devices; in practice OpenArc offers a similar workflow to what's possible with Ollama, LM-Studio or OpenRouter. 
+OpenArc offers a lightweight approach to decoupling inference code from application logic by adding an API layer to serve machine learning models using hardware acceleration for Intel devices; in practice OpenArc offers a similar workflow to what's possible with Ollama, LM-Studio or OpenRouter. 
 
-As the AI space moves forward we are seeing all sorts of different paradigms emerge in CoT, agents, etc. Every design pattern using LLMs converges to some manipulation of the chat sequence stored in _conversation_ or (outside of transformers)_messages_. No matter what you build, you'll need to manipulate the chat sequence in some way that has nothing to do with inference. So OpenArc keeps these things seperate by design. 
+As the AI space moves forward we are seeing all sorts of different paradigms emerge in CoT, agents, etc. Every design pattern using LLMs converges to some manipulation of the chat sequence stored in _conversation_ or (outside of transformers)_messages_. No matter what you build, you'll need to manipulate the chat sequence in some way that has nothing to do with inference. By the time data has been added to _conversation_ all linear algebra, tokenization and decoding has been taken care of. OpenArc embraces this distinction.
 
-Exposing _conversation_ from [apply_chat_template](https://huggingface.co/docs/transformers/main/en/internal/tokenization_utils#transformers.PreTrainedTokenizerBase.apply_chat_template) method grant's complete control over what get's passed in and out of the model without any intervention required at the template level or API level. Projects using OpenArc can focus on application logic and not inference code. 
+Exposing _conversation_ from [apply_chat_template](https://huggingface.co/docs/transformers/main/en/internal/tokenization_utils#transformers.PreTrainedTokenizerBase.apply_chat_template) enables complete control over what get's passed in and out of the model without any intervention required at the template level. Projects using OpenArc can focus on application logic and less on inference code.  Check out the typing for _conversation_:
 
 	conversation (Union[List[Dict[str, str]], List[List[Dict[str, str]]]]) — A list of dicts with “role” and “content” keys, representing the chat history so far.
 
-By the time data has been added to _conversation_ all linear algebra and tokenization has been taken care of. It represents a scalable software architecture that OpenArc embraces, empowering developers to focus on application logic without completely abstracting inference code. None of this is neccessarily new; all the labs serve inference for this reason. However, very few projects are dedicated to leveraging Intel hardware acceleration and so that is where OpenArc's largest contribution can be made.
+Match the typing, manage the logic for assigning roles, update the sequence with content and you're set to build whatever you want using Intel CPUs, GPUs, and NPUs for acceleration.
 
+To poke around with this approach, skip the OpenAI API and dive right into the [requests](https://github.com/SearchSavior/OpenArc/tree/main/scripts/requests) examples which work well inside of coding prompts. Treat these like condensed documentation for the OpenArc API to get you started.
 
-Only _conversation_ has been exposed for now. There are two other options; _tools_ and _documents_ which will be added in future releases- these are much harder to test ad hoc and require knowing model-specifc facts about training, manually mapping tools to tokens, building those tools etc.
+Only _conversation_ has been exposed for now. There are two other useful options; _tools_ and _documents_ which will be added in future releases- these are much harder to test ad hoc and require knowing model-specifc facts about training, manually mapping tools to tokens, building those tools etc.
 
 ## System Requirments 
 
 OpenArc has been built on top of the OpenVINO runtime; as a result OpenArc supports the same range of hardware.
 
-Operating system support are a bit different for each class of device. Please review [system requirments](https://docs.openvino.ai/2025/about-openvino/release-notes-openvino/system-requirements.html#cpu) for OpenVINO 2025.0.0.0 to learn which
+Supported operating system are a bit different for each class of device. Please review [system requirments](https://docs.openvino.ai/2025/about-openvino/release-notes-openvino/system-requirements.html#cpu) for OpenVINO 2025.0.0.0 to learn which
 
 - Windows versions are supported
 - Linux distributions are supported
-- kernel versions
+- kernel versions are requiered
 	- My system uses version 6.9.4-060904-generic with Ubuntu 24.04 LTS.
 	- This matters more for GPU and NPU
 - commands for different package managers
-- other required dependencies  
+- other required dependencies for GPU and NPU
 
 <details>
   <summary>CPU</summary>
@@ -105,10 +106,6 @@ Operating system support are a bit different for each class of device. Please re
 
     Intel® Data Center GPU Max Series
 
-NOTE: 
-
-My system uses version 6.9.4-060904-generic with Ubuntu 24.04 LTS.
-
 </details>
 
 <details>
@@ -132,7 +129,8 @@ Windows discussion lives [here](https://github.com/SearchSavior/OpenArc/discussi
 
 Linux discussion lives [here](https://github.com/SearchSavior/OpenArc/discussions/11).
 
-Note: Come prepared with details about your system, errors you are experiencing and the steps you've taken so far to resolve the issue. These discussions offer an opportunity to supplement official documentation so you should assume someone in the future can use your help.
+> [!NOTE]
+> Come prepared with details about your system, errors you are experiencing and the steps you've taken so far to resolve the issue. These discussions offer an opportunity to supplement official documentation so you should assume someone in the future can use your help.
 
 Feel free to use the Discord for this as well but be prepared to document your solution on GitHub if asked! 
 
@@ -155,8 +153,9 @@ Then create the conda environment
 
 	conda env create -f environment.yaml
 
-### Tips
+ 
 
+> [!Tips]
 - Avoid setting up the environment from IDE extensions. 
 - DO NOT USE THE ENVIRONMENT FOR ANYTHING ELSE. Soon we will have Poetry.
 
@@ -172,36 +171,31 @@ To launch the inference server run
 
 		python start_server.py --host 0.0.0.0 --openarc-port 8000
 
-    host: defines the ip address to bind the server to
-	openarc_port: defines the port which can be used to access the server			
+> [!Definitions]
+> host: defines the ip address to bind the server to
+
+> openarc_port: defines the port which can be used to access the server			
 
 To launch the dashboard run
 
 		python start_dashboard.py --openarc-port 8000
 
-	openarc_port: defines the port which can be used to access the server
-
-
-
-
-
-
-
-		
-
-
-
-
-
-
+> [!Definitions]
+> openarc_port: defines the port which requests from the dashboard use
 
 Run these in two different terminals.
+
+
+> [!NOTE]
+> Gradio handles ports natively so this doesnt need to be set. Default is 7860 but it will increment if another instance of gradio is running.
+
+
 
 Some notes about the current version:
 
 - To see performance metrics read the logs displayed where start_server.py is running.
-- I reccomend using these together but they are independent.
-- The dashboard has a lot of documentation 
+- I *strongly* reccomend using these together but they are independent by design.
+- The dashboard has a lot of documentation and tools intended to help you get started working with both OpenVINO and Intel hardware.
 
 ## Convert to [OpenVINO IR](https://docs.openvino.ai/2025/documentation/openvino-ir-format.html)
 

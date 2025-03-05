@@ -128,16 +128,6 @@ class Payload_Constructor:
             response.raise_for_status()
             response_data = response.json()
             
-            # Update performance metrics if available
-            if self.performance_metrics and 'usage' in response_data:
-                metrics = {
-                    'generation_time': response_data.get('generation_time', 0),
-                    'input_tokens': response_data.get('usage', {}).get('prompt_tokens', 0),
-                    'output_tokens': response_data.get('usage', {}).get('completion_tokens', 0),
-                    'tokens_per_second': response_data.get('tokens_per_second', 0)
-                }
-                self.performance_metrics.update(metrics)
-            
             return response_data['choices'][0]['message']['content']
             
         except requests.exceptions.RequestException as e:
