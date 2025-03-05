@@ -27,9 +27,9 @@ Here are some features:
 	- Openwebui
 	- SillyTavern
 
-	> [!NOTE]
+	
 	> - API keys are not required for the endpoints
-	> - The OpenArc dashboard has been built using these endpoints and contirbutor gapeleon did most of the testing for community tools. However, I wrote OpenArc intending to use it for scripting.
+	> - The OpenArc dashboard has been built using these endpoints and contirbutor gapeleon did most of the testing for community tools. However, I wrote OpenArc intending to use it for scripting and need help building out the OpenAI API further. 
 
 - **Gradio Dashboard**
 	- A chat interface
@@ -67,6 +67,13 @@ Supported operating system are a bit different for each class of device. Please 
 	- This matters more for GPU and NPU
 - commands for different package managers
 - other required dependencies for GPU and NPU
+
+If you need help installing drivers:
+	- Join the [Discord](https://discord.gg/PnuTBVcr)
+	- Open an issue
+	- Use [Linux Drivers](https://github.com/SearchSavior/OpenArc/discussions/11)
+	- Use [Windows Drivers](https://github.com/SearchSavior/OpenArc/discussions/12)
+
 
 <details>
   <summary>CPU</summary>
@@ -131,7 +138,7 @@ Windows discussion lives [here](https://github.com/SearchSavior/OpenArc/discussi
 
 Linux discussion lives [here](https://github.com/SearchSavior/OpenArc/discussions/11).
 
-> [!NOTE]
+
 > Come prepared with details about your system, errors you are experiencing and the steps you've taken so far to resolve the issue. These discussions offer an opportunity to supplement official documentation so you should assume someone in the future can use your help.
 
 Feel free to use the Discord for this as well but be prepared to document your solution on GitHub if asked! 
@@ -239,7 +246,7 @@ Documentation on choosing parameters for conversion is coming soon.
 
 - Improve OpenAI API compatibility for different tooling
 - Add benchmarking tools
-- Intel Extension for PyTorch to OpenVINO examples
+
 - Add robust feature support for Qwen2-VL from [OVModelForVisualCausalLM](https://github.com/huggingface/optimum-intel/blob/c9ff040327bda796458d7f105979be3665431f1c/optimum/intel/openvino/modeling_visual_language.py#L287) i.e, bouding boxes, base64 encoding images, maybe video?
 - Add tooling for serving PaddlePaddle models with OpenVINO acceleration, starting with OCR
 - Add support for loading multiple models into memory and on different devices
