@@ -34,6 +34,18 @@ class ChatCompletionRequest(BaseModel):
     class Config:
         extra = Extra.ignore
 
+class CompletionRequest(BaseModel):
+    prompt: str
+    model: str = "default"
+    temperature: Optional[float] = 0.7
+    max_tokens: Optional[int] = None
+    stream: Optional[bool] = False
+    stop: Optional[List[str]] = None
+
+    class Config:
+        extra = Extra.ignore
+
+
 
 @app.post("/optimum/model/load")
 async def load_model(load_config: OV_LoadModelConfig, ov_config: OV_Config):
@@ -201,6 +213,60 @@ async def openai_chat_completions(request: ChatCompletionRequest):
                     "total_tokens": metrics.get("input_tokens", 0) + metrics.get("output_tokens", 0)
                 }
             })
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/v1/completions")
+async def openai_completions(request: CompletionRequest):
+    global model_instance
+    if not model_instance:
+        raise HTTPException(status_code=503, detail="No model loaded")
+
+    # Convert prompt into conversation format (single user message)
+    conversation = [{"role": "user", "content": request.prompt}]
+
+    # Create generation config
+    generation_config = OV_GenerationConfig(
+        conversation=conversation,
+        temperature=request.temperature or 0.7,
+        max_new_tokens=request.max_tokens or 512,
+        stop_sequences=request.stop or [],
+        repetition_penalty=1.0,
+        do_sample=True,
+        num_return_sequences=1
+    )
+
+    # Handle streaming response
+    if request.stream:
+        async def stream_generator():
+            async for token in model_instance.generate_stream(generation_config):
+                # Properly escape and format for SSE
+                escaped_token = json.dumps(token)[1:-1]
+                yield f"data: {{\"object\": \"text_completion.chunk\", \"choices\": [{{\"text\": \"{escaped_token}\"}}]}}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(stream_generator(), media_type="text/event-stream")
+
+    # Handle regular response
+    try:
+        generated_text, metrics = model_instance.generate_text(generation_config)
+        return JSONResponse(content={
+            "id": f"ov-{uuid.uuid4()}",
+            "object": "text_completion",
+            "created": int(time.time()),
+            "model": model_instance.load_model_config.id_model,
+            "choices": [{
+                "text": generated_text,
+                "index": 0,
+                "finish_reason": "length"
+            }],
+            "usage": {
+                "prompt_tokens": metrics.get("input_tokens", 0),
+                "completion_tokens": metrics.get("output_tokens", 0),
+                "total_tokens": metrics.get("input_tokens", 0) + metrics.get("output_tokens", 0)
+            }
+        })
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
