@@ -34,6 +34,18 @@ class ChatCompletionRequest(BaseModel):
     class Config:
         extra = Extra.ignore
 
+class CompletionRequest(BaseModel):
+    prompt: str
+    model: str = "default"
+    temperature: Optional[float] = 0.7
+    max_tokens: Optional[int] = None
+    stream: Optional[bool] = False
+    stop: Optional[List[str]] = None
+
+    class Config:
+        extra = Extra.ignore
+
+
 
 @app.post("/optimum/model/load")
 async def load_model(load_config: OV_LoadModelConfig, ov_config: OV_Config):
@@ -145,6 +157,12 @@ async def openai_chat_completions(request: ChatCompletionRequest):
         print("Raw messages:", request.messages)
         print("Params - temperature:", request.temperature)
         print("Params - max_tokens:", request.max_tokens)
+        try:
+            from transformers import AutoTokenizer
+            tokenizer = AutoTokenizer.from_pretrained(request.model)
+            prompt_len=len(tokenizer.apply_chat_template(request.messages))
+        except Exception as e:
+            print(f"Token counting error: {e}")
 
     try:
         # Convert OpenAI-style messages to conversation format
@@ -169,8 +187,19 @@ async def openai_chat_completions(request: ChatCompletionRequest):
 
         if request.stream:
             async def stream_generator():
+                # Performance tracking variables
+                start_time = time.perf_counter()
+                first_token_time = None
+                token_count = 0
                 try:
                     async for token in model_instance.generate_stream(generation_config):
+                        token_count += 1
+
+                        # Record time of first token
+                        if token_count == 1:
+                            first_token_time = time.perf_counter()
+                            eval_time = first_token_time - start_time
+
                         # Properly escape the content for JSON, preserving all whitespace
                         escaped_token = json.dumps(token)[1:-1]  # Remove surrounding quotes
                         yield f"data: {{\"object\": \"chat.completion.chunk\", \"choices\": [{{\"delta\": {{\"content\": \"{escaped_token}\"}}}}]}}\n\n"
@@ -178,6 +207,20 @@ async def openai_chat_completions(request: ChatCompletionRequest):
                 except Exception as e:
                     print(f"Error during streaming: {str(e)}")
                 finally:
+                    # Calculate final metrics
+                    end_time = time.perf_counter()
+                    total_time = end_time - start_time
+
+                    if first_token_time:
+                        tokens_per_second = token_count / (end_time - start_time)
+                        eval_tokens_per_second = prompt_len / eval_time
+
+                        if DEBUG:
+                            print("\n=== Streaming Performance ===")
+                            print(f"Total generation time: {total_time:.3f} seconds")
+                            print(f"Prompt evaluation: {prompt_len} tokens in {eval_time:.3f} seconds ({eval_tokens_per_second:.2f} T/s)")
+                            print(f"Response generation: {token_count} tokens in ({tokens_per_second:.2f} T/s)")
+
                     yield "data: [DONE]\n\n"
 
 
@@ -201,6 +244,60 @@ async def openai_chat_completions(request: ChatCompletionRequest):
                     "total_tokens": metrics.get("input_tokens", 0) + metrics.get("output_tokens", 0)
                 }
             })
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/v1/completions")
+async def openai_completions(request: CompletionRequest):
+    global model_instance
+    if not model_instance:
+        raise HTTPException(status_code=503, detail="No model loaded")
+
+    # Convert prompt into conversation format (single user message)
+    conversation = [{"role": "user", "content": request.prompt}]
+
+    # Create generation config
+    generation_config = OV_GenerationConfig(
+        conversation=conversation,
+        temperature=request.temperature or 0.7,
+        max_new_tokens=request.max_tokens or 512,
+        stop_sequences=request.stop or [],
+        repetition_penalty=1.0,
+        do_sample=True,
+        num_return_sequences=1
+    )
+
+    # Handle streaming response
+    if request.stream:
+        async def stream_generator():
+            async for token in model_instance.generate_stream(generation_config):
+                # Properly escape and format for SSE
+                escaped_token = json.dumps(token)[1:-1]
+                yield f"data: {{\"object\": \"text_completion.chunk\", \"choices\": [{{\"text\": \"{escaped_token}\"}}]}}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(stream_generator(), media_type="text/event-stream")
+
+    # Handle regular response
+    try:
+        generated_text, metrics = model_instance.generate_text(generation_config)
+        return JSONResponse(content={
+            "id": f"ov-{uuid.uuid4()}",
+            "object": "text_completion",
+            "created": int(time.time()),
+            "model": model_instance.load_model_config.id_model,
+            "choices": [{
+                "text": generated_text,
+                "index": 0,
+                "finish_reason": "length"
+            }],
+            "usage": {
+                "prompt_tokens": metrics.get("input_tokens", 0),
+                "completion_tokens": metrics.get("output_tokens", 0),
+                "total_tokens": metrics.get("input_tokens", 0) + metrics.get("output_tokens", 0)
+            }
+        })
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

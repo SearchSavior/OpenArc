@@ -145,11 +145,7 @@ Feel free to use the Discord for this as well but be prepared to document your s
 
 ### Ubuntu
 
-Make it executable
-
-	sudo chmod +x environment.yaml
- 
-Then create the conda environment
+Create the conda environment:
 
 	conda env create -f environment.yaml
 
