@@ -11,6 +11,8 @@ dependencies:
     - optimum[openvino]
     - openvino==2025.0.0.0
     - openvino-tokenizers==2025.0.0.0
+    - openvino-genai==2025.0.0.0
     - fastapi
+    - gradio
     - pydantic
     - uvicorn

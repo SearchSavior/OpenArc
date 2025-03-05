@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # API endpoint
-API_URL="http://localhost:8000/model/load"
+API_URL="http://localhost:8000/optimum/model/load"
 
 # JSON payload
 JSON_PAYLOAD='{
@@ -9,7 +9,9 @@ JSON_PAYLOAD='{
         "id_model": "/mnt/Ironwolf-4TB/Models/OpenVINO/Mistral-Small-24B-Instruct-2501-int4_asym-ov",
         "use_cache": true,
         "device": "GPU.0",
-        "export_model": false
+        "export_model": false,
+        "pad_token_id": null,
+        "eos_token_id": 2
     },
     "ov_config": {
         "NUM_STREAMS": "1",

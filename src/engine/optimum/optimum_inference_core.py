@@ -15,29 +15,39 @@ from pydantic import BaseModel, Field
 # Parameters for from.pretrained
 
 class OV_Config(BaseModel):
+     
     NUM_STREAMS: Optional[str] = Field(None, description="Number of inference streams")
     PERFORMANCE_HINT: Optional[str] = Field(None, description="LATENCY, THROUGHPUT, CUMULATIVE_THROUGHPUT")
     PRECISION_HINT: Optional[str] = Field(None, description="Options: auto, fp32, fp16, int8")
+    
+    # CPU specific
+    ENABLE_HYPER_THREADING: Optional[bool] = Field(None, description="Enable hyper-threading")
+    INFERENCE_NUM_THREADS: Optional[int] = Field(None, description="Number of inference threads")
+    SCHEDULING_CORE_TYPE: Optional[str] = Field(None, description="Options: ANY_CORE, PCORE_ONLY, ECORE_ONLY")
 
 class OV_LoadModelConfig(BaseModel):
     id_model: str = Field(..., description="Model identifier or path")
     use_cache: bool = Field(True, description="Whether to use cache for stateful models. For multi-gpu use false.")
     device: str = Field("CPU", description="Device options: CPU, GPU, AUTO")
     export_model: bool = Field(False, description="Whether to export the model")
-
+    dynamic_shapes: Optional[bool] = Field(True, description="Whether to use dynamic shapes")
+    pad_token_id: Optional[int] = Field(None, description="Custom pad token ID")
+    eos_token_id: Optional[int] = Field(None, description="Custom end of sequence token ID")
+    bos_token_id: Optional[int] = Field(None, description="Custom beginning of sequence token ID")
+    
 class OV_GenerationConfig(BaseModel):
+    
     conversation: Union[List[Dict[str, str]], List[List[Dict[str, str]]]] = Field(description="A list of dicts with 'role' and 'content' keys, representing the chat history so far")
-    # Inference parameters for generation
+    stream: bool = Field(False, description="Whether to stream the generated text")
+      
+     # Inference parameters for generation
     max_new_tokens: int = Field(128, description="Maximum number of tokens to generate")
     temperature: float = Field(1.0, description="Sampling temperature")
     top_k: int = Field(50, description="Top-k sampling parameter")
     top_p: float = Field(0.9, description="Top-p sampling parameter")
     repetition_penalty: float = Field(1.0, description="Repetition penalty")
     do_sample: bool = Field(True, description="Use sampling for generation")
-    
     num_return_sequences: int = Field(1, description="Number of sequences to return")
-    pad_token_id: Optional[int] = Field(None, description="Custom pad token ID")
-    eos_token_id: Optional[int] = Field(2, description="Custom end of sequence token ID")
 
 class OV_PerformanceConfig(BaseModel):
     generation_time: Optional[float] = Field(None, description="Generation time in seconds")
@@ -129,11 +139,11 @@ class Optimum_InferenceCore:
     Applies a chat template to conversation messages, and generates a response.
     Exposed to the /generate endpoints.
     """
-    def __init__(self, load_model_config, ov_config=None):
+    def __init__(self, load_model_config: OV_LoadModelConfig, ov_config: Optional[OV_Config] = None):
         """
         Args:
             load_model_config: An instance of OV_LoadModelConfig containing parameters
-                               such as id_model, device, export_model, and use_cache.
+                               such as id_model, device, export_model, use_cache, and token IDs.
             ov_config: Optional OV_Config instance with additional model options.
         """
         self.load_model_config = load_model_config
@@ -147,23 +157,27 @@ class Optimum_InferenceCore:
         """Load the tokenizer and model."""
         print(f"Loading model {self.load_model_config.id_model} on device {self.load_model_config.device}...")
 
-        # Extract its configuration as a dict. This matches that the Python CPP api expects. 
-        # Enables changing ov_config values on the fly since the cpp runtime has been configured to accept high level "performance hints"
-        # gets updated more often and the Transformers integration has been built to act as a pass-through layer.
+        # Extract its configuration as a dict
         ov_config_dict = self.ov_config.model_dump(exclude_unset=True) if self.ov_config else {}
         
-        
+        # Load model with token IDs from config
         self.model = OVModelForCausalLM.from_pretrained(
             self.load_model_config.id_model,
             device=self.load_model_config.device,
             export_model=self.load_model_config.export_model,
             ov_config=ov_config_dict,
-            use_cache=self.load_model_config.use_cache
+            dynamic_shapes=self.load_model_config.dynamic_shapes,
+            use_cache=self.load_model_config.use_cache,
+            pad_token_id=self.load_model_config.pad_token_id,
+            eos_token_id=self.load_model_config.eos_token_id,
+            bos_token_id=self.load_model_config.bos_token_id
         )
         print("Model loaded successfully.")
 
         self.tokenizer = AutoTokenizer.from_pretrained(self.load_model_config.id_model)
         print("Tokenizer loaded successfully.")
+
+    # TODO: add performance metrics to generate_stream so we can track the same metrics in generate_text
 
     async def generate_stream(self, generation_config: OV_GenerationConfig) -> AsyncIterator[str]:
         """
@@ -198,8 +212,6 @@ class Optimum_InferenceCore:
                 do_sample=generation_config.do_sample,
                 repetition_penalty=generation_config.repetition_penalty,
                 num_return_sequences=generation_config.num_return_sequences,
-                pad_token_id=generation_config.pad_token_id,
-                eos_token_id=generation_config.eos_token_id,
                 streamer=streamer,
             )
 
@@ -258,8 +270,6 @@ class Optimum_InferenceCore:
                 do_sample=generation_config.do_sample,
                 repetition_penalty=generation_config.repetition_penalty,
                 num_return_sequences=generation_config.num_return_sequences,
-                pad_token_id=generation_config.pad_token_id,
-                eos_token_id=generation_config.eos_token_id,
             )
 
             # Generate outpus from the model

@@ -1,12 +1,16 @@
 # URL of the FastAPI endpoint
-API_URL="http://localhost:8000/generate/text"
+API_URL="http://localhost:8000/optimum/generate"
 
 # JSON payload for the generation configuration
 GENERATION_CONFIG='{
     "conversation": [
         {
+            "role": "system",
+            "content": "You are a confused pirate muppet with a penchant for puns no one understands."
+        },
+        {
             "role": "user",
-            "content": "Hello!"
+            "content": "Do you have the time?"
         }
     ],
     "max_new_tokens": 128,
@@ -16,8 +20,7 @@ GENERATION_CONFIG='{
     "repetition_penalty": 1.0,
     "do_sample": true,
     "num_return_sequences": 1,
-    "pad_token_id": null,
-    "eos_token_id": 2
+    "stream": false
 }'
 
 # Send the POST request to the API
