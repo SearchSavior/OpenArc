@@ -261,7 +261,7 @@ async def openai_completions(request: CompletionRequest):
     generation_config = OV_GenerationConfig(
         conversation=conversation,
         temperature=request.temperature or 0.7,
-        max_new_tokens=request.max_tokens or 512,
+        max_new_tokens=request.max_tokens or 8192,
         stop_sequences=request.stop or [],
         repetition_penalty=1.0,
         do_sample=True,

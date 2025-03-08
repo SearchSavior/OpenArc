@@ -554,14 +554,14 @@ class ChatUI:
             gr.Markdown("")
             # Store the Gradio components
             self.generation_config_components.update({
-                'max_new_tokens': gr.Slider(minimum=0, maximum=128000, label="Maximum number of tokens to generate"),
-                'temperature': gr.Slider(minimum=0, maximum=100, label="Temperature"),
-                'top_k': gr.Slider(minimum=0, maximum=100, label="Top-k"),
-                'top_p': gr.Slider(minimum=0, maximum=100, label="Top-p"),
-                'repetition_penalty': gr.Slider(minimum=0, maximum=100, label="Repetition penalty"),
+                'max_new_tokens': gr.Slider(minimum=1, maximum=128000, value=512, step=1, label="Maximum number of tokens to generate"),
+                'temperature': gr.Slider(minimum=0.0, maximum=2.0, value=0.7, step=0.01, label="Temperature (0-2)"),
+                'top_k': gr.Slider(minimum=0, maximum=100, value=50, step=1, label="Top-k (0-100)"),
+                'top_p': gr.Slider(minimum=0.0, maximum=1.0, value=0.95, step=0.01, label="Top-p (0-1)"),
+                'repetition_penalty': gr.Slider(minimum=1.0, maximum=2.0, value=1.1, step=0.01, label="Repetition penalty (1-2)"),
                 'do_sample': gr.Checkbox(label="Do sample"),
-                'num_return_sequences': gr.Slider(minimum=0, maximum=100, label="Number of sequences to return"),
-           
+                'num_return_sequences': gr.Slider(minimum=1, maximum=5, value=1, step=1, label="Number of sequences to return"),
+                'stop': gr.Textbox(label="Stop sequences (comma-separated)", placeholder="Enter stop sequences separated by commas"),
             })
             
             # Set up event handlers to update the payload constructor when values change
@@ -588,19 +588,21 @@ class ChatUI:
             )
 
     def update_generation_config(self, key, value):
-        """Update the generation config in the payload constructor with actual values"""
-        self.payload_constructor.generation_config[key] = value
+        """Update the generation config in the payload constructor with actual values.
+           If updating the stop parameter, convert a comma-separated string into a list."""
+        if key == "stop" and isinstance(value, str):
+            # Convert comma-separated stop sequences into a list, stripping whitespace and ignoring empty strings
+            self.payload_constructor.generation_config[key] = [s.strip() for s in value.split(",") if s.strip()]
+        else:
+            self.payload_constructor.generation_config[key] = value
 
     def update_system_prompt(self, prompt):
-        """Update the system prompt in the payload constructor"""
+        """Update the system prompt in the payload constructor without returning any output"""
         if prompt.strip():
             self.payload_constructor.generation_config["system_prompt"] = prompt
-            return "System prompt applied successfully."
         else:
             # Remove system prompt if empty
-            if "system_prompt" in self.payload_constructor.generation_config:
-                del self.payload_constructor.generation_config["system_prompt"]
-            return "System prompt cleared."
+            self.payload_constructor.generation_config.pop("system_prompt", None)
 
     def chat_tab(self):
         with gr.Tab("Chat"):
