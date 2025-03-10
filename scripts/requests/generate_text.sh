@@ -26,4 +26,5 @@ GENERATION_CONFIG='{
 # Send the POST request to the API
 curl -X POST "$API_URL" \
     -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $OPENARC_API_KEY" \
     -d "$GENERATION_CONFIG"

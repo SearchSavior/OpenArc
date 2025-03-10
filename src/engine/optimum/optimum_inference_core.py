@@ -15,17 +15,32 @@ from pydantic import BaseModel, Field
 # Parameters for from.pretrained
 
 class OV_Config(BaseModel):
-     
+    """
+    OpenVINO runtime optimization parameters passed as a dict in ov_config in from_pretrained.
+    """
     NUM_STREAMS: Optional[str] = Field(None, description="Number of inference streams")
     PERFORMANCE_HINT: Optional[str] = Field(None, description="LATENCY, THROUGHPUT, CUMULATIVE_THROUGHPUT")
     PRECISION_HINT: Optional[str] = Field(None, description="Options: auto, fp32, fp16, int8")
-    
-    # CPU specific
     ENABLE_HYPER_THREADING: Optional[bool] = Field(None, description="Enable hyper-threading")
     INFERENCE_NUM_THREADS: Optional[int] = Field(None, description="Number of inference threads")
     SCHEDULING_CORE_TYPE: Optional[str] = Field(None, description="Options: ANY_CORE, PCORE_ONLY, ECORE_ONLY")
 
+
 class OV_LoadModelConfig(BaseModel):
+    """
+    Configuration for loading the model with transformers. 
+    For inference:
+    . id_model: model identifier or path
+    . use_cache: whether to use cache for stateful models. For multi-gpu use false.
+    . device: device options: CPU, GPU, AUTO
+    . export_model: whether to export the model
+    . dynamic_shapes: whether to use dynamic shapes
+
+    Tokenizer specific:
+    . pad_token_id: custom pad token ID
+    . eos_token_id: custom end of sequence token ID
+    . bos_token_id: custom beginning of sequence token ID
+    """
     id_model: str = Field(..., description="Model identifier or path")
     use_cache: bool = Field(True, description="Whether to use cache for stateful models. For multi-gpu use false.")
     device: str = Field("CPU", description="Device options: CPU, GPU, AUTO")

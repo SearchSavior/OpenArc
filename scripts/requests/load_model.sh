@@ -22,4 +22,5 @@ JSON_PAYLOAD='{
 # Make the POST request
 curl -X POST "$API_URL" \
     -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $OPENARC_API_KEY" \
     -d "$JSON_PAYLOAD"
