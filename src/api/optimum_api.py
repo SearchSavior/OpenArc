@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, AsyncIterator, List, Dict
 from pydantic import BaseModel
 from datetime import datetime
+from pathlib import Path
 
 import warnings
 import logging
@@ -19,6 +20,7 @@ import json
 import os
 
 
+
 from src.engine.optimum.optimum_inference_core import (
     OV_LoadModelConfig,
     OV_Config,
@@ -26,8 +28,8 @@ from src.engine.optimum.optimum_inference_core import (
     Optimum_InferenceCore,
 )
 
-# Suppress specific deprecation warnings from optimum/numpy
-# This blocks warning the clog the API logs 
+# Suppress specific deprecation warnings from optimum implementation of numpy arrays
+# This block prevents clogging the API logs 
 warnings.filterwarnings("ignore", message="__array__ implementation doesn't accept a copy keyword")
 
 app = FastAPI(title="OpenVINO Inference API")
@@ -51,6 +53,21 @@ logger.setLevel(logging.DEBUG)
 API_KEY = os.getenv("OPENARC_API_KEY")
 security = HTTPBearer()
 
+def get_final_model_id(model_id: str) -> str:
+    """Extracts the final segment of the model id path using pathlib."""
+    return Path(model_id).name
+
+async def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Verify the API key provided in the Authorization header"""
+    if credentials.credentials != API_KEY:
+        logger.warning(f"Invalid API key: {credentials.credentials}")
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid API key",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return credentials.credentials
+
 class ChatCompletionRequest(BaseModel):
     messages: List[Dict[str, str]]
     model: str = "default"
@@ -73,17 +90,6 @@ class CompletionRequest(BaseModel):
     class Config:
         extra = "ignore"
 
-async def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Verify the API key provided in the Authorization header"""
-    if credentials.credentials != API_KEY:
-        logger.warning(f"Invalid API key: {credentials.credentials}")
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid API key",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return credentials.credentials
-
 @app.post("/optimum/model/load", dependencies=[Depends(verify_api_key)])
 async def load_model(load_config: OV_LoadModelConfig, ov_config: OV_Config):
     """Load a model with the specified configuration"""
@@ -99,7 +105,7 @@ async def load_model(load_config: OV_LoadModelConfig, ov_config: OV_Config):
         # Load the model
         model_instance.load_model()
         
-        return {"status": "success", "message": f"Model {load_config.id_model} loaded successfully"}
+        return {"status": "success", "message": f"Model {get_final_model_id(load_config.id_model)} loaded successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -152,7 +158,7 @@ async def get_status():
     
     return {
         "status": "loaded",
-        "id_model": model_instance.load_model_config.id_model,
+        "id_model": get_final_model_id(model_instance.load_model_config.id_model),
         "device": model_instance.load_model_config.device
     }
 
@@ -169,7 +175,7 @@ async def get_models():
 
     if model_instance:
         model_data = {
-            "id": model_instance.load_model_config.id_model,
+            "id": get_final_model_id(model_instance.load_model_config.id_model),
             "object": "model",
             "created": int(datetime.now().timestamp()),
             "owned_by": "OpenArc", 
@@ -190,7 +196,7 @@ async def openai_chat_completions(request: ChatCompletionRequest):
     logger.info("POST /v1/chat/completions called with messages: %s", request.messages)
 
     # Toggle debug output here
-    DEBUG = True
+    DEBUG = False
     if DEBUG:
         print("\n=== Received Request ===")
         print("Raw messages:", request.messages)
@@ -272,7 +278,7 @@ async def openai_chat_completions(request: ChatCompletionRequest):
                 "id": f"ov-{uuid.uuid4()}",
                 "object": "chat.completion",
                 "created": int(time.time()),
-                "model": model_instance.load_model_config.id_model,
+                "model": get_final_model_id(model_instance.load_model_config.id_model),
                 "choices": [{
                     "message": {"role": "assistant", "content": generated_text},
                     "finish_reason": "length"
@@ -327,7 +333,7 @@ async def openai_completions(request: CompletionRequest):
             "id": f"ov-{uuid.uuid4()}",
             "object": "text_completion",
             "created": int(time.time()),
-            "model": model_instance.load_model_config.id_model,
+            "model": get_final_model_id(model_instance.load_model_config.id_model),
             "choices": [{
                 "text": generated_text,
                 "index": 0,

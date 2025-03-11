@@ -45,10 +45,9 @@ class OVConfig(BaseModel):
     INFERENCE_NUM_THREADS: Optional[str] = None
     PRECISION_HINT: Optional[str] = None
 
-
 class Payload_Constructor:
     def __init__(self):
-        self.generation_config = {}  # This will store actual values, not components
+        self.generation_config = {}
 
     def load_model(self, id_model, device, use_cache, export_model, num_streams, performance_hint, precision_hint, bos_token_id, eos_token_id, pad_token_id, enable_hyperthreading, inference_num_threads, dynamic_shapes):
         """
@@ -526,30 +525,6 @@ class DeviceInfoTool:
                         inputs=[],
                         outputs=[device_properties]
                     )
-
-    def setup_interface(self):
-        with gr.Blocks() as self.demo:
-            with gr.Tabs():
-                self.chat_tab()
-                self.optimum_loader = Optimum_Loader(self.payload_constructor)
-                self.optimum_loader.create_interface()
-                
-                # Add new Tools tab with Model Conversion sub-tab
-                with gr.Tab("Tools"):
-                    with gr.Tabs():
-                        with gr.Tab("Model Conversion"):
-                            conversion_tool = ConversionTool()
-                            conversion_tool.gradio_app()
-                            
-                        # Add Device Information tab
-                        device_info_tool = DeviceInfoTool()
-                        device_info_tool.create_interface()
-                
-                self.documentation = OpenArc_Documentation()
-                self.documentation.create_interface()
-
-    def launch(self):
-        self.demo.launch()
 
 
 

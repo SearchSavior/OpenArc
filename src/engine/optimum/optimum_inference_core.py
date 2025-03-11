@@ -34,7 +34,7 @@ class OV_LoadModelConfig(BaseModel):
     . use_cache: whether to use cache for stateful models. For multi-gpu use false.
     . device: device options: CPU, GPU, AUTO
     . export_model: whether to export the model
-    . dynamic_shapes: whether to use dynamic shapes
+    . dynamic_shapes: whether to use dynamic shapes.
 
     Tokenizer specific:
     . pad_token_id: custom pad token ID
@@ -165,7 +165,6 @@ class Optimum_InferenceCore:
         self.ov_config = ov_config
         self.model = None
         self.tokenizer = None
-        self.load_model()
         self.performance_metrics = Optimum_PerformanceMetrics(OV_PerformanceConfig())
         
     def load_model(self):

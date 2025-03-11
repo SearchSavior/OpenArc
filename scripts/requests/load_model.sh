@@ -6,12 +6,12 @@ API_URL="http://localhost:8000/optimum/model/load"
 # JSON payload
 JSON_PAYLOAD='{
     "load_config": {
-        "id_model": "/mnt/Ironwolf-4TB/Models/OpenVINO/DeepSeek-R1-Distill-Qwen-14B-int4-awq-ov",
+        "id_model": "/mnt/Ironwolf-4TB/Models/OpenVINO/phi-4-int4_asym-awq-ov",
         "use_cache": true,
-        "device": "GPU.0",
+        "device": "GPU.1",
         "export_model": false,
         "pad_token_id": null,
-        "eos_token_id": 151646
+        "eos_token_id": 100257
     },
     "ov_config": {
         "NUM_STREAMS": "1",
