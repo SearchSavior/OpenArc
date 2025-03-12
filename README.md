@@ -203,7 +203,7 @@ Run these in two different terminals.
 ## OpenWebUI
 
 > [!NOTE]
-> I'm only going to cover the basics on OpenWebUI here.
+> I'm only going to cover the basics on OpenWebUI here. To learn more and set it up check out the [OpenWebUI docs](https://docs.openwebui.com/).
 
 - From the Connections menu add a new connection
 - Enter the server address and port where OpenArc is running
@@ -220,7 +220,7 @@ In the uvicorn logs where the server is running this request should report:
 - Select the connection you just created and use the refresch button to update the list of models
 
 
-#### - You can now use an OpenVINO accelerated model in a chat with OpenWebUI community tooling!
+#### - You can now use an OpenVINO accelerated model in a chat with OpenWebUI community tooling! This is a big step forward for OpenArc. Getting this right so early in the project positions OpenArc to be mature nicely
 
 
 
