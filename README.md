@@ -1,7 +1,13 @@
 # Welcome to OpenARC
 
+NEW: OpenWebUI is now supported!
+
 NEW: Join the offical [Discord](https://discord.gg/PnuTBVcr)!
+
 NEW: Sister repo for Projects using OpenArc: [OpenArcProjects](https://github.com/SearchSavior/OpenArcProjects)
+
+> [!NOTE]
+> OpenArc is under active development. Expect breaking changes.
 
 
 **OpenArc** is a lightweight inference API backend for Optimum-Intel from Transformers to leverage hardware acceleration on Intel CPUs, GPUs and NPUs through the OpenVINO runtime.
@@ -9,34 +15,28 @@ It has been designed with agentic and chat use cases in mind.
 
 OpenArc serves inference and integrates well with Transformers!
 
-Under the hood it's a strongly typed fastAPI implementation of [OVModelForCausalLM](https://huggingface.co/docs/optimum/main/en/intel/openvino/reference#optimum.intel.OVModelForCausalLM) from Optimum-Intel. So, deploying inference uses less of the same code, while reaping the benefits of hardware acceleration on Intel devices. Keep your application code separate from inference code no matter what hardware configuration has been chosen for deployment.
+Under the hood it's a strongly typed fastAPI implementation of [OVModelForCausalLM](https://huggingface.co/docs/optimum/main/en/intel/openvino/reference#optimum.intel.OVModelForCausalLM) from Optimum-Intel. So, deploying inference uses less of the same code, while reaping the benefits of hardware acceleration on Intel devices. Keep application logic separate from inference code no matter what hardware configuration has been chosen for deployment.
 
 Here are some features:
 
 - **Strongly typed API**
 	- optimum/model/load: loads model and accepts ov_config
 	- optimum/model/unload: use gc to purge a loaded model from device memory
-	- optimum/generate: generate text with sampling, temp
 	- optimum/status: see the loaded model 
 
 - **OpenAI-compatible endpoints**
-	- /v1/chat/completions: a minimal implementation of the OpenAI API for chat completions
+	- /v1/chat/completions: implementation of the OpenAI API for chat completions
 	- /v1/models
 
-	Tested with:
-	- Openwebui
-	- SillyTavern
-
-	
-	> - API keys are not required for the endpoints
-	> - The OpenArc dashboard has been built using these endpoints and contirbutor gapeleon did most of the testing for community tools. However, I wrote OpenArc intending to use it for scripting and need help building out the OpenAI API further. 
+	Validated with:
+	- OpenWebUI (!)
 
 - **Gradio Dashboard**
-	- A chat interface
 	- A dashboard for loading models and interacting with OpenArc's API
 	- Tools for querying device properties
 	- GUI for building model conversion commands 
 	- Query tokenizers and model architecture
+
 
 ## Design Philosophy: Conversation as the Atomic Unit of LLM Programming
 
@@ -52,7 +52,7 @@ Match the typing, manage the logic for assigning roles, update the sequence with
 
 To poke around with this approach, skip the OpenAI API and dive right into the [requests](https://github.com/SearchSavior/OpenArc/tree/main/scripts/requests) examples which work well inside of coding prompts. Treat these like condensed documentation for the OpenArc API to get you started.
 
-Only _conversation_ has been exposed for now. There are two other useful options; _tools_ and _documents_ which will be added in future releases- these are much harder to test ad hoc and require knowing model-specifc facts about training, manually mapping tools to tokens and building those tools. Each of these wrap RAG documents and tool calls in special tokens which should increase reliability for structured outputs at a lower level of abstraction; instead of using the prompt to tell the model what context to use the tokens do this work for us. OpenArc will not define some class to use for mapping tools to tokens, instead it empowers developers to define their own tools and documents with an engine tooled to accept them as part of a request.
+Only _conversation_ has been exposed for now. There are two other useful options; _tools_ and _documents_ which will be added in future releases- these are much harder to test ad hoc and require knowing model-specifc facts about training, manually mapping tools to tokens and building those tools. Each of these wrap RAG documents and tool calls in special tokens which should increase reliability for structured outputs at a lower level of abstraction; instead of using the prompt to tell the model what context to use the tokens do part ofthis work for us. OpenArc will not define some class to use for mapping tools to tokens, instead it empowers developers to define their own tools and documents with an engine tooled to accept them as part of a request.
 
 ## System Requirments 
 
@@ -150,6 +150,11 @@ Create the conda environment:
 	conda env create -f environment.yaml
 
 
+Set your API key as an environment variable:
+
+	export OPENARC_API_KEY=<you-know-for-search>
+
+
 ### Windows
 
 1. Install Miniconda from [here](https://www.anaconda.com/docs/getting-started/miniconda/install#windows-installation)
@@ -158,11 +163,13 @@ Create the conda environment:
 
 	conda env create -f environment.yaml
 
- 
+Set your API key as an environment variable:
+
+	setx OPENARC_API_KEY=<you-know-for-search>
 
 > [!Tips]
 - Avoid setting up the environment from IDE extensions. 
-- DO NOT USE THE ENVIRONMENT FOR ANYTHING ELSE. Soon we will have Poetry.
+- DO NOT USE THE ENVIRONMENT FOR ANYTHING ELSE. Soon we will have uv.
 
 ## Usage
 
@@ -176,7 +183,7 @@ To launch the inference server run
 
 		python start_server.py --host 0.0.0.0 --openarc-port 8000
 
-> [!NOTE]
+
 > host: defines the ip address to bind the server to
 
 > openarc_port: defines the port which can be used to access the server			
@@ -185,7 +192,6 @@ To launch the dashboard run
 
 		python start_dashboard.py --openarc-port 8000
 
-> [!NOTE]
 > openarc_port: defines the port which requests from the dashboard use
 
 Run these in two different terminals.
@@ -193,6 +199,28 @@ Run these in two different terminals.
 
 > [!NOTE]
 > Gradio handles ports natively so the port number does not need to be set. Default is 7860 but it will increment if another instance of gradio is running.
+
+## OpenWebUI
+
+> [!NOTE]
+> I'm only going to cover the basics on OpenWebUI here.
+
+- From the Connections menu add a new connection
+- Enter the server address and port where OpenArc is running
+- Here you need to set the API key manually
+- When you hit the refresh button OpenWebUI sends a GET request to the OpenArc server to get the list of models
+
+In the uvicorn logs where the server is running this request should report:
+			
+	"GET /v1/models HTTP/1.1" 200 OK
+
+### Usage:
+
+- Load the model you want to use from the dashboard
+- Select the connection you just created and use the refresch button to update the list of models
+
+
+#### - You can now use an OpenVINO accelerated model in a chat with OpenWebUI community tooling!
 
 
 
