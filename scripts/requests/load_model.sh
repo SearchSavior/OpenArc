@@ -6,12 +6,12 @@ API_URL="http://localhost:8000/optimum/model/load"
 # JSON payload
 JSON_PAYLOAD='{
     "load_config": {
-        "id_model": "/mnt/Ironwolf-4TB/Models/OpenVINO/Mistral-Small-24B-Instruct-2501-int4_asym-ov",
+        "id_model": "/mnt/Ironwolf-4TB/Models/OpenVINO/phi-4-int4_asym-awq-ov",
         "use_cache": true,
-        "device": "GPU.0",
+        "device": "GPU.1",
         "export_model": false,
         "pad_token_id": null,
-        "eos_token_id": 2
+        "eos_token_id": 100257
     },
     "ov_config": {
         "NUM_STREAMS": "1",
@@ -22,4 +22,5 @@ JSON_PAYLOAD='{
 # Make the POST request
 curl -X POST "$API_URL" \
     -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $OPENARC_API_KEY" \
     -d "$JSON_PAYLOAD"

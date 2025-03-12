@@ -13,7 +13,7 @@ GENERATION_CONFIG='{
             "content": "Do you have the time?"
         }
     ],
-    "max_new_tokens": 128,
+    "max_new_tokens": 10000,
     "temperature": 0.7,
     "top_k": 50,
     "top_p": 0.9,
@@ -26,4 +26,5 @@ GENERATION_CONFIG='{
 # Send the POST request to the API
 curl -X POST "$API_URL" \
     -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $OPENARC_API_KEY" \
     -d "$GENERATION_CONFIG"

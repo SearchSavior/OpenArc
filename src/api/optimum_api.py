@@ -1,15 +1,25 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
+# The first implementation of the OpenAI-like API was contributed by @gapeleon.
+# They are one hero among many future heroes working to make OpenArc better. 
+
+
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.middleware.cors import CORSMiddleware
 
 from typing import Optional, AsyncIterator, List, Dict
-from pydantic import BaseModel, Extra
+from pydantic import BaseModel
 from datetime import datetime
+from pathlib import Path
 
+import warnings
 import logging
 import time
 import uuid
 import json
+import os
+
+
 
 from src.engine.optimum.optimum_inference_core import (
     OV_LoadModelConfig,
@@ -18,39 +28,73 @@ from src.engine.optimum.optimum_inference_core import (
     Optimum_InferenceCore,
 )
 
+# Suppress specific deprecation warnings from optimum implementation of numpy arrays
+# This block prevents clogging the API logs 
+warnings.filterwarnings("ignore", message="__array__ implementation doesn't accept a copy keyword")
+
 app = FastAPI(title="OpenVINO Inference API")
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  
+    allow_credentials=True,
+    allow_methods=["*"],  
+    allow_headers=["*"],  
+)
 
 # Global state to store model instance
 model_instance: Optional[Optimum_InferenceCore] = None
+
+logger = logging.getLogger("optimum_api")
+logger.setLevel(logging.DEBUG)
+
+# API key authentication
+API_KEY = os.getenv("OPENARC_API_KEY")
+security = HTTPBearer()
+
+def get_final_model_id(model_id: str) -> str:
+    """Extracts the final segment of the model id path using pathlib."""
+    return Path(model_id).name
+
+async def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Verify the API key provided in the Authorization header"""
+    if credentials.credentials != API_KEY:
+        logger.warning(f"Invalid API key: {credentials.credentials}")
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid API key",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return credentials.credentials
 
 class ChatCompletionRequest(BaseModel):
     messages: List[Dict[str, str]]
     model: str = "default"
     temperature: Optional[float] = 0.7
-    max_tokens: Optional[int] = None
+    max_tokens: Optional[int] = 4096
     stream: Optional[bool] = False
     stop: Optional[List[str]] = None
 
     class Config:
-        extra = Extra.ignore
+        extra = "ignore"
 
 class CompletionRequest(BaseModel):
     prompt: str
     model: str = "default"
     temperature: Optional[float] = 0.7
-    max_tokens: Optional[int] = None
+    max_tokens: Optional[int] = 4096
     stream: Optional[bool] = False
     stop: Optional[List[str]] = None
 
     class Config:
-        extra = Extra.ignore
+        extra = "ignore"
 
-
-
-@app.post("/optimum/model/load")
+@app.post("/optimum/model/load", dependencies=[Depends(verify_api_key)])
 async def load_model(load_config: OV_LoadModelConfig, ov_config: OV_Config):
     """Load a model with the specified configuration"""
     global model_instance
+    logger.info("POST /optimum/model/load called with load_config: %s, ov_config: %s", load_config, ov_config)
     try:
         # Initialize new model
         model_instance = Optimum_InferenceCore(
@@ -61,24 +105,26 @@ async def load_model(load_config: OV_LoadModelConfig, ov_config: OV_Config):
         # Load the model
         model_instance.load_model()
         
-        return {"status": "success", "message": f"Model {load_config.id_model} loaded successfully"}
+        return {"status": "success", "message": f"Model {get_final_model_id(load_config.id_model)} loaded successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.delete("/optimum/model/unload")
+@app.delete("/optimum/model/unload", dependencies=[Depends(verify_api_key)])
 async def unload_model():
     """Unload the current model"""
     global model_instance
+    logger.info("DELETE /optimum/model/unload called")
     if model_instance:
         model_instance.util_unload_model()
         model_instance = None
         return {"status": "success", "message": "Model unloaded successfully"}
     return {"status": "success", "message": "No model was loaded"}
 
-@app.post("/optimum/generate")
+@app.post("/optimum/generate", dependencies=[Depends(verify_api_key)])
 async def generate_text(generation_config: OV_GenerationConfig):
     """Generate text either as a stream or a full response, based on the stream field"""
     global model_instance
+    logger.info("POST /optimum/generate called with generation_config: %s", generation_config)
     if not model_instance:
         raise HTTPException(status_code=400, detail="No model loaded")
     
@@ -98,10 +144,11 @@ async def generate_text(generation_config: OV_GenerationConfig):
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/optimum/status")
+@app.get("/optimum/status", dependencies=[Depends(verify_api_key)])
 async def get_status():
     """Get current model status and performance metrics"""
     global model_instance
+    logger.info("GET /optimum/status called")
     if not model_instance:
         return {
             "status": "no_model",
@@ -111,31 +158,27 @@ async def get_status():
     
     return {
         "status": "loaded",
-        "id_model": model_instance.load_model_config.id_model,
+        "id_model": get_final_model_id(model_instance.load_model_config.id_model),
         "device": model_instance.load_model_config.device
     }
 
-########################################################
-# The first implementation of the OpenAI-like API was contributed by @gapeleon.
-# They are one hero among many future heroes working to make OpenArc better. 
+
+# OpenAI-like API
 
 
-# OpenAI-like API Endpoints for using with different frontends
-# These require other features to be implemented like performance tracking,etc
-
-
-@app.get("/v1/models")
+@app.get("/v1/models", dependencies=[Depends(verify_api_key)])
 async def get_models():
     """Get list of available models in openai format"""
     global model_instance
+    logger.info("GET /v1/models called")
     data = []
 
     if model_instance:
         model_data = {
-            "id": model_instance.load_model_config.id_model,
+            "id": get_final_model_id(model_instance.load_model_config.id_model),
             "object": "model",
-            "created": int(datetime.utcnow().timestamp()),
-            "owned_by": "OpenArc",  # Our platform identifier a placeholder
+            "created": int(datetime.now().timestamp()),
+            "owned_by": "OpenArc", 
         }
         data.append(model_data)
 
@@ -144,14 +187,16 @@ async def get_models():
         "data": data
     }
 
-@app.post("/v1/chat/completions")
+@app.post("/v1/chat/completions", dependencies=[Depends(verify_api_key)])
 async def openai_chat_completions(request: ChatCompletionRequest):
     global model_instance
     if not model_instance:
+        logger.error("POST /v1/chat/completions failed: No model loaded")
         raise HTTPException(status_code=503, detail="No model loaded")
+    logger.info("POST /v1/chat/completions called with messages: %s", request.messages)
 
     # Toggle debug output here
-    DEBUG = True
+    DEBUG = False
     if DEBUG:
         print("\n=== Received Request ===")
         print("Raw messages:", request.messages)
@@ -233,7 +278,7 @@ async def openai_chat_completions(request: ChatCompletionRequest):
                 "id": f"ov-{uuid.uuid4()}",
                 "object": "chat.completion",
                 "created": int(time.time()),
-                "model": model_instance.load_model_config.id_model,
+                "model": get_final_model_id(model_instance.load_model_config.id_model),
                 "choices": [{
                     "message": {"role": "assistant", "content": generated_text},
                     "finish_reason": "length"
@@ -248,11 +293,13 @@ async def openai_chat_completions(request: ChatCompletionRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/v1/completions")
+@app.post("/v1/completions", dependencies=[Depends(verify_api_key)])
 async def openai_completions(request: CompletionRequest):
     global model_instance
     if not model_instance:
+        logger.error("POST /v1/completions failed: No model loaded")
         raise HTTPException(status_code=503, detail="No model loaded")
+    logger.info("POST /v1/completions called with prompt: %s", request.prompt)
 
     # Convert prompt into conversation format (single user message)
     conversation = [{"role": "user", "content": request.prompt}]
@@ -261,7 +308,7 @@ async def openai_completions(request: CompletionRequest):
     generation_config = OV_GenerationConfig(
         conversation=conversation,
         temperature=request.temperature or 0.7,
-        max_new_tokens=request.max_tokens or 512,
+        max_new_tokens=request.max_tokens or 8192,
         stop_sequences=request.stop or [],
         repetition_penalty=1.0,
         do_sample=True,
@@ -286,7 +333,7 @@ async def openai_completions(request: CompletionRequest):
             "id": f"ov-{uuid.uuid4()}",
             "object": "text_completion",
             "created": int(time.time()),
-            "model": model_instance.load_model_config.id_model,
+            "model": get_final_model_id(model_instance.load_model_config.id_model),
             "choices": [{
                 "text": generated_text,
                 "index": 0,

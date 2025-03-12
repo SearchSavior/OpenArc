@@ -4,9 +4,11 @@ import json
 from pathlib import Path
 from pydantic import BaseModel
 from typing import Optional
+import os
 
 from src.frontend.components.model_conversion import ConversionTool
 from src.frontend.tools.ov_device_query import DeviceDiagnosticQuery, DeviceDataQuery
+
 
 # Default OpenARC URL
 DEFAULT_OPENARC_PORT = 8000
@@ -17,9 +19,35 @@ def update_openarc_url(openarc_port=DEFAULT_OPENARC_PORT):
     global OPENARC_URL
     OPENARC_URL = f"http://localhost:{openarc_port}"
 
+def get_auth_headers():
+    """Get authorization headers with bearer token if available"""
+    headers = {"Content-Type": "application/json"}
+    api_key = os.environ.get("OPENARC_API_KEY")
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    return headers
+
+
+class LoadModelConfig(BaseModel):
+    id_model: str
+    use_cache: bool
+    device: str
+    export_model: bool
+    eos_token_id: Optional[int] = None
+    pad_token_id: Optional[int] = None
+    bos_token_id: Optional[int] = None
+    dynamic_shapes: bool = True
+
+class OVConfig(BaseModel):
+    NUM_STREAMS: Optional[str] = None
+    PERFORMANCE_HINT: Optional[str] = None
+    ENABLE_HYPERTHREADING: Optional[bool] = None
+    INFERENCE_NUM_THREADS: Optional[str] = None
+    PRECISION_HINT: Optional[str] = None
+
 class Payload_Constructor:
     def __init__(self):
-        self.generation_config = {}  # This will store actual values, not components
+        self.generation_config = {}
 
     def load_model(self, id_model, device, use_cache, export_model, num_streams, performance_hint, precision_hint, bos_token_id, eos_token_id, pad_token_id, enable_hyperthreading, inference_num_threads, dynamic_shapes):
         """
@@ -65,7 +93,7 @@ class Payload_Constructor:
         try:
             response = requests.post(
                 f"{OPENARC_URL}/optimum/model/load",
-                headers={"Content-Type": "application/json"},
+                headers=get_auth_headers(),
                 json={
                     "load_config": load_config.model_dump(exclude_none=True),
                     "ov_config": ov_config.model_dump(exclude_none=True)
@@ -82,56 +110,13 @@ class Payload_Constructor:
         """
         try:
             response = requests.delete(
-                f"{OPENARC_URL}/optimum/model/unload"
+                f"{OPENARC_URL}/optimum/model/unload",
+                headers=get_auth_headers()
             )
             response.raise_for_status()
             return response.json(), f"Model unloaded successfully: {response.json()}"
         except requests.exceptions.RequestException as e:
             return {"error": f"Request failed: {str(e)}"}, f"Error unloading model: {str(e)}"
-
-    def generate_text(self, message, history):
-        """
-        Sends a text generation request to the OpenAI-compatible API
-        
-        Args:
-            message (str): The current message from the user
-            history (list): List of previous messages from Gradio
-        """
-        # Convert Gradio history format to OpenAI messages format
-        messages = []
-        
-        # Add system prompt if it exists
-        if "system_prompt" in self.generation_config:
-            messages.append({"role": "system", "content": self.generation_config["system_prompt"]})
-        
-        for user_msg, assistant_msg in history:
-            messages.append({"role": "user", "content": user_msg})
-            if assistant_msg:  
-                messages.append({"role": "assistant", "content": assistant_msg})
-        
-        # Add the current message
-        messages.append({"role": "user", "content": message})
-        
-        # Construct payload with OpenAI format
-        payload = {
-            "messages": messages,
-            # Filter out system_prompt from generation_config for the API payload
-            **{k: v for k, v in self.generation_config.items() if k != "system_prompt"}
-        }
-        
-        try:
-            response = requests.post(
-                f"{OPENARC_URL}/v1/chat/completions",
-                headers={"Content-Type": "application/json"},
-                json=payload
-            )
-            response.raise_for_status()
-            response_data = response.json()
-            
-            return response_data['choices'][0]['message']['content']
-            
-        except requests.exceptions.RequestException as e:
-            return f"Error: {str(e)}"
 
     def status(self):
         """
@@ -139,7 +124,8 @@ class Payload_Constructor:
         """
         try:
             response = requests.get(
-                f"{OPENARC_URL}/optimum/status"
+                f"{OPENARC_URL}/optimum/status",
+                headers=get_auth_headers()
             )
             response.raise_for_status()
             return response.json(), f"Server status: {response.json()}"
@@ -540,125 +526,5 @@ class DeviceInfoTool:
                         outputs=[device_properties]
                     )
 
-class ChatUI:
-    def __init__(self, openarc_port=DEFAULT_OPENARC_PORT):
-        self.demo = None
-        self.chat_interface = None
-        self.generation_config_components = {}  # Rename to clarify these are components
-        self.payload_constructor = Payload_Constructor()
-        self.setup_interface()
-        update_openarc_url(openarc_port)
-
-    def setup_generation_config(self):
-        with gr.Accordion("Generation Config", open=False):
-            gr.Markdown("")
-            # Store the Gradio components
-            self.generation_config_components.update({
-                'max_new_tokens': gr.Slider(minimum=0, maximum=128000, label="Maximum number of tokens to generate"),
-                'temperature': gr.Slider(minimum=0, maximum=100, label="Temperature"),
-                'top_k': gr.Slider(minimum=0, maximum=100, label="Top-k"),
-                'top_p': gr.Slider(minimum=0, maximum=100, label="Top-p"),
-                'repetition_penalty': gr.Slider(minimum=0, maximum=100, label="Repetition penalty"),
-                'do_sample': gr.Checkbox(label="Do sample"),
-                'num_return_sequences': gr.Slider(minimum=0, maximum=100, label="Number of sequences to return"),
-           
-            })
-            
-            # Set up event handlers to update the payload constructor when values change
-            for key, component in self.generation_config_components.items():
-                component.change(
-                    fn=lambda value, k=key: self.update_generation_config(k, value),
-                    inputs=[component]
-                )
-
-    def setup_system_prompt(self):
-        with gr.Accordion("System Prompt", open=True):
-            system_prompt = gr.Textbox(
-                label="System Prompt",
-                placeholder="Enter a system prompt to guide the model's behavior...",
-                lines=5
-            )
-            
-            apply_button = gr.Button("Apply System Prompt")
-            
-            # Set up event handler to update the system prompt in the payload constructor
-            apply_button.click(
-                fn=self.update_system_prompt,
-                inputs=[system_prompt]
-            )
-
-    def update_generation_config(self, key, value):
-        """Update the generation config in the payload constructor with actual values"""
-        self.payload_constructor.generation_config[key] = value
-
-    def update_system_prompt(self, prompt):
-        """Update the system prompt in the payload constructor"""
-        if prompt.strip():
-            self.payload_constructor.generation_config["system_prompt"] = prompt
-            return "System prompt applied successfully."
-        else:
-            # Remove system prompt if empty
-            if "system_prompt" in self.payload_constructor.generation_config:
-                del self.payload_constructor.generation_config["system_prompt"]
-            return "System prompt cleared."
-
-    def chat_tab(self):
-        with gr.Tab("Chat"):
-            with gr.Row():
-                # Chat interface on the left
-                with gr.Column(scale=3):
-                    self.chat_interface = gr.ChatInterface(
-                        fn=self.payload_constructor.generate_text,
-                        chatbot=gr.Chatbot(height=600,
-                                           show_copy_button=True,
-                                           autoscroll=True,
-                                           ),
-                    )
-                
-                # Accordions on the right
-                with gr.Column(scale=1):
-                    self.setup_system_prompt()
-                    self.setup_generation_config()
-
-    def setup_interface(self):
-        with gr.Blocks() as self.demo:
-            with gr.Tabs():
-                self.chat_tab()
-                self.optimum_loader = Optimum_Loader(self.payload_constructor)
-                self.optimum_loader.create_interface()
-                
-                # Add new Tools tab with Model Conversion sub-tab
-                with gr.Tab("Tools"):
-                    with gr.Tabs():
-                        with gr.Tab("Model Conversion"):
-                            conversion_tool = ConversionTool()
-                            conversion_tool.gradio_app()
-                            
-                        # Add Device Information tab
-                        device_info_tool = DeviceInfoTool()
-                        device_info_tool.create_interface()
-                
-                self.documentation = OpenArc_Documentation()
-                self.documentation.create_interface()
-
-    def launch(self):
-        self.demo.launch()
-
-class LoadModelConfig(BaseModel):
-    id_model: str
-    use_cache: bool
-    device: str
-    export_model: bool
-    eos_token_id: Optional[int] = None
-    pad_token_id: Optional[int] = None
-    bos_token_id: Optional[int] = None
-    dynamic_shapes: bool = True
-
-class OVConfig(BaseModel):
-    NUM_STREAMS: Optional[str] = None
-    PERFORMANCE_HINT: Optional[str] = None
-    ENABLE_HYPERTHREADING: Optional[bool] = None
-    INFERENCE_NUM_THREADS: Optional[str] = None
-    PRECISION_HINT: Optional[str] = None
 
 
