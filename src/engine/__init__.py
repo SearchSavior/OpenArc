@@ -1,19 +1,20 @@
-# src/engine/__init__.py
-"""
-Engine module for OpenArc.
-
-This module contains the core inference engines for different model types:
-- optimum: For Optimum-Intel models
-- ov_genai: For OpenVINO GenAI models
-"""
-
-# You can optionally expose key classes at the module level
-from src.engine.optimum.optimum_inference_core import (
-    OV_LoadModelConfig,
+from src.engine.optimum.optimum_base_config import (
     OV_Config,
+    OV_LoadModelConfig,
     OV_GenerationConfig,
-    Optimum_InferenceCore,
+    OV_PerformanceConfig,
+    Optimum_PerformanceMetrics
 )
 
-# Add version info if desired
-__version__ = "0.1.0"
+from src.engine.optimum.optimum_text2text import Optimum_Text2TextCore
+from src.engine.optimum.optimum_image2text import Optimum_Image2TextCore
+
+__all__ = [
+    "OV_Config",
+    "OV_LoadModelConfig",
+    "OV_GenerationConfig",
+    "OV_PerformanceConfig",
+    "Optimum_PerformanceMetrics",
+    "Optimum_Text2TextCore",
+    "Optimum_Image2TextCore"
+]

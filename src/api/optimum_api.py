@@ -19,13 +19,11 @@ import uuid
 import json
 import os
 
-
-
-from src.engine.optimum.optimum_inference_core import (
+from engine.optimum.optimum_text2text import (
     OV_LoadModelConfig,
     OV_Config,
     OV_GenerationConfig,
-    Optimum_InferenceCore,
+    Optimum_Text2TextCore,
 )
 
 # Suppress specific deprecation warnings from optimum implementation of numpy arrays
@@ -44,7 +42,7 @@ app.add_middleware(
 )
 
 # Global state to store model instance
-model_instance: Optional[Optimum_InferenceCore] = None
+model_instance: Optional[Optimum_Text2TextCore] = None
 
 logger = logging.getLogger("optimum_api")
 logger.setLevel(logging.DEBUG)
@@ -97,7 +95,7 @@ async def load_model(load_config: OV_LoadModelConfig, ov_config: OV_Config):
     logger.info("POST /optimum/model/load called with load_config: %s, ov_config: %s", load_config, ov_config)
     try:
         # Initialize new model
-        model_instance = Optimum_InferenceCore(
+        model_instance = Optimum_Text2TextCore(
             load_model_config=load_config,
             ov_config=ov_config,
         )

@@ -1,75 +1,22 @@
 from optimum.intel import OVModelForCausalLM
 from transformers import AutoTokenizer
 from transformers.generation.streamers import TextIteratorStreamer
-
-from typing import Optional, Dict, Any, List, AsyncIterator, Union
 from threading import Thread
 
+from typing import Any, AsyncIterator, Dict, Optional
+
+import gc
 import time
 import traceback
-import asyncio
-import gc
 
-from pydantic import BaseModel, Field
-
-# Parameters for from.pretrained
-
-class OV_Config(BaseModel):
-    """
-    OpenVINO runtime optimization parameters passed as a dict in ov_config in from_pretrained.
-    """
-    NUM_STREAMS: Optional[str] = Field(None, description="Number of inference streams")
-    PERFORMANCE_HINT: Optional[str] = Field(None, description="LATENCY, THROUGHPUT, CUMULATIVE_THROUGHPUT")
-    PRECISION_HINT: Optional[str] = Field(None, description="Options: auto, fp32, fp16, int8")
-    ENABLE_HYPER_THREADING: Optional[bool] = Field(None, description="Enable hyper-threading")
-    INFERENCE_NUM_THREADS: Optional[int] = Field(None, description="Number of inference threads")
-    SCHEDULING_CORE_TYPE: Optional[str] = Field(None, description="Options: ANY_CORE, PCORE_ONLY, ECORE_ONLY")
+from .optimum_base_config import (
+    OV_Config, 
+    OV_LoadModelConfig, 
+    OV_GenerationConfig, 
+    OV_PerformanceConfig
+)
 
 
-class OV_LoadModelConfig(BaseModel):
-    """
-    Configuration for loading the model with transformers. 
-    For inference:
-    . id_model: model identifier or path
-    . use_cache: whether to use cache for stateful models. For multi-gpu use false.
-    . device: device options: CPU, GPU, AUTO
-    . export_model: whether to export the model
-    . dynamic_shapes: whether to use dynamic shapes.
-
-    Tokenizer specific:
-    . pad_token_id: custom pad token ID
-    . eos_token_id: custom end of sequence token ID
-    . bos_token_id: custom beginning of sequence token ID
-    """
-    id_model: str = Field(..., description="Model identifier or path")
-    use_cache: bool = Field(True, description="Whether to use cache for stateful models. For multi-gpu use false.")
-    device: str = Field("CPU", description="Device options: CPU, GPU, AUTO")
-    export_model: bool = Field(False, description="Whether to export the model")
-    dynamic_shapes: Optional[bool] = Field(True, description="Whether to use dynamic shapes")
-    pad_token_id: Optional[int] = Field(None, description="Custom pad token ID")
-    eos_token_id: Optional[int] = Field(None, description="Custom end of sequence token ID")
-    bos_token_id: Optional[int] = Field(None, description="Custom beginning of sequence token ID")
-    
-class OV_GenerationConfig(BaseModel):
-    
-    conversation: Union[List[Dict[str, str]], List[List[Dict[str, str]]]] = Field(description="A list of dicts with 'role' and 'content' keys, representing the chat history so far")
-    stream: bool = Field(False, description="Whether to stream the generated text")
-      
-     # Inference parameters for generation
-    max_new_tokens: int = Field(128, description="Maximum number of tokens to generate")
-    temperature: float = Field(1.0, description="Sampling temperature")
-    top_k: int = Field(50, description="Top-k sampling parameter")
-    top_p: float = Field(0.9, description="Top-p sampling parameter")
-    repetition_penalty: float = Field(1.0, description="Repetition penalty")
-    do_sample: bool = Field(True, description="Use sampling for generation")
-    num_return_sequences: int = Field(1, description="Number of sequences to return")
-
-class OV_PerformanceConfig(BaseModel):
-    generation_time: Optional[float] = Field(None, description="Generation time in seconds")
-    input_tokens: Optional[int] = Field(None, description="Number of input tokens")
-    output_tokens: Optional[int] = Field(None, description="Number of output tokens")
-    new_tokens: Optional[int] = Field(None, description="Number of new tokens generated")
-    eval_time: Optional[float] = Field(None, description="Evaluation time in seconds")
 
 # Next we define the inference engine and utility functions.
 
@@ -148,7 +95,7 @@ class Optimum_PerformanceMetrics:
             
         print("="*50)
 
-class Optimum_InferenceCore:
+class Optimum_Text2TextCore:
     """
     Loads an OpenVINO model and tokenizer,
     Applies a chat template to conversation messages, and generates a response.
@@ -325,3 +272,7 @@ class Optimum_InferenceCore:
         
         gc.collect()
         print("Model unloaded and memory cleaned up")
+
+ 
+        
+        

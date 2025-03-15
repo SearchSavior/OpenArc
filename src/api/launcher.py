@@ -1,6 +1,6 @@
 import uvicorn
 import logging
-from src.api.optimum_api import app
+# from src.api.optimum_api import app
 
 # Configure logging
 logging.basicConfig(
