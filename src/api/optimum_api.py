@@ -19,12 +19,13 @@ import uuid
 import json
 import os
 
-from engine.optimum.optimum_text2text import (
+from src.engine.optimum.optimum_base_config import (
     OV_LoadModelConfig,
     OV_Config,
     OV_GenerationConfig,
-    Optimum_Text2TextCore,
+    create_optimum_model
 )
+
 
 # Suppress specific deprecation warnings from optimum implementation of numpy arrays
 # This block prevents clogging the API logs 
@@ -42,7 +43,7 @@ app.add_middleware(
 )
 
 # Global state to store model instance
-model_instance: Optional[Optimum_Text2TextCore] = None
+model_instance = None
 
 logger = logging.getLogger("optimum_api")
 logger.setLevel(logging.DEBUG)
@@ -94,10 +95,10 @@ async def load_model(load_config: OV_LoadModelConfig, ov_config: OV_Config):
     global model_instance
     logger.info("POST /optimum/model/load called with load_config: %s, ov_config: %s", load_config, ov_config)
     try:
-        # Initialize new model
-        model_instance = Optimum_Text2TextCore(
+        # Initialize new model using the factory function
+        model_instance = create_optimum_model(
             load_model_config=load_config,
-            ov_config=ov_config,
+            ov_config=ov_config
         )
         
         # Load the model

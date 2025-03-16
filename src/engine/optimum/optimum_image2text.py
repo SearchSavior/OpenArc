@@ -1,5 +1,6 @@
 from transformers import AutoProcessor, TextIteratorStreamer
 from optimum.intel.openvino import OVModelForVisualCausalLM
+
 from PIL import Image
 
 import threading
@@ -18,8 +19,6 @@ from .optimum_base_config import (
     OV_PerformanceConfig,
     Optimum_PerformanceMetrics
 )
-
-
 
 # Suppress specific deprecation warnings from optimum implementation of numpy arrays
 # This block prevents clogging the API logs 

@@ -1,9 +1,10 @@
-
 from transformers import AutoTokenizer
 from pydantic import BaseModel, Field
 from typing import Optional, Union, List, Dict, Any
-
 import time
+
+
+
 
 class OV_Config(BaseModel):
     """
@@ -38,9 +39,13 @@ class OV_LoadModelConfig(BaseModel):
     . pad_token_id: custom pad token ID
     . eos_token_id: custom end of sequence token ID
     . bos_token_id: custom beginning of sequence token ID
+
+    Architecture specific:
+    . is_vision_model: whether the model is a vision model for image-to-text generation tasks
+
     """
     id_model: str = Field(..., description="Model identifier or path")
-    is_vision_model: bool = Field(False, description="Whether the model is a vision model")
+    is_vision_model: bool = Field(False, description="Whether the model is a vision model for image-to-text tasks")
     use_cache: Optional[bool] = Field(True, description="Whether to use cache for stateful models. For multi-gpu use false.")
     device: str = Field("CPU", description="Device options: CPU, GPU, AUTO")
     export_model: bool = Field(False, description="Whether to export the model")
@@ -179,3 +184,26 @@ class Optimum_PerformanceMetrics:
             print(f"Tokens/Second: {metrics['tokens_per_second']:.2f}")
             
         print("="*50)
+
+def create_optimum_model(load_model_config: OV_LoadModelConfig, ov_config: Optional[OV_Config] = None):
+    """
+    Factory function to create the appropriate Optimum model based on configuration.
+    
+    Args:
+        load_model_config: Configuration for loading the model
+        ov_config: Optional OpenVINO configuration
+        
+    Returns:
+        An instance of the appropriate model class (Text2Text or Vision2Text)
+    """
+    if load_model_config.is_vision_model:
+        # Import the vision model class only when needed
+        from .optimum_image2text import Optimum_Image2TextCore
+        return Optimum_Image2TextCore(load_model_config, ov_config)
+    else:
+        # Import here to avoid circular imports
+        from .optimum_text2text import Optimum_Text2TextCore
+        return Optimum_Text2TextCore(load_model_config, ov_config)
+
+
+
