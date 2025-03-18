@@ -2,7 +2,7 @@
 
 NEW: OpenWebUI is now supported!
 
-NEW: Join the offical [Discord](https://discord.gg/PnuTBVcr)!
+NEW: Join the offical [Discord](https://discord.gg/Bzz9hax9Jq)!
 
 NEW: Sister repo for Projects using OpenArc: [OpenArcProjects](https://github.com/SearchSavior/OpenArcProjects)
 
