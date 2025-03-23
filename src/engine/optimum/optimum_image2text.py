@@ -1,23 +1,23 @@
-from transformers import AutoProcessor, TextIteratorStreamer
-from optimum.intel.openvino import OVModelForVisualCausalLM
-
-from PIL import Image
-
+import asyncio
+import base64
+import gc
 import threading
 import time
-import asyncio
 import traceback
 import warnings
-
-
+from io import BytesIO
 from typing import AsyncIterator, Optional
 
+from optimum.intel.openvino import OVModelForVisualCausalLM
+from PIL import Image
+from transformers import AutoProcessor, TextIteratorStreamer
+
 from .optimum_base_config import (
-    OV_Config, 
-    OV_LoadModelConfig, 
-    OV_GenerationConfig, 
+    Optimum_PerformanceMetrics,
+    OV_Config,
+    OV_GenerationConfig,
+    OV_LoadModelConfig,
     OV_PerformanceConfig,
-    Optimum_PerformanceMetrics
 )
 
 # Suppress specific deprecation warnings from optimum implementation of numpy arrays
@@ -77,14 +77,12 @@ class Optimum_Image2TextCore:
     
     async def generate_vision_stream(
         self, 
-        image_path: str,
         generation_config: OV_GenerationConfig
     ) -> AsyncIterator[str]:
         """
         Asynchronously stream generated text from an image using the provided configuration.
         
         Args:
-            image_path: Path to the image file
             generation_config: Configuration for text generation
             
         Yields:
@@ -96,22 +94,6 @@ class Optimum_Image2TextCore:
         try:
             start_time = time.time()
             
-            # Load and process the image
-            image = Image.open(image_path)
-            
-            # Add image to the conversation content
-            # Find the first user message and add the image to its content
-            for message in generation_config.conversation:
-                if message.get("role") == "user":
-                    # Check if content is a list
-                    if isinstance(message.get("content"), list):
-                        # Look for a place to insert the image
-                        for i, content_item in enumerate(message["content"]):
-                            if content_item.get("type") == "image":
-                                # Replace placeholder with actual image reference
-                                message["content"][i] = {"type": "image"}
-                                break
-                    break
             
             # Preprocess the inputs
             text_prompt = self.processor.apply_chat_template(
@@ -121,7 +103,6 @@ class Optimum_Image2TextCore:
             
             inputs = self.processor(
                 text=[text_prompt], 
-                images=[image], 
                 padding=True, 
                 return_tensors="pt"
             )
@@ -183,63 +164,13 @@ class Optimum_Image2TextCore:
         """
         return self.performance_metrics
 
-# model_id = "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen2-VL-7B-Instruct-int4_asym-ov"
-# 
-# 
-# ov_config = {"PERFORMANCE_HINT": "LATENCY"}
-# model = OVModelForVisualCausalLM.from_pretrained(model_id, export=False, device="GPU.0", ov_config=ov_config)
-# processor = AutoProcessor.from_pretrained(model_id)
-# 
-# 
-# image_path = "/home/echo/Projects/OpenArc/scripts/examples/dedication.png"
-# image = Image.open(image_path)
-# 
-# conversation = [
-#     {
-#         "role": "user",
-#         "content": [
-#             {
-#                 "type": "image",
-#             },
-#             {"type": "text", "text": "Describe this image."},
-#         ],
-#     }
-# ]
-# 
-# 
-# # Preprocess the inputs
-# text_prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
-# # Excepted output: '<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>Describe this image.<|im_end|>\n<|im_start|>assistant\n'
-# 
-# inputs = processor(text=[text_prompt], images=[image], padding=True, return_tensors="pt")
-# 
-# # Print tokenizer length
-# print(f"Input token length: {len(inputs.input_ids[0])}")
-# 
-# # Initialize the streamer
-# streamer = TextIteratorStreamer(processor.tokenizer, skip_prompt=True, skip_special_tokens=True)
-# 
-# # Set up generation parameters
-# generation_kwargs = dict(
-#     **inputs,
-#     max_new_tokens=1024,
-#     streamer=streamer
-# )
-# 
-# # Create and start the generation thread
-# thread = threading.Thread(target=model.generate, kwargs=generation_kwargs)
-# thread.start()
-# 
-# # Stream the generated text
-# print("Streaming generated text:")
-# full_response = ""
-# for new_text in streamer:
-#     print(new_text, end="", flush=True)
-#     full_response += new_text
-#     time.sleep(0.01)  # Small delay to make streaming visible
-# 
-# print("\n\nFull response:")
-# print(full_response)
-# 
-# # Wait for the generation to complete
-# thread.join()
+    def util_unload_model(self):
+        """Unload model and free memory"""
+        del self.model
+        self.model = None
+        
+        del self.processor
+        self.processor = None
+        
+        gc.collect()
+        print("Model unloaded and memory cleaned up")

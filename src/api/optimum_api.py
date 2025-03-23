@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 
-from typing import Optional, AsyncIterator, List, Dict
+from typing import Optional, AsyncIterator, List, Any
 from pydantic import BaseModel
 from datetime import datetime
 from pathlib import Path
@@ -68,7 +68,7 @@ async def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(sec
     return credentials.credentials
 
 class ChatCompletionRequest(BaseModel):
-    messages: List[Dict[str, str]]
+    messages: Any
     model: str = "default"
     temperature: Optional[float] = 0.7
     max_tokens: Optional[int] = 4096
@@ -198,9 +198,11 @@ async def openai_chat_completions(request: ChatCompletionRequest):
     DEBUG = False
     if DEBUG:
         print("\n=== Received Request ===")
+        print("Model:", request.model)
         print("Raw messages:", request.messages)
         print("Params - temperature:", request.temperature)
         print("Params - max_tokens:", request.max_tokens)
+
         try:
             from transformers import AutoTokenizer
             tokenizer = AutoTokenizer.from_pretrained(request.model)
@@ -236,7 +238,7 @@ async def openai_chat_completions(request: ChatCompletionRequest):
                 first_token_time = None
                 token_count = 0
                 try:
-                    async for token in model_instance.generate_stream(generation_config):
+                    async for token in model_instance.generate_vision_stream(generation_config):
                         token_count += 1
 
                         # Record time of first token

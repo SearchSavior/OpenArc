@@ -49,7 +49,7 @@ class Payload_Constructor:
     def __init__(self):
         self.generation_config = {}
 
-    def load_model(self, id_model, device, use_cache, export_model, num_streams, performance_hint, precision_hint, bos_token_id, eos_token_id, pad_token_id, enable_hyperthreading, inference_num_threads, dynamic_shapes):
+    def load_model(self, id_model, device, use_cache, export_model, num_streams, performance_hint, precision_hint, is_vision_model, bos_token_id, eos_token_id, pad_token_id, enable_hyperthreading, inference_num_threads, dynamic_shapes):
         """
         Constructs and sends the load model request based on UI inputs
         
@@ -57,6 +57,7 @@ class Payload_Constructor:
             id_model (str): Model identifier or path
             device (str): Device selection for inference
             use_cache (bool): Whether to use cache
+            is_vision_model (bool): Whether the model is a vision model
             export_model (bool): Whether to export the model
             num_streams (str): Number of inference streams
             performance_hint (str): Performance optimization strategy
@@ -75,6 +76,7 @@ class Payload_Constructor:
             use_cache=use_cache,
             device=device,
             export_model=export_model,
+            is_vision_model=is_vision_model,
             eos_token_id=int(eos_token_id) if eos_token_id else None,
             pad_token_id=int(pad_token_id) if pad_token_id else None,
             bos_token_id=int(bos_token_id) if bos_token_id else None,
@@ -237,6 +239,11 @@ class Optimum_Loader:
                         label="Dynamic Shapes",
                         value=True,
                         info="Whether to use dynamic shapes. Default is True. Should only be disabled for NPU inference."
+                    ),
+                    'is_vision_model': gr.Checkbox(
+                        label="Is Vision Model",
+                        value=False,
+                        info="Whether the model is a vision model. Default is False."
                     )
                 })
 

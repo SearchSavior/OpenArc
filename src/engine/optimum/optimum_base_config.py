@@ -1,6 +1,6 @@
 from transformers import AutoTokenizer
 from pydantic import BaseModel, Field
-from typing import Optional, Union, List, Dict, Any
+from typing import Optional, Dict, Any
 import time
 
 
@@ -33,7 +33,7 @@ class OV_LoadModelConfig(BaseModel):
     . use_cache: whether to use cache for stateful models. For multi-gpu use false.
     . device: device options: CPU, GPU, AUTO
     . export_model: whether to export the model
-    . dynamic_shapes: whether to use dynamic shapes.
+    . dynamic_shapes: whether to use dynamic shapes. Enabled by default and should not be changed expcept for special cases like NPU.
 
     Tokenizer specific:
     . pad_token_id: custom pad token ID
@@ -42,10 +42,12 @@ class OV_LoadModelConfig(BaseModel):
 
     Architecture specific:
     . is_vision_model: whether the model is a vision model for image-to-text generation tasks
+    . is_text_model: whether the model is a text model for text-to-text generation tasks
 
     """
     id_model: str = Field(..., description="Model identifier or path")
     is_vision_model: bool = Field(False, description="Whether the model is a vision model for image-to-text tasks")
+    is_text_model: bool = Field(False, description="Whether the model is a text model for text-to-text tasks")
     use_cache: Optional[bool] = Field(True, description="Whether to use cache for stateful models. For multi-gpu use false.")
     device: str = Field("CPU", description="Device options: CPU, GPU, AUTO")
     export_model: bool = Field(False, description="Whether to export the model")
@@ -69,7 +71,7 @@ class OV_GenerationConfig(BaseModel):
         do_sample: bool = Field(True, description="Use sampling for generation")
         num_return_sequences: int = Field(1, description="Number of sequences to return")
     """
-    conversation: Union[List[Dict[str, str]], List[List[Dict[str, str]]]] = Field(description="A list of dicts with 'role' and 'content' keys, representing the chat history so far")
+    conversation: Any = Field(description="A list of dicts with 'role' and 'content' keys, representing the chat history so far")
     stream: bool = Field(False, description="Whether to stream the generated text")
   
     # Inference parameters for generation
@@ -97,8 +99,6 @@ class OV_PerformanceConfig(BaseModel):
     output_tokens: Optional[int] = Field(None, description="Number of output tokens")
     new_tokens: Optional[int] = Field(None, description="Number of new tokens generated")
     eval_time: Optional[float] = Field(None, description="Evaluation time in seconds")
-
-
 
 class Optimum_PerformanceMetrics:
     """

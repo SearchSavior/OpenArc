@@ -1,9 +1,10 @@
 import openvino_genai as ov_genai
 
-model_dir = "dump-your-model-here"
+model_dir = "/mnt/Ironwolf-4TB/Models/Pytorch/Hermes-3-Llama-3.2-3B-int4_sym-awq-se-ov"
+
 pipe = ov_genai.LLMPipeline(
     model_dir,  # Path to the model directory
-    "GPU.0",    # Define the device to use
+    "CPU",    # Define the device to use
 )
 
 generation_config = ov_genai.GenerationConfig(
