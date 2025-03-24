@@ -8,7 +8,7 @@ JSON_PAYLOAD='{
     "load_config": {
         "id_model": "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen2-VL-7B-Instruct-int4_asym-ov",
         "use_cache": true,
-        "device": "GPU.1",
+        "device": "GPU.2",
         "export_model": false,
         "pad_token_id": null,
         "eos_token_id": null,

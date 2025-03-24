@@ -12,7 +12,8 @@ JSON_PAYLOAD='{
         "export_model": false,
         "pad_token_id": null,
         "eos_token_id": null,
-        "is_vision_model": false
+        "is_vision_model": false,
+        "is_text_model": true
     },
     "ov_config": {
         "NUM_STREAMS": "1",

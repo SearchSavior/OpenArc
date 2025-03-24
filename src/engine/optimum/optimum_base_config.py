@@ -196,14 +196,43 @@ def create_optimum_model(load_model_config: OV_LoadModelConfig, ov_config: Optio
     Returns:
         An instance of the appropriate model class (Text2Text or Vision2Text)
     """
+    # Import model classes here to avoid circular imports
+    from .optimum_image2text import Optimum_Image2TextCore
+    from .optimum_text2text import Optimum_Text2TextCore
+    
+    # Create the appropriate model instance based on configuration
     if load_model_config.is_vision_model:
-        # Import the vision model class only when needed
-        from .optimum_image2text import Optimum_Image2TextCore
-        return Optimum_Image2TextCore(load_model_config, ov_config)
+        model_instance = Optimum_Image2TextCore(load_model_config, ov_config)
     else:
-        # Import here to avoid circular imports
-        from .optimum_text2text import Optimum_Text2TextCore
-        return Optimum_Text2TextCore(load_model_config, ov_config)
-
-
-
+        model_instance = Optimum_Text2TextCore(load_model_config, ov_config)
+    
+    # Store metadata from load_model_config and ov_config in model_instance
+    # This will be used for dynamic routing decisions at inference time
+    model_instance.model_metadata = {
+        # Model configuration metadata
+        "id_model": load_model_config.id_model,
+        "use_cache": load_model_config.use_cache,
+        "device": load_model_config.device,
+        "dynamic_shapes": load_model_config.dynamic_shapes,
+        "pad_token_id": load_model_config.pad_token_id,
+        "eos_token_id": load_model_config.eos_token_id,
+        "bos_token_id": load_model_config.bos_token_id,
+        
+        # Model type flags for routing
+        "is_vision_model": load_model_config.is_vision_model,
+        "is_text_model": load_model_config.is_text_model,
+    }
+    
+    # Add OpenVINO configuration parameters if provided
+    if ov_config:
+        ov_config_dict = ov_config.model_dump(exclude_unset=True)
+        model_instance.model_metadata.update({
+            "NUM_STREAMS": ov_config_dict.get("NUM_STREAMS"),
+            "PERFORMANCE_HINT": ov_config_dict.get("PERFORMANCE_HINT"),
+            "PRECISION_HINT": ov_config_dict.get("PRECISION_HINT"),
+            "ENABLE_HYPER_THREADING": ov_config_dict.get("ENABLE_HYPER_THREADING"),
+            "INFERENCE_NUM_THREADS": ov_config_dict.get("INFERENCE_NUM_THREADS"),
+            "SCHEDULING_CORE_TYPE": ov_config_dict.get("SCHEDULING_CORE_TYPE")
+        })
+    
+    return model_instance

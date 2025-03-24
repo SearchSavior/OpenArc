@@ -42,8 +42,8 @@ app.add_middleware(
     allow_headers=["*"],  
 )
 
-# Global state to store model instance
-model_instance = None
+# Global state to store multiple model instances
+model_instances = {}
 
 logger = logging.getLogger("optimum_api")
 logger.setLevel(logging.DEBUG)
@@ -51,10 +51,6 @@ logger.setLevel(logging.DEBUG)
 # API key authentication
 API_KEY = os.getenv("OPENARC_API_KEY")
 security = HTTPBearer()
-
-def get_final_model_id(model_id: str) -> str:
-    """Extracts the final segment of the model id path using pathlib."""
-    return Path(model_id).name
 
 async def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Verify the API key provided in the Authorization header"""
@@ -66,6 +62,10 @@ async def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(sec
             headers={"WWW-Authenticate": "Bearer"},
         )
     return credentials.credentials
+
+def get_final_model_id(model_id: str) -> str:
+    """Extracts the final segment of the model id path using pathlib."""
+    return Path(model_id).name
 
 class ChatCompletionRequest(BaseModel):
     messages: Any
@@ -92,40 +92,46 @@ class CompletionRequest(BaseModel):
 @app.post("/optimum/model/load", dependencies=[Depends(verify_api_key)])
 async def load_model(load_config: OV_LoadModelConfig, ov_config: OV_Config):
     """Load a model with the specified configuration"""
-    global model_instance
+    global model_instances
     logger.info("POST /optimum/model/load called with load_config: %s, ov_config: %s", load_config, ov_config)
     try:
         # Initialize new model using the factory function
-        model_instance = create_optimum_model(
+        new_model = create_optimum_model(
             load_model_config=load_config,
             ov_config=ov_config
         )
         
         # Load the model
-        model_instance.load_model()
+        new_model.load_model()
         
-        return {"status": "success", "message": f"Model {get_final_model_id(load_config.id_model)} loaded successfully"}
+        # Store the model instance with its ID as the key
+        model_id = get_final_model_id(load_config.id_model)
+        model_instances[model_id] = new_model
+        
+        return {"status": "success", "message": f"Model {model_id} loaded successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/optimum/model/unload", dependencies=[Depends(verify_api_key)])
-async def unload_model():
+async def unload_model(model_id: str):
     """Unload the current model"""
-    global model_instance
-    logger.info("DELETE /optimum/model/unload called")
-    if model_instance:
-        model_instance.util_unload_model()
-        model_instance = None
+    global model_instances
+    logger.info(f"DELETE /optimum/model/unload called for model {model_id}")
+    if model_id in model_instances:
+        model_instances[model_id].util_unload_model()
+        del model_instances[model_id]
         return {"status": "success", "message": "Model unloaded successfully"}
-    return {"status": "success", "message": "No model was loaded"}
+    return {"status": "success", "message": f"Model {model_id} was not loaded"}
 
 @app.post("/optimum/generate", dependencies=[Depends(verify_api_key)])
 async def generate_text(generation_config: OV_GenerationConfig):
     """Generate text either as a stream or a full response, based on the stream field"""
-    global model_instance
+    global model_instances
     logger.info("POST /optimum/generate called with generation_config: %s", generation_config)
-    if not model_instance:
-        raise HTTPException(status_code=400, detail="No model loaded")
+    if not generation_config.model in model_instances:
+        raise HTTPException(status_code=400, detail=f"No model loaded for model {generation_config.model}")
+    
+    model_instance = model_instances[generation_config.model]
     
     # Check if the client requested streaming
     if generation_config.stream:
@@ -146,19 +152,19 @@ async def generate_text(generation_config: OV_GenerationConfig):
 @app.get("/optimum/status", dependencies=[Depends(verify_api_key)])
 async def get_status():
     """Get current model status and performance metrics"""
-    global model_instance
+    global model_instances
     logger.info("GET /optimum/status called")
-    if not model_instance:
-        return {
-            "status": "no_model",
-            "id_model": None,
-            "device": None
+    loaded_models = {}
+    for model_id, model in model_instances.items():
+        loaded_models[model_id] = {
+            "status": "loaded",
+            "device": model.load_model_config.device,
+            "model_metadata": model.model_metadata
         }
     
     return {
-        "status": "loaded",
-        "id_model": get_final_model_id(model_instance.load_model_config.id_model),
-        "device": model_instance.load_model_config.device
+        "loaded_models": loaded_models,
+        "total_models_loaded": len(model_instances)
     }
 
 
@@ -168,13 +174,13 @@ async def get_status():
 @app.get("/v1/models", dependencies=[Depends(verify_api_key)])
 async def get_models():
     """Get list of available models in openai format"""
-    global model_instance
+    global model_instances
     logger.info("GET /v1/models called")
     data = []
 
-    if model_instance:
+    for model_id, model in model_instances.items():
         model_data = {
-            "id": get_final_model_id(model_instance.load_model_config.id_model),
+            "id": model_id,
             "object": "model",
             "created": int(datetime.now().timestamp()),
             "owned_by": "OpenArc", 
@@ -188,37 +194,56 @@ async def get_models():
 
 @app.post("/v1/chat/completions", dependencies=[Depends(verify_api_key)])
 async def openai_chat_completions(request: ChatCompletionRequest):
-    global model_instance
-    if not model_instance:
+    global model_instances
+    model_id = get_final_model_id(request.model)
+    
+    if model_id not in model_instances:
         logger.error("POST /v1/chat/completions failed: No model loaded")
-        raise HTTPException(status_code=503, detail="No model loaded")
+        raise HTTPException(status_code=503, detail=f"Model {model_id} not loaded")
+        
+    model_instance = model_instances[model_id]
     logger.info("POST /v1/chat/completions called with messages: %s", request.messages)
 
-    # Toggle debug output here
-    DEBUG = False
-    if DEBUG:
-        print("\n=== Received Request ===")
-        print("Model:", request.model)
-        print("Raw messages:", request.messages)
-        print("Params - temperature:", request.temperature)
-        print("Params - max_tokens:", request.max_tokens)
-
-        try:
-            from transformers import AutoTokenizer
-            tokenizer = AutoTokenizer.from_pretrained(request.model)
-            prompt_len=len(tokenizer.apply_chat_template(request.messages))
-        except Exception as e:
-            print(f"Token counting error: {e}")
-
     try:
-        # Convert OpenAI-style messages to conversation format
-        conversation = [
-            {"role": msg["role"], "content": msg["content"]}
-            for msg in request.messages
-        ]
+        # Handle vision model messages differently
+        if model_instance.model_metadata["is_vision_model"]:
+            conversation = []
+            for msg in request.messages:
+                if isinstance(msg["content"], list):
+                    # Handle multimodal content (text + images)
+                    vision_message = {
+                        "role": msg["role"],
+                        "content": msg["content"]  # Keep the full content structure for vision models
+                    }
+                    conversation.append(vision_message)
+                else:
+                    # Handle text-only messages
+                    conversation.append({
+                        "role": msg["role"],
+                        "content": msg["content"]
+                    })
+        else:
+            # Regular text model handling
+            conversation = [
+                {"role": msg["role"], "content": msg["content"]}
+                for msg in request.messages
+            ]
 
+        # Toggle debug output here
+        DEBUG = False
         if DEBUG:
-            print("Processed conversation:", conversation)
+            print("\n=== Received Request ===")
+            print("Model:", request.model)
+            print("Raw messages:", request.messages)
+            print("Params - temperature:", request.temperature)
+            print("Params - max_tokens:", request.max_tokens)
+
+            try:
+                from transformers import AutoTokenizer
+                tokenizer = AutoTokenizer.from_pretrained(request.model)
+                prompt_len=len(tokenizer.apply_chat_template(request.messages))
+            except Exception as e:
+                print(f"Token counting error: {e}")
 
         # Create generation config with conversation structure
         generation_config = OV_GenerationConfig(
@@ -231,6 +256,10 @@ async def openai_chat_completions(request: ChatCompletionRequest):
             num_return_sequences=1
         )
 
+        # Use model metadata to determine which generation method to use
+        is_vision_model = model_instance.model_metadata["is_vision_model"]
+        is_text_model = model_instance.model_metadata["is_text_model"]
+
         if request.stream:
             async def stream_generator():
                 # Performance tracking variables
@@ -238,7 +267,16 @@ async def openai_chat_completions(request: ChatCompletionRequest):
                 first_token_time = None
                 token_count = 0
                 try:
-                    async for token in model_instance.generate_vision_stream(generation_config):
+                    # Route to the appropriate stream generator based on model type
+                    if is_vision_model:
+                        stream_method = model_instance.generate_vision_stream
+                    elif is_text_model:
+                        stream_method = model_instance.generate_stream
+                    else:
+                        # If neither flag is set, raise an error
+                        raise ValueError("Model must be either a vision model or a text model")
+                        
+                    async for token in stream_method(generation_config):
                         token_count += 1
 
                         # Record time of first token
@@ -257,29 +295,34 @@ async def openai_chat_completions(request: ChatCompletionRequest):
                     end_time = time.perf_counter()
                     total_time = end_time - start_time
 
-                    if first_token_time:
+                    if first_token_time and DEBUG:
                         tokens_per_second = token_count / (end_time - start_time)
                         eval_tokens_per_second = prompt_len / eval_time
 
-                        if DEBUG:
-                            print("\n=== Streaming Performance ===")
-                            print(f"Total generation time: {total_time:.3f} seconds")
-                            print(f"Prompt evaluation: {prompt_len} tokens in {eval_time:.3f} seconds ({eval_tokens_per_second:.2f} T/s)")
-                            print(f"Response generation: {token_count} tokens in ({tokens_per_second:.2f} T/s)")
+                        print("\n=== Streaming Performance ===")
+                        print(f"Total generation time: {total_time:.3f} seconds")
+                        print(f"Prompt evaluation: {prompt_len} tokens in {eval_time:.3f} seconds ({eval_tokens_per_second:.2f} T/s)")
+                        print(f"Response generation: {token_count} tokens in ({tokens_per_second:.2f} T/s)")
 
                     yield "data: [DONE]\n\n"
-
 
             return StreamingResponse(stream_generator(), media_type="text/event-stream")
 
         else:
-            generated_text, metrics = model_instance.generate_text(generation_config)
-            print(metrics)
+            # For non-streaming responses, use the appropriate generate method
+            if is_vision_model:
+                # Vision models don't have a non-streaming generate_text method yet
+                # This would need to be implemented or we could collect from the stream
+                generated_text, metrics = model_instance.generate_text(generation_config)
+            else:
+                # Use text generation for text models or default
+                generated_text, metrics = model_instance.generate_text(generation_config)
+                
             return JSONResponse(content={
                 "id": f"ov-{uuid.uuid4()}",
                 "object": "chat.completion",
                 "created": int(time.time()),
-                "model": get_final_model_id(model_instance.load_model_config.id_model),
+                "model": model_id,
                 "choices": [{
                     "message": {"role": "assistant", "content": generated_text},
                     "finish_reason": "length"
@@ -296,10 +339,14 @@ async def openai_chat_completions(request: ChatCompletionRequest):
 
 @app.post("/v1/completions", dependencies=[Depends(verify_api_key)])
 async def openai_completions(request: CompletionRequest):
-    global model_instance
-    if not model_instance:
+    global model_instances
+    model_id = get_final_model_id(request.model)
+    
+    if model_id not in model_instances:
         logger.error("POST /v1/completions failed: No model loaded")
-        raise HTTPException(status_code=503, detail="No model loaded")
+        raise HTTPException(status_code=503, detail=f"Model {model_id} not loaded")
+        
+    model_instance = model_instances[model_id]
     logger.info("POST /v1/completions called with prompt: %s", request.prompt)
 
     # Convert prompt into conversation format (single user message)
@@ -316,10 +363,23 @@ async def openai_completions(request: CompletionRequest):
         num_return_sequences=1
     )
 
+    # Use model metadata to determine which generation method to use
+    is_vision_model = model_instance.model_metadata["is_vision_model"]
+    is_text_model = model_instance.model_metadata["is_text_model"]
+
     # Handle streaming response
     if request.stream:
         async def stream_generator():
-            async for token in model_instance.generate_stream(generation_config):
+            # Route to the appropriate stream generator based on model type
+            if is_vision_model:
+                stream_method = model_instance.generate_vision_stream
+            elif is_text_model:
+                stream_method = model_instance.generate_stream
+            else:
+                # If neither flag is set, raise an error
+                raise ValueError("Model must be either a vision model or a text model")
+                
+            async for token in stream_method(generation_config):
                 # Properly escape and format for SSE
                 escaped_token = json.dumps(token)[1:-1]
                 yield f"data: {{\"object\": \"text_completion.chunk\", \"choices\": [{{\"text\": \"{escaped_token}\"}}]}}\n\n"
@@ -329,12 +389,20 @@ async def openai_completions(request: CompletionRequest):
 
     # Handle regular response
     try:
-        generated_text, metrics = model_instance.generate_text(generation_config)
+        # For non-streaming responses, use the appropriate generate method
+        if is_vision_model:
+            generated_text, metrics = model_instance.generate_text(generation_config)
+        elif is_text_model:
+            generated_text, metrics = model_instance.generate_text(generation_config)
+        else:
+            # If neither flag is set, raise an error
+            raise ValueError("Model must be either a vision model or a text model")
+            
         return JSONResponse(content={
             "id": f"ov-{uuid.uuid4()}",
             "object": "text_completion",
             "created": int(time.time()),
-            "model": get_final_model_id(model_instance.load_model_config.id_model),
+            "model": model_id,
             "choices": [{
                 "text": generated_text,
                 "index": 0,
