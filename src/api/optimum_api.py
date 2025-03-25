@@ -311,8 +311,7 @@ async def openai_chat_completions(request: ChatCompletionRequest):
         else:
             # For non-streaming responses, use the appropriate generate method
             if is_vision_model:
-                # Vision models don't have a non-streaming generate_text method yet
-                # This would need to be implemented or we could collect from the stream
+
                 generated_text, metrics = model_instance.generate_text(generation_config)
             else:
                 # Use text generation for text models or default

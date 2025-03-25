@@ -94,6 +94,7 @@ class Optimum_Image2TextCore:
         try:
             start_time = time.time()
             
+
             
             # Preprocess the inputs
             text_prompt = self.processor.apply_chat_template(
@@ -102,7 +103,7 @@ class Optimum_Image2TextCore:
             )
             
             inputs = self.processor(
-                text=[text_prompt], 
+                text=[text_prompt],
                 padding=True, 
                 return_tensors="pt"
             )
