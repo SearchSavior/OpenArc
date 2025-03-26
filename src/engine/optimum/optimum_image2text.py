@@ -94,19 +94,67 @@ class Optimum_Image2TextCore:
         try:
             start_time = time.time()
             
-
+            # Extract images from conversation if present
+            images = []
+            text_conversation = []
             
-            # Preprocess the inputs
+            for message in generation_config.conversation:
+                # Check if the message content is a list (multimodal content)
+                if isinstance(message.get("content", ""), list):
+                    text_parts = []
+                    for content_item in message["content"]:
+                        # Check if this is an image content item
+                        if isinstance(content_item, dict) and content_item.get("type") == "image_url":
+                            image_url = content_item.get("image_url", {})
+                            # Check if it's a base64 encoded image
+                            if isinstance(image_url, dict) and image_url.get("url", "").startswith("data:image/"):
+                                # Extract the base64 data
+                                base64_data = image_url["url"].split(",", 1)
+                                if len(base64_data) > 1:
+                                    # Decode base64 to binary
+                                    image_data = base64.b64decode(base64_data[1])
+                                    # Convert to PIL Image
+                                    image = Image.open(BytesIO(image_data))
+                                    images.append(image)
+                        # If it's a text content item
+                        elif isinstance(content_item, dict) and content_item.get("type") == "text":
+                            text_parts.append(content_item.get("text", ""))
+                    
+                    # Create a new message with just the text parts
+                    if text_parts:
+                        text_message = message.copy()
+                        text_message["content"] = " ".join(text_parts)
+                        text_conversation.append(text_message)
+                    else:
+                        # If no text parts, still include the message with empty content
+                        text_message = message.copy()
+                        text_message["content"] = ""
+                        text_conversation.append(text_message)
+                else:
+                    # Regular text message, add it directly to the list used for template application
+                    text_conversation.append(message)
+            
+            # Preprocess the inputs using the original conversation structure
+            # This allows the template to insert image tokens correctly
             text_prompt = self.processor.apply_chat_template(
                 generation_config.conversation, 
                 add_generation_prompt=True
             )
             
-            inputs = self.processor(
-                text=[text_prompt],
-                padding=True, 
-                return_tensors="pt"
-            )
+            # Process both text and images if available
+            if images:
+                inputs = self.processor(
+                    text=[text_prompt],
+                    images=images,
+                    padding=True, 
+                    return_tensors="pt"
+                )
+            else:
+                inputs = self.processor(
+                    text=[text_prompt],
+                    padding=True, 
+                    return_tensors="pt"
+                )
             
             # Record input token count
             self.performance_metrics.input_tokens = len(inputs.input_ids[0])

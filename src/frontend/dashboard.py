@@ -33,6 +33,7 @@ class LoadModelConfig(BaseModel):
     use_cache: bool
     device: str
     export_model: bool
+    is_vision_model: bool = False  # Added this line
     eos_token_id: Optional[int] = None
     pad_token_id: Optional[int] = None
     bos_token_id: Optional[int] = None
@@ -49,7 +50,7 @@ class Payload_Constructor:
     def __init__(self):
         self.generation_config = {}
 
-    def load_model(self, id_model, device, use_cache, export_model, num_streams, performance_hint, precision_hint, is_vision_model, bos_token_id, eos_token_id, pad_token_id, enable_hyperthreading, inference_num_threads, dynamic_shapes):
+    def load_model(self, id_model, device, use_cache, export_model, num_streams, performance_hint, precision_hint, is_vision_model, bos_token_id, eos_token_id, pad_token_id, enable_hyperthreading, inference_num_threads, dynamic_shapes): # Added is_vision_model here
         """
         Constructs and sends the load model request based on UI inputs
         
@@ -76,7 +77,7 @@ class Payload_Constructor:
             use_cache=use_cache,
             device=device,
             export_model=export_model,
-            is_vision_model=is_vision_model,
+            is_vision_model=is_vision_model,   
             eos_token_id=int(eos_token_id) if eos_token_id else None,
             pad_token_id=int(pad_token_id) if pad_token_id else None,
             bos_token_id=int(bos_token_id) if bos_token_id else None,
@@ -374,6 +375,7 @@ class Optimum_Loader:
                 self.components[key] for key in [
                     'id_model', 'device', 'use_cache', 'export_model',
                     'num_streams', 'performance_hint', 'precision_hint',
+                    'is_vision_model', # Added is_vision_model here
                     'bos_token_id', 'eos_token_id', 'pad_token_id',
                     'enable_hyperthreading', 'inference_num_threads', 'dynamic_shapes'
                 ]
@@ -532,6 +534,3 @@ class DeviceInfoTool:
                         inputs=[],
                         outputs=[device_properties]
                     )
-
-
-
