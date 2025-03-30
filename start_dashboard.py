@@ -1,13 +1,15 @@
 # OpenArc/start_dashboard.py
 import argparse
+
 import gradio as gr
+
+from src.frontend.components.device_info import DeviceInfoTool
 from src.frontend.components.model_conversion import ConversionTool
-from src.frontend.dashboard import (
-    Payload_Constructor, 
-    Optimum_Loader, 
-    OpenArc_Documentation, 
-    DeviceInfoTool,
-    update_openarc_url
+from src.frontend.components.documentation import OpenArc_Documentation
+from src.frontend.components.loader import Optimum_Loader
+from src.frontend.tools.payload_constructor import (
+    Payload_Constructor,
+    update_openarc_url,
 )
 
 if __name__ == "__main__":
