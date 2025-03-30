@@ -1,12 +1,12 @@
 # OpenArc/start_dashboard.py
 import argparse
 import gradio as gr
+from src.frontend.components.model_conversion import ConversionTool
 from src.frontend.dashboard import (
     Payload_Constructor, 
     Optimum_Loader, 
     OpenArc_Documentation, 
     DeviceInfoTool,
-    ConversionTool,
     update_openarc_url
 )
 

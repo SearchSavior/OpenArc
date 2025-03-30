@@ -21,13 +21,6 @@ if __name__ == "__main__":
     # Device Query: 
 # Taken from https://github.com/openvinotoolkit/openvino/blob/master/samples/python/hello_query_device/hello_query_device.py
 
-
-import openvino as ov
-
-import logging as log
-import sys
-
-
 class DeviceDataQuery:
     def __init__(self):
         self.core = ov.Core()

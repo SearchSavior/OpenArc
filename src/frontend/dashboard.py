@@ -33,7 +33,7 @@ class LoadModelConfig(BaseModel):
     use_cache: bool
     device: str
     export_model: bool
-    is_vision_model: bool = False  # Added this line
+    is_vision_model: bool = False 
     eos_token_id: Optional[int] = None
     pad_token_id: Optional[int] = None
     bos_token_id: Optional[int] = None
@@ -375,7 +375,7 @@ class Optimum_Loader:
                 self.components[key] for key in [
                     'id_model', 'device', 'use_cache', 'export_model',
                     'num_streams', 'performance_hint', 'precision_hint',
-                    'is_vision_model', # Added is_vision_model here
+                    'is_vision_model',
                     'bos_token_id', 'eos_token_id', 'pad_token_id',
                     'enable_hyperthreading', 'inference_num_threads', 'dynamic_shapes'
                 ]

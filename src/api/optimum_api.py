@@ -270,11 +270,8 @@ async def openai_chat_completions(request: ChatCompletionRequest):
                     # Route to the appropriate stream generator based on model type
                     if is_vision_model:
                         stream_method = model_instance.generate_vision_stream
-                    elif is_text_model:
-                        stream_method = model_instance.generate_stream
                     else:
-                        # If neither flag is set, raise an error
-                        raise ValueError("Model must be either a vision model or a text model")
+                        stream_method = model_instance.generate_stream
                         
                     async for token in stream_method(generation_config):
                         token_count += 1
@@ -372,11 +369,8 @@ async def openai_completions(request: CompletionRequest):
             # Route to the appropriate stream generator based on model type
             if is_vision_model:
                 stream_method = model_instance.generate_vision_stream
-            elif is_text_model:
-                stream_method = model_instance.generate_stream
             else:
-                # If neither flag is set, raise an error
-                raise ValueError("Model must be either a vision model or a text model")
+                stream_method = model_instance.generate_stream
                 
             async for token in stream_method(generation_config):
                 # Properly escape and format for SSE

@@ -2,11 +2,11 @@ import openvino_genai as ov_genai
 
 
 
-model_dir = "/media/ecomm/c0889304-9e30-4f04-b290-c7db463872c6/Models/Pytorch/EXAONE-Deep-2.4B-int8_asym-ov"
+model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/EXAONE-Deep-7.8B-int4_asym-gptq-se-ov"
 
 pipe = ov_genai.LLMPipeline(
     model_dir,       # Path to the model directory
-    device="CPU",    # Define the device to use
+    device="NPU",    # Define the device to use
 )
 
 generation_config = ov_genai.GenerationConfig(
