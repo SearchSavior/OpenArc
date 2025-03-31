@@ -313,9 +313,17 @@ Learn more about how to leverage your Intel devices for Machine Learning:
 
 [Inference with Optimum-Intel](https://github.com/huggingface/optimum-intel/blob/main/notebooks/openvino/optimum_openvino_inference.ipynb)
 
-### Other Resources
 
-[smolagents](https://huggingface.co/blog/smolagents)- [CodeAgent](https://github.com/huggingface/smolagents/blob/main/src/smolagents/agents.py#L1155) is especially interesting.
+Acknowledgments
+
+OpenArc stands on the shoulders of several other projects:
+
+[Optimum-Intel]()
+[OpenVINO]()
+[OpenVINO GenAI]()
+[Transformers]()
+[FastAPI]()
+
 
 
 
