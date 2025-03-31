@@ -10,30 +10,31 @@ NEW: Sister repo for Projects using OpenArc: [OpenArcProjects](https://github.co
 > OpenArc is under active development. Expect breaking changes.
 
 
-**OpenArc** is a lightweight inference API backend for Optimum-Intel from Transformers to leverage hardware acceleration on Intel CPUs, GPUs and NPUs through the OpenVINO runtime.
+**OpenArc** is an inference engine backend built with Optimum-Intel to leverage hardware acceleration on Intel CPUs, GPUs and NPUs through the OpenVINO runtime.
 
-OpenArc serves inference for LLMs supported by Optimum-Intel including text generation, text generation with vision. There are plans to expand support for speculative decoding, generating embeddings, speech tasks, image generation and more.
+OpenArc currently supports text generation, text generation with vision with plans to support speculative decoding, generating embeddings, speech tasks, image generation and more.
 
-Under the hood it's a strongly typed fastAPI implementation over a growing collection of Transformers integrated AutoModel classes enabling inference on a wide range of models. For now text generation and text generation with vision are  So, deploying inference uses less of the same code, while reaping the benefits of hardware acceleration on Intel devices. Keep application logic separate from inference code no matter what hardware configuration has been chosen for deployment.
+Under the hood it's a strongly typed fastAPI implementation over a growing collection of Transformers integrated AutoModel classes enabling inference on a wide range of models. So, deploying inference uses less of the same code, while reaping the benefits of hardware acceleration on Intel devices. 
 
-Here are some features:
+## Features
 
-- **Strongly typed API**
-	- optimum/model/load: loads model and accepts ov_config
-	- optimum/model/unload: use gc to purge a loaded model from device memory
-	- optimum/status: see the loaded model 
+- OpenAI compatible endpoints
+- Validated OpenWebUI support
+- Load multiple models concurrently on multiple devices for hotswap/roundrobin
+- **Most** HuggingFace text generation models
+- Growing set of text generation with vision
+    - Qwen2-VL 
+    - Qwen2.5-VL
+- Gradio management dashboard
+   - Load models with OpenVINO optimizations 
+   - Build conversion commands
+   - See loaded models
+   - Unload models
+   - Query detected devices
+   - Query device properties
 
-- **OpenAI-compatible endpoints**
-	- /v1/chat/completions: implementation of the OpenAI API for chat completions
-	- /v1/models
 
-	Validated with:
-	- OpenWebUI (!)
-
-- **Gradio Dashboard**
-	- A dashboard for loading models and interacting with OpenArc's API
-	- Tools for querying device properties
-	- GUI for building model conversion commands 
+-  
 	- Query tokenizers and model architecture
 
 
