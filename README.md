@@ -10,11 +10,18 @@ NEW: Sister repo for Projects using OpenArc: [OpenArcProjects](https://github.co
 > OpenArc is under active development. Expect breaking changes.
 
 
-**OpenArc** is an inference engine backend built with Optimum-Intel to leverage hardware acceleration on Intel CPUs, GPUs and NPUs through the OpenVINO runtime.
+**OpenArc** is an inference engine built with Optimum-Intel to leverage hardware acceleration on Intel CPUs, GPUs and NPUs through the OpenVINO runtime.
 
-OpenArc currently supports text generation, text generation with vision with plans to support speculative decoding, generating embeddings, speech tasks, image generation and more.
+OpenArc currently supports text generation and text generation with vision. Support for speculative decoding, generating embeddings, speech tasks, image generation, PaddleOCR are planned.
 
-Under the hood it's a strongly typed fastAPI implementation over a growing collection of Transformers integrated AutoModel classes enabling inference on a wide range of models. So, deploying inference uses less of the same code, while reaping the benefits of hardware acceleration on Intel devices. 
+Under the hood it's a strongly typed fastAPI implementation over a growing collection of Transformers integrated AutoModel classes from Optimum-Intel classes enabling inference on a wide range of models. 
+
+Currently implemented:
+
+[OVModelForCausalLM]
+[OVModelForVisualCausalLM]
+
+Deploying inference uses less of the same code, while reaping the benefits of hardware acceleration on Intel devices over an OpenAI compatible API.
 
 ## Features
 
@@ -32,6 +39,9 @@ Under the hood it's a strongly typed fastAPI implementation over a growing colle
    - Unload models
    - Query detected devices
    - Query device properties
+   - View tokenizer data
+   - View architecture metadata from config.json
+   - Generate 
 
 
 -  
