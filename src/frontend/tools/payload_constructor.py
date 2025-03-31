@@ -102,19 +102,23 @@ class Payload_Constructor:
         except requests.exceptions.RequestException as e:
             return {"error": f"Request failed: {str(e)}"}, f"Error loading model: {str(e)}"
 
-    def unload_model(self):
+    def unload_model(self, model_id: str):
         """
         Sends an unload model request to the API
+        
+        Args:
+            model_id (str): The ID of the model to unload
         """
         try:
             response = requests.delete(
                 f"{OPENARC_URL}/optimum/model/unload",
-                headers=get_auth_headers()
+                headers=get_auth_headers(),
+                params={"model_id": model_id}
             )
             response.raise_for_status()
-            return response.json(), f"Model unloaded successfully: {response.json()}"
+            return response.json(), f"Model {model_id} unloaded successfully: {response.json()}"
         except requests.exceptions.RequestException as e:
-            return {"error": f"Request failed: {str(e)}"}, f"Error unloading model: {str(e)}"
+            return {"error": f"Request failed: {str(e)}"}, f"Error unloading model {model_id}: {str(e)}"
 
     def status(self):
         """

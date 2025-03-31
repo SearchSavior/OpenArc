@@ -74,7 +74,7 @@ class Optimum_Loader:
             return {"error": f"Error reading tokenizer config: {str(e)}"}   
         
     def create_interface(self):
-        with gr.Tab("OpenArc Loader"):
+        with gr.Tab("Loader"):
             with gr.Row():
                 self.load_model_interface()
                 self.debug_tool()

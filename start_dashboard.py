@@ -7,6 +7,7 @@ from src.frontend.components.device_info import DeviceInfoTool
 from src.frontend.components.model_conversion import ConversionTool
 from src.frontend.components.documentation import OpenArc_Documentation
 from src.frontend.components.loader import Optimum_Loader
+from src.frontend.components.model_manager import ModelManager
 from src.frontend.tools.payload_constructor import (
     Payload_Constructor,
     update_openarc_url,
@@ -28,9 +29,12 @@ if __name__ == "__main__":
     # Set up the Gradio interface
     with gr.Blocks(title="OpenARC Dashboard") as demo:
         with gr.Tabs():
-            # Model loading tab
+            # Main tabs
             optimum_loader = Optimum_Loader(payload_constructor)
             optimum_loader.create_interface()
+            
+            model_manager = ModelManager(payload_constructor)
+            model_manager.create_interface()
 
             # Tools tab with sub-tabs
             with gr.Tab("Tools"):

@@ -2,7 +2,7 @@
 
 NEW: OpenWebUI is now supported!
 
-NEW: Join the offical [Discord](https://discord.gg/PnuTBVcr)!
+NEW: Join the offical [![Discord](https://img.shields.io/discord/1341627368581628004?logo=Discord&logoColor=%23ffffff&label=Discord&link=https%3A%2F%2Fdiscord.gg%2FmaMY7QjG)](https://discord.gg/maMY7QjG)!
 
 NEW: Sister repo for Projects using OpenArc: [OpenArcProjects](https://github.com/SearchSavior/OpenArcProjects)
 
@@ -11,11 +11,10 @@ NEW: Sister repo for Projects using OpenArc: [OpenArcProjects](https://github.co
 
 
 **OpenArc** is a lightweight inference API backend for Optimum-Intel from Transformers to leverage hardware acceleration on Intel CPUs, GPUs and NPUs through the OpenVINO runtime.
-It has been designed with agentic and chat use cases in mind. 
 
-OpenArc serves inference and integrates well with Transformers!
+OpenArc serves inference for LLMs supported by Optimum-Intel including text generation, text generation with vision. There are plans to expand support for speculative decoding, generating embeddings, speech tasks, image generation and more.
 
-Under the hood it's a strongly typed fastAPI implementation of [OVModelForCausalLM](https://huggingface.co/docs/optimum/main/en/intel/openvino/reference#optimum.intel.OVModelForCausalLM) from Optimum-Intel. So, deploying inference uses less of the same code, while reaping the benefits of hardware acceleration on Intel devices. Keep application logic separate from inference code no matter what hardware configuration has been chosen for deployment.
+Under the hood it's a strongly typed fastAPI implementation over a growing collection of Transformers integrated AutoModel classes enabling inference on a wide range of models. For now text generation and text generation with vision are  So, deploying inference uses less of the same code, while reaping the benefits of hardware acceleration on Intel devices. Keep application logic separate from inference code no matter what hardware configuration has been chosen for deployment.
 
 Here are some features:
 
@@ -266,18 +265,33 @@ Documentation on choosing parameters for conversion is coming soon.
 > The optimum CLI tool integrates several different APIs from several different Intel projects; it is a better alternative than using APIs in from_pretrained() methods. 
 > It references prebuilt export configurations for each supported model architecture meaning **not all models are supported** but most are. If you use the CLI tool and get an error about an unsupported architecture follow the link, [open an issue](https://github.com/huggingface/optimum-intel/issues) with references to the model card and the maintainers will get back to you.  
 
+
+
+## Design Philosophy: Conversation as the Atomic Unit of LLM Programming
+
+OpenArc offers a lightweight approach to decoupling inference code from application logic by adding an API layer to serve machine learning models using hardware acceleration for Intel devices; in practice OpenArc offers a similar workflow to what's possible with Ollama, LM-Studio or OpenRouter. 
+
+As the AI space moves forward we are seeing all sorts of different paradigms emerge in CoT, agents, etc. Every design pattern using LLMs converges to some manipulation of the chat sequence stored in _conversation_ or (outside of transformers)_messages_. No matter what you build, you'll need to manipulate the chat sequence in some way that has nothing to do with inference. By the time data has been added to _conversation_ all linear algebra, tokenization and decoding has been taken care of. OpenArc embraces this distinction.
+
+Exposing _conversation_ from [apply_chat_template](https://huggingface.co/docs/transformers/main/en/internal/tokenization_utils#transformers.PreTrainedTokenizerBase.apply_chat_template) enables complete control over what get's passed in and out of the model without any intervention required at the template level. Projects using OpenArc can focus on application logic and less on inference code.  Check out the typing for _conversation_:
+
+	conversation (Union[List[Dict[str, str]], List[List[Dict[str, str]]]]) — A list of dicts with “role” and “content” keys, representing the chat history so far.
+
+Match the typing, manage the logic for assigning roles, update the sequence with content and you're set to build whatever you want using Intel CPUs, GPUs, and NPUs for acceleration.
+
+To poke around with this approach, skip the OpenAI API and dive right into the [requests](https://github.com/SearchSavior/OpenArc/tree/main/scripts/requests) examples which work well inside of coding prompts. Treat these like condensed documentation for the OpenArc API to get you started.
+
+Only _conversation_ has been exposed for now. There are two other useful options; _tools_ and _documents_ which will be added in future releases- these are much harder to test ad hoc and require knowing model-specifc facts about training, manually mapping tools to tokens and building those tools. Each of these wrap RAG documents and tool calls in special tokens which should increase reliability for structured outputs at a lower level of abstraction; instead of using the prompt to tell the model what context to use the tokens do part ofthis work for us. OpenArc will not define some class to use for mapping tools to tokens, instead it empowers developers to define their own tools and documents with an engine tooled to accept them as part of a request.
+
+
+
+
+
+
+
 ## Planned Features
 
-- Improve OpenAI API compatibility for different tooling
-- Add benchmarking tools
 
-- Add robust feature support for Qwen2-VL from [OVModelForVisualCausalLM](https://github.com/huggingface/optimum-intel/blob/c9ff040327bda796458d7f105979be3665431f1c/optimum/intel/openvino/modeling_visual_language.py#L287) i.e, bouding boxes, base64 encoding images, maybe video?
-- Add tooling for serving PaddlePaddle models with OpenVINO acceleration, starting with OCR
-- Add support for loading multiple models into memory and on different devices
-- Add docker-compose examples
-- More documentation about how to use ov_config
-- More documentation about how to use the CLI tool for converting models for different types of hardware
-- More documentation on how different quantization methods affect performance and when they should be used
 
 
 ### Resources
