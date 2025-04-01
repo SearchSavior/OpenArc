@@ -29,40 +29,19 @@ Deploying inference uses less of the same code, while reaping the benefits of ha
 - Validated OpenWebUI support
 - Load multiple models concurrently on multiple devices for hotswap/roundrobin
 - **Most** HuggingFace text generation models
-- Growing set of text generation with vision
+- Growing set of vision capable LLMs:
     - Qwen2-VL 
     - Qwen2.5-VL
 - Gradio management dashboard
    - Load models with OpenVINO optimizations 
-   - Build conversion commands
+   - Build conversion commands FOR THE 
    - See loaded models
    - Unload models
    - Query detected devices
    - Query device properties
    - View tokenizer data
    - View architecture metadata from config.json
-   - Generate 
 
-
--  
-	- Query tokenizers and model architecture
-
-
-## Design Philosophy: Conversation as the Atomic Unit of LLM Programming
-
-OpenArc offers a lightweight approach to decoupling inference code from application logic by adding an API layer to serve machine learning models using hardware acceleration for Intel devices; in practice OpenArc offers a similar workflow to what's possible with Ollama, LM-Studio or OpenRouter. 
-
-As the AI space moves forward we are seeing all sorts of different paradigms emerge in CoT, agents, etc. Every design pattern using LLMs converges to some manipulation of the chat sequence stored in _conversation_ or (outside of transformers)_messages_. No matter what you build, you'll need to manipulate the chat sequence in some way that has nothing to do with inference. By the time data has been added to _conversation_ all linear algebra, tokenization and decoding has been taken care of. OpenArc embraces this distinction.
-
-Exposing _conversation_ from [apply_chat_template](https://huggingface.co/docs/transformers/main/en/internal/tokenization_utils#transformers.PreTrainedTokenizerBase.apply_chat_template) enables complete control over what get's passed in and out of the model without any intervention required at the template level. Projects using OpenArc can focus on application logic and less on inference code.  Check out the typing for _conversation_:
-
-	conversation (Union[List[Dict[str, str]], List[List[Dict[str, str]]]]) — A list of dicts with “role” and “content” keys, representing the chat history so far.
-
-Match the typing, manage the logic for assigning roles, update the sequence with content and you're set to build whatever you want using Intel CPUs, GPUs, and NPUs for acceleration.
-
-To poke around with this approach, skip the OpenAI API and dive right into the [requests](https://github.com/SearchSavior/OpenArc/tree/main/scripts/requests) examples which work well inside of coding prompts. Treat these like condensed documentation for the OpenArc API to get you started.
-
-Only _conversation_ has been exposed for now. There are two other useful options; _tools_ and _documents_ which will be added in future releases- these are much harder to test ad hoc and require knowing model-specifc facts about training, manually mapping tools to tokens and building those tools. Each of these wrap RAG documents and tool calls in special tokens which should increase reliability for structured outputs at a lower level of abstraction; instead of using the prompt to tell the model what context to use the tokens do part ofthis work for us. OpenArc will not define some class to use for mapping tools to tokens, instead it empowers developers to define their own tools and documents with an engine tooled to accept them as part of a request.
 
 ## System Requirments 
 
@@ -254,8 +233,6 @@ You can easily craft conversion commands using my HF Space, [Optimum-CLI-Tool_to
 
 This tool respects the positional arguments defined [here](https://huggingface.co/docs/optimum/main/en/intel/openvino/export), then execute commands in the OpenArc environment.
 
- Benchmarks for CPU, GPU and code examples are coming soon.
-
 | Models                                                                                                                                      | Compressed Weights |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
 | [Ministral-3b-instruct-int4_asym-ov](https://huggingface.co/Echo9Zulu/Ministral-3b-instruct-int4_asym-ov)                                   | 1.85 GB            |
@@ -278,6 +255,61 @@ Documentation on choosing parameters for conversion is coming soon.
 
 
 
+## Performance with OpenVINO runtime
+
+
+Notes on the test:
+
+- No advanced openvino parameters were chosen
+- Fixed input length
+- Multi-turn scenarios were not evaluated i.e, I ran the basic prompt without follow ups
+- Quant strategies for models are not considered
+- I converted each of these models myself (I'm working on standardizing model cards to share this information more directly)
+- OpenVINO generates a cache on first inference so metrics are on second generation
+- Seconds were used for readability
+
+
+Test System:
+
+CPU: Xeon W-2255 (10c, 20t) @3.7ghz
+GPU: 3x Arc A770 16GB Asrock Phantom
+RAM: 128gb DDR4 ECC 2933 mhz
+Disk: 4tb ironwolf, 1tb 970 Evo
+
+OS: Ubuntu 24.04
+Kernel: 6.9.4-060904-generic
+
+Prompt: "We don't even have a chat template so strap in and let it ride!"
+
+---
+
+### GPU Performance: 1x Arc A770
+
+| Model                                            | Prompt Processing (sec) | Throughput (t/sec) | Duration (sec) | Size (GB) |
+| ------------------------------------------------ | ----------------------- | ------------------ | -------------- | --------- |
+| Phi-4-mini-instruct-int4_asym-gptq-ov            | 0.41                    | 47.25              | 3.10           | 2.3       |
+| Hermes-3-Llama-3.2-3B-int4_sym-awq-se-ov         | 0.27                    | 64.18              | 0.98           | 1.8       |
+| Llama-3.1-Nemotron-Nano-8B-v1-int4_sym-awq-se-ov | 0.32                    | 47.99              | 2.96           | 4.7       |
+| phi-4-int4_asym-awq-se-ov                        | 0.30                    | 25.27              | 5.32           | 8.1       |
+| DeepSeek-R1-Distill-Qwen-14B-int4_sym-awq-se-ov  | 0.42                    | 25.23              | 1.56           | 8.4       |
+| Mistral-Small-24B-Instruct-2501-int4_asym-ov     | 0.36                    | 18.81              | 7.11           | 12.9      |
+
+
+### CPU Performance: Xeon W-2255
+
+| Model                                            | Prompt Processing (sec) | Throughput (t/sec) | Duration (sec) | Size (GB) |
+| ------------------------------------------------ | ----------------------- | ------------------ | -------------- | --------- |
+| Phi-4-mini-instruct-int4_asym-gptq-ov            | 1.02                    | 20.44              | 7.23           | 2.3       |
+| Hermes-3-Llama-3.2-3B-int4_sym-awq-se-ov         | 1.06                    | 23.66              | 3.01           | 1.8       |
+| Llama-3.1-Nemotron-Nano-8B-v1-int4_sym-awq-se-ov | 2.53                    | 13.22              | 12.14          | 4.7       |
+| phi-4-int4_asym-awq-se-ov                        | 4                       | 6.63               | 23.14          | 8.1       |
+| DeepSeek-R1-Distill-Qwen-14B-int4_sym-awq-se-ov  | 5.02                    | 7.25               | 11.09          | 8.4       |
+| Mistral-Small-24B-Instruct-2501-int4_asym-ov     | 6.88                    | 4.11               | 37.5           | 12.9      |
+| Nous-Hermes-2-Mixtral-8x7B-DPO-int4-sym-se-ov    | 15.56                   | 6.67               | 34.60          | 24.2      |
+
+
+
+
 ## Design Philosophy: Conversation as the Atomic Unit of LLM Programming
 
 OpenArc offers a lightweight approach to decoupling inference code from application logic by adding an API layer to serve machine learning models using hardware acceleration for Intel devices; in practice OpenArc offers a similar workflow to what's possible with Ollama, LM-Studio or OpenRouter. 
@@ -293,9 +325,6 @@ Match the typing, manage the logic for assigning roles, update the sequence with
 To poke around with this approach, skip the OpenAI API and dive right into the [requests](https://github.com/SearchSavior/OpenArc/tree/main/scripts/requests) examples which work well inside of coding prompts. Treat these like condensed documentation for the OpenArc API to get you started.
 
 Only _conversation_ has been exposed for now. There are two other useful options; _tools_ and _documents_ which will be added in future releases- these are much harder to test ad hoc and require knowing model-specifc facts about training, manually mapping tools to tokens and building those tools. Each of these wrap RAG documents and tool calls in special tokens which should increase reliability for structured outputs at a lower level of abstraction; instead of using the prompt to tell the model what context to use the tokens do part ofthis work for us. OpenArc will not define some class to use for mapping tools to tokens, instead it empowers developers to define their own tools and documents with an engine tooled to accept them as part of a request.
-
-
-
 
 
 
