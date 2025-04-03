@@ -23,7 +23,8 @@ from src.engine.optimum.optimum_base_config import (
     OV_LoadModelConfig,
     OV_Config,
     OV_GenerationConfig,
-    create_optimum_model
+    create_optimum_model,
+    ModelType
 )
 
 
@@ -206,7 +207,7 @@ async def openai_chat_completions(request: ChatCompletionRequest):
 
     try:
         # Handle vision model messages differently
-        if model_instance.model_metadata["is_vision_model"]:
+        if model_instance.model_metadata["model_type"] == ModelType.VISION:
             conversation = []
             for msg in request.messages:
                 if isinstance(msg["content"], list):
@@ -256,9 +257,8 @@ async def openai_chat_completions(request: ChatCompletionRequest):
             num_return_sequences=1
         )
 
-        # Use model metadata to determine which generation method to use
-        is_vision_model = model_instance.model_metadata["is_vision_model"]
-        is_text_model = model_instance.model_metadata["is_text_model"]
+        # Use model type to determine which generation method to use
+        model_type = model_instance.model_metadata["model_type"]
 
         if request.stream:
             async def stream_generator():
@@ -268,7 +268,7 @@ async def openai_chat_completions(request: ChatCompletionRequest):
                 token_count = 0
                 try:
                     # Route to the appropriate stream generator based on model type
-                    if is_vision_model:
+                    if model_type == ModelType.VISION:
                         stream_method = model_instance.generate_vision_stream
                     else:
                         stream_method = model_instance.generate_stream
@@ -307,11 +307,9 @@ async def openai_chat_completions(request: ChatCompletionRequest):
 
         else:
             # For non-streaming responses, use the appropriate generate method
-            if is_vision_model:
-
+            if model_type == ModelType.VISION:
                 generated_text, metrics = model_instance.generate_text(generation_config)
             else:
-                # Use text generation for text models or default
                 generated_text, metrics = model_instance.generate_text(generation_config)
                 
             return JSONResponse(content={
@@ -359,15 +357,14 @@ async def openai_completions(request: CompletionRequest):
         num_return_sequences=1
     )
 
-    # Use model metadata to determine which generation method to use
-    is_vision_model = model_instance.model_metadata["is_vision_model"]
-    is_text_model = model_instance.model_metadata["is_text_model"]
+    # Use model type to determine which generation method to use
+    model_type = model_instance.model_metadata["model_type"]
 
     # Handle streaming response
     if request.stream:
         async def stream_generator():
             # Route to the appropriate stream generator based on model type
-            if is_vision_model:
+            if model_type == ModelType.VISION:
                 stream_method = model_instance.generate_vision_stream
             else:
                 stream_method = model_instance.generate_stream
@@ -383,13 +380,15 @@ async def openai_completions(request: CompletionRequest):
     # Handle regular response
     try:
         # For non-streaming responses, use the appropriate generate method
-        if is_vision_model:
+        if model_type == ModelType.VISION:
             generated_text, metrics = model_instance.generate_text(generation_config)
-        elif is_text_model:
+        elif model_type == ModelType.TEXT:
             generated_text, metrics = model_instance.generate_text(generation_config)
         else:
-            # If neither flag is set, raise an error
-            raise ValueError("Model must be either a vision model or a text model")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported model type '{model_type}' for completions endpoint. Only VISION and TEXT types are supported."
+            )
             
         return JSONResponse(content={
             "id": f"ov-{uuid.uuid4()}",

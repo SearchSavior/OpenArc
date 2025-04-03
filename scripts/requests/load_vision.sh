@@ -6,13 +6,13 @@ API_URL="http://localhost:8000/optimum/model/load"
 # JSON payload
 JSON_PAYLOAD='{
     "load_config": {
-        "id_model": "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen2-VL-7B-Instruct-int4_asym-ov",
+        "id_model": "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen2.5-VL-3B-Instruct-int4_sym-ov",
         "use_cache": true,
         "device": "GPU.2",
         "export_model": false,
         "pad_token_id": null,
         "eos_token_id": null,
-        "is_vision_model": true
+        "model_type": "VISION"
     },
     "ov_config": {
         "NUM_STREAMS": "1",

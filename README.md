@@ -9,19 +9,19 @@ NEW: Sister repo for Projects using OpenArc: [OpenArcProjects](https://github.co
 > [!NOTE]
 > OpenArc is under active development. Expect breaking changes.
 
-
 **OpenArc** is an inference engine built with Optimum-Intel to leverage hardware acceleration on Intel CPUs, GPUs and NPUs through the OpenVINO runtime.
 
-OpenArc currently supports text generation and text generation with vision. Support for speculative decoding, generating embeddings, speech tasks, image generation, PaddleOCR are planned.
+OpenArc currently supports text generation and text generation with vision. Support for speculative decoding, generating embeddings, speech tasks, image generation, PaddleOCR and others are planned.
 
-Under the hood it's a strongly typed fastAPI implementation over a growing collection of Transformers integrated AutoModel classes from Optimum-Intel classes enabling inference on a wide range of models. 
+Under the hood it's a strongly typed fastAPI implementation over a growing collection of Transformers integrated AutoModel classes from Optimum-Intel enabling inference on a wide range of models for different tasks which the OpenVINO runtime can accelerate meant to educate and empower developers to build with LLMs on Intel devices.
 
 Currently implemented:
 
-[OVModelForCausalLM]
-[OVModelForVisualCausalLM]
+[OVModelForCausalLM](https://github.com/huggingface/optimum-intel/blob/main/optimum/intel/openvino/modeling_decoder.py#L422)
 
-Deploying inference uses less of the same code, while reaping the benefits of hardware acceleration on Intel devices over an OpenAI compatible API.
+[OVModelForVisualCausalLM](https://github.com/huggingface/optimum-intel/blob/main/optimum/intel/openvino/modeling_visual_language.py#L309)
+
+
 
 ## Features
 
@@ -51,7 +51,7 @@ Supported operating system are a bit different for each class of device. Please 
 
 - Windows versions are supported
 - Linux distributions are supported
-- kernel versions are requiered
+- kernel versions are required
 	- My system uses version 6.9.4-060904-generic with Ubuntu 24.04 LTS.
 	- This matters more for GPU and NPU
 - commands for different package managers
@@ -206,10 +206,9 @@ In the uvicorn logs where the server is running this request should report:
 ### Usage:
 
 - Load the model you want to use from the dashboard
-- Select the connection you just created and use the refresch button to update the list of models
+- Select the connection you just created and use the refresh button to update the list of models
 
 
-#### - You can now use an OpenVINO accelerated model in a chat with OpenWebUI community tooling! This is a big step forward for OpenArc. Getting this right so early in the project positions OpenArc to be mature nicely
 
 
 
@@ -253,7 +252,8 @@ Documentation on choosing parameters for conversion is coming soon.
 > The optimum CLI tool integrates several different APIs from several different Intel projects; it is a better alternative than using APIs in from_pretrained() methods. 
 > It references prebuilt export configurations for each supported model architecture meaning **not all models are supported** but most are. If you use the CLI tool and get an error about an unsupported architecture follow the link, [open an issue](https://github.com/huggingface/optimum-intel/issues) with references to the model card and the maintainers will get back to you.  
 
-
+> [!NOTE]
+> A naming convention for openvino converted models is coming soon. 
 
 ## Performance with OpenVINO runtime
 
@@ -327,13 +327,6 @@ To poke around with this approach, skip the OpenAI API and dive right into the [
 Only _conversation_ has been exposed for now. There are two other useful options; _tools_ and _documents_ which will be added in future releases- these are much harder to test ad hoc and require knowing model-specifc facts about training, manually mapping tools to tokens and building those tools. Each of these wrap RAG documents and tool calls in special tokens which should increase reliability for structured outputs at a lower level of abstraction; instead of using the prompt to tell the model what context to use the tokens do part ofthis work for us. OpenArc will not define some class to use for mapping tools to tokens, instead it empowers developers to define their own tools and documents with an engine tooled to accept them as part of a request.
 
 
-
-
-## Planned Features
-
-
-
-
 ### Resources
 ---
 Learn more about how to leverage your Intel devices for Machine Learning:
@@ -343,15 +336,15 @@ Learn more about how to leverage your Intel devices for Machine Learning:
 [Inference with Optimum-Intel](https://github.com/huggingface/optimum-intel/blob/main/notebooks/openvino/optimum_openvino_inference.ipynb)
 
 
-Acknowledgments
+## Acknowledgments
 
 OpenArc stands on the shoulders of several other projects:
 
-[Optimum-Intel]()
-[OpenVINO]()
-[OpenVINO GenAI]()
-[Transformers]()
-[FastAPI]()
+[Optimum-Intel](https://github.com/huggingface/optimum-intel)
+[OpenVINO](https://github.com/openvinotoolkit/openvino)
+[OpenVINO GenAI](https://github.com/openvinotoolkit/openvino.genai)
+[Transformers](https://github.com/huggingface/transformers)
+[FastAPI](https://github.com/fastapi/fastapi)
 
 
 

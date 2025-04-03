@@ -1,7 +1,19 @@
+from enum import Enum, auto
 from transformers import AutoTokenizer
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 import time
+
+class ModelType(str, Enum):
+    """
+    Stores identifiers for model types: should be extended to include other model types as OpenArc grows.
+    In the future we will have 
+        EMBEDDING = "EMBEDDING"
+        DIFFUSION = "DIFFUSION"
+
+    """
+    TEXT = "TEXT"
+    VISION = "VISION"
 
 
 
@@ -41,13 +53,13 @@ class OV_LoadModelConfig(BaseModel):
     . bos_token_id: custom beginning of sequence token ID
 
     Architecture specific:
-    . is_vision_model: whether the model is a vision model for image-to-text generation tasks
-    . is_text_model: whether the model is a text model for text-to-text generation tasks
+    . model_type: type of model based on the architecture/task.
+        - "TEXT" for text-to-text models
+        - "VISION" for image-to-text models
 
     """
     id_model: str = Field(..., description="Model identifier or path")
-    is_vision_model: bool = Field(False, description="Whether the model is a vision model for image-to-text tasks")
-    is_text_model: bool = Field(False, description="Whether the model is a text model for text-to-text tasks")
+    model_type: ModelType = Field(..., description="Type of model (TEXT or VISION)")
     use_cache: Optional[bool] = Field(True, description="Whether to use cache for stateful models. For multi-gpu use false.")
     device: str = Field("CPU", description="Device options: CPU, GPU, AUTO")
     export_model: bool = Field(False, description="Whether to export the model")
@@ -61,7 +73,9 @@ class OV_GenerationConfig(BaseModel):
     Configuration for generation.
 
     args:
-        conversation: Union[List[Dict[str, str]], List[List[Dict[str, str]]]] = Field(description="A list of dicts with 'role' and 'content' keys, representing the chat history so far")
+        conversation: Any = Field(description="A list of dicts with 'role' and 'content' keys, representing the chat history so far")
+            # Any was chosen because typing is handled elsewhere and conversation dicts could contain base64 encoded images, audio files, etc.
+            # Therefore a layer of pydantic is not meaninguful as we get more descriptive errors downstream.
         stream: bool = Field(False, description="Whether to stream the generated text")
         max_new_tokens: int = Field(128, description="Maximum number of tokens to generate")
         temperature: float = Field(1.0, description="Sampling temperature")
@@ -201,7 +215,7 @@ def create_optimum_model(load_model_config: OV_LoadModelConfig, ov_config: Optio
     from .optimum_text2text import Optimum_Text2TextCore
     
     # Create the appropriate model instance based on configuration
-    if load_model_config.is_vision_model:
+    if load_model_config.model_type == ModelType.VISION:
         model_instance = Optimum_Image2TextCore(load_model_config, ov_config)
     else:
         model_instance = Optimum_Text2TextCore(load_model_config, ov_config)
@@ -218,9 +232,8 @@ def create_optimum_model(load_model_config: OV_LoadModelConfig, ov_config: Optio
         "eos_token_id": load_model_config.eos_token_id,
         "bos_token_id": load_model_config.bos_token_id,
         
-        # Model type flags for routing
-        "is_vision_model": load_model_config.is_vision_model,
-        "is_text_model": load_model_config.is_text_model,
+        # Model type (now using enum)
+        "model_type": load_model_config.model_type,
     }
     
     # Add OpenVINO configuration parameters if provided
