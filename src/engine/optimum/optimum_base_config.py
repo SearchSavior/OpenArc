@@ -1,4 +1,4 @@
-from enum import Enum, auto
+from enum import Enum
 from transformers import AutoTokenizer
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
