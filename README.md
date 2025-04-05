@@ -1,40 +1,36 @@
 # Welcome to OpenARC
 
-NEW: OpenWebUI is now supported!
+[![Discord](https://img.shields.io/discord/1341627368581628004?logo=Discord&logoColor=%23ffffff&label=Discord&link=https%3A%2F%2Fdiscord.gg%2FmaMY7QjG)](https://discord.gg/maMY7QjG)!
 
-NEW: Join the offical [![Discord](https://img.shields.io/discord/1341627368581628004?logo=Discord&logoColor=%23ffffff&label=Discord&link=https%3A%2F%2Fdiscord.gg%2FmaMY7QjG)](https://discord.gg/maMY7QjG)!
-
-NEW: Sister repo for Projects using OpenArc: [OpenArcProjects](https://github.com/SearchSavior/OpenArcProjects)
+Sister repo for Projects using OpenArc: [OpenArcProjects](https://github.com/SearchSavior/OpenArcProjects)
 
 > [!NOTE]
 > OpenArc is under active development. Expect breaking changes.
 
-**OpenArc** is an inference engine built with Optimum-Intel to leverage hardware acceleration on Intel CPUs, GPUs and NPUs through the OpenVINO runtime.
+**OpenArc** is an inference engine built with Optimum-Intel to leverage hardware acceleration on Intel CPUs, GPUs and NPUs through the OpenVINO runtime through it's strong integration with Huggingface Transformers.
+
+Under the hood it's a strongly typed fastAPI implementation over a growing collection of Transformers integrated AutoModel classes from Optimum-Intel enabling inference on a wide range of models for different tasks which the OpenVINO runtime can accelerate. OpenArc can help developer build with LLMs on Intel devices in way that's easier than the approach I took to learning OpenVINO. Instead of an added integration
 
 OpenArc currently supports text generation and text generation with vision. Support for speculative decoding, generating embeddings, speech tasks, image generation, PaddleOCR and others are planned.
-
-Under the hood it's a strongly typed fastAPI implementation over a growing collection of Transformers integrated AutoModel classes from Optimum-Intel enabling inference on a wide range of models for different tasks which the OpenVINO runtime can accelerate meant to educate and empower developers to build with LLMs on Intel devices.
-
 Currently implemented:
 
 [OVModelForCausalLM](https://github.com/huggingface/optimum-intel/blob/main/optimum/intel/openvino/modeling_decoder.py#L422)
 
 [OVModelForVisualCausalLM](https://github.com/huggingface/optimum-intel/blob/main/optimum/intel/openvino/modeling_visual_language.py#L309)
 
-
-
 ## Features
 
 - OpenAI compatible endpoints
 - Validated OpenWebUI support
-- Load multiple models concurrently on multiple devices for hotswap/roundrobin
+- Load multiple vision/text models concurrently on multiple devices for hotswap.
 - **Most** HuggingFace text generation models
 - Growing set of vision capable LLMs:
     - Qwen2-VL 
     - Qwen2.5-VL
+    - Validated collection
 - Gradio management dashboard
    - Load models with OpenVINO optimizations 
-   - Build conversion commands FOR THE 
+   - Build conversion commands
    - See loaded models
    - Unload models
    - Query detected devices
@@ -42,10 +38,9 @@ Currently implemented:
    - View tokenizer data
    - View architecture metadata from config.json
 
-
 ## System Requirments 
 
-OpenArc has been built on top of the OpenVINO runtime; as a result OpenArc supports the same range of hardware.
+OpenArc has been built on top of the OpenVINO runtime; as a result OpenArc supports the same range of hardware **but requires device specifc drivers** this document will not cover in-depth.
 
 Supported operating system are a bit different for each class of device. Please review [system requirments](https://docs.openvino.ai/2025/about-openvino/release-notes-openvino/system-requirements.html#cpu) for OpenVINO 2025.0.0.0 to learn which
 
@@ -53,7 +48,6 @@ Supported operating system are a bit different for each class of device. Please 
 - Linux distributions are supported
 - kernel versions are required
 	- My system uses version 6.9.4-060904-generic with Ubuntu 24.04 LTS.
-	- This matters more for GPU and NPU
 - commands for different package managers
 - other required dependencies for GPU and NPU
 
@@ -62,7 +56,6 @@ If you need help installing drivers:
 	- Open an issue
 	- Use [Linux Drivers](https://github.com/SearchSavior/OpenArc/discussions/11)
 	- Use [Windows Drivers](https://github.com/SearchSavior/OpenArc/discussions/12)
-
 
 <details>
   <summary>CPU</summary>
@@ -117,21 +110,6 @@ If you need help installing drivers:
 
 </details>
 
-## Install
-
-This documentation will not provide guidance for setting up device drivers. Instead, I will try to help on a case-by-case basis. 
-
-Either open an issue or use dedicated discussions for your OS.
-
-Windows discussion lives [here](https://github.com/SearchSavior/OpenArc/discussions/12).
-
-Linux discussion lives [here](https://github.com/SearchSavior/OpenArc/discussions/11).
-
-
-> Come prepared with details about your system, errors you are experiencing and the steps you've taken so far to resolve the issue. These discussions offer an opportunity to supplement official documentation so you should assume someone in the future can use your help.
-
-Feel free to use the Discord for this as well but be prepared to document your solution on GitHub if asked! 
-
 ### Ubuntu
 
 Create the conda environment:
@@ -143,6 +121,11 @@ Set your API key as an environment variable:
 
 	export OPENARC_API_KEY=<you-know-for-search>
 
+Build Optimum-Intel from source to get the latest support:
+
+```
+pip install optimum[openvino]+https://github.com/huggingface/optimum-intel
+```
 
 ### Windows
 
@@ -156,16 +139,22 @@ Set your API key as an environment variable:
 
 	setx OPENARC_API_KEY=<you-know-for-search>
 
+Build Optimum-Intel from source to get the latest support:
+
+```
+pip install optimum[openvino]+https://github.com/huggingface/optimum-intel
+```
+
 > [!Tips]
 - Avoid setting up the environment from IDE extensions. 
-- DO NOT USE THE ENVIRONMENT FOR ANYTHING ELSE. Soon we will have uv.
+- Try not to use the environment for other ML projects. Soon we will have uv.
 
 ## Usage
 
 OpenArc has two components:
 
 - start_server.py - launches the inference server
-- start_dashboard.py - launches the dashboard, which manages the server
+- start_dashboard.py - launches the dashboard, which manages the server and provides some useful tools
 
 
 To launch the inference server run
@@ -185,7 +174,6 @@ To launch the dashboard run
 
 Run these in two different terminals.
 
-
 > [!NOTE]
 > Gradio handles ports natively so the port number does not need to be set. Default is 7860 but it will increment if another instance of gradio is running.
 
@@ -195,7 +183,10 @@ Run these in two different terminals.
 > I'm only going to cover the basics on OpenWebUI here. To learn more and set it up check out the [OpenWebUI docs](https://docs.openwebui.com/).
 
 - From the Connections menu add a new connection
-- Enter the server address and port where OpenArc is running
+- Enter the server address and port where OpenArc is running **followed by /v1**
+Example:
+    http://0.0.0.0:8000/v1
+
 - Here you need to set the API key manually
 - When you hit the refresh button OpenWebUI sends a GET request to the OpenArc server to get the list of models
 
@@ -208,16 +199,6 @@ In the uvicorn logs where the server is running this request should report:
 - Load the model you want to use from the dashboard
 - Select the connection you just created and use the refresh button to update the list of models
 
-
-
-
-
-Some notes about the current version:
-
-- To see performance metrics read the logs displayed where start_server.py is running.
-- I *strongly* reccomend using these together but they are independent by design.
-- The dashboard has documentation and tools intended to help you get started working with both OpenVINO and Intel hardware.
-
 ## Convert to [OpenVINO IR](https://docs.openvino.ai/2025/documentation/openvino-ir-format.html)
 
 There are a few source of models which can be used with OpenArc;
@@ -227,6 +208,7 @@ There are a few source of models which can be used with OpenArc;
 - [My HuggingFace repo](https://huggingface.co/Echo9Zulu)
 	- My repo contains preconverted models for a variety of architectures and usecases
 	- OpenArc supports almost all of them 
+  - **These get updated regularly so check back often!**
 
 You can easily craft conversion commands using my HF Space, [Optimum-CLI-Tool_tool](https://huggingface.co/spaces/Echo9Zulu/Optimum-CLI-Tool_tool) or in the OpenArc Dashboard.
 
@@ -269,6 +251,7 @@ Notes on the test:
 - Seconds were used for readability
 
 
+
 Test System:
 
 CPU: Xeon W-2255 (10c, 20t) @3.7ghz
@@ -308,25 +291,6 @@ Prompt: "We don't even have a chat template so strap in and let it ride!"
 | Nous-Hermes-2-Mixtral-8x7B-DPO-int4-sym-se-ov    | 15.56                   | 6.67               | 34.60          | 24.2      |
 
 
-
-
-## Design Philosophy: Conversation as the Atomic Unit of LLM Programming
-
-OpenArc offers a lightweight approach to decoupling inference code from application logic by adding an API layer to serve machine learning models using hardware acceleration for Intel devices; in practice OpenArc offers a similar workflow to what's possible with Ollama, LM-Studio or OpenRouter. 
-
-As the AI space moves forward we are seeing all sorts of different paradigms emerge in CoT, agents, etc. Every design pattern using LLMs converges to some manipulation of the chat sequence stored in _conversation_ or (outside of transformers)_messages_. No matter what you build, you'll need to manipulate the chat sequence in some way that has nothing to do with inference. By the time data has been added to _conversation_ all linear algebra, tokenization and decoding has been taken care of. OpenArc embraces this distinction.
-
-Exposing _conversation_ from [apply_chat_template](https://huggingface.co/docs/transformers/main/en/internal/tokenization_utils#transformers.PreTrainedTokenizerBase.apply_chat_template) enables complete control over what get's passed in and out of the model without any intervention required at the template level. Projects using OpenArc can focus on application logic and less on inference code.  Check out the typing for _conversation_:
-
-	conversation (Union[List[Dict[str, str]], List[List[Dict[str, str]]]]) — A list of dicts with “role” and “content” keys, representing the chat history so far.
-
-Match the typing, manage the logic for assigning roles, update the sequence with content and you're set to build whatever you want using Intel CPUs, GPUs, and NPUs for acceleration.
-
-To poke around with this approach, skip the OpenAI API and dive right into the [requests](https://github.com/SearchSavior/OpenArc/tree/main/scripts/requests) examples which work well inside of coding prompts. Treat these like condensed documentation for the OpenArc API to get you started.
-
-Only _conversation_ has been exposed for now. There are two other useful options; _tools_ and _documents_ which will be added in future releases- these are much harder to test ad hoc and require knowing model-specifc facts about training, manually mapping tools to tokens and building those tools. Each of these wrap RAG documents and tool calls in special tokens which should increase reliability for structured outputs at a lower level of abstraction; instead of using the prompt to tell the model what context to use the tokens do part ofthis work for us. OpenArc will not define some class to use for mapping tools to tokens, instead it empowers developers to define their own tools and documents with an engine tooled to accept them as part of a request.
-
-
 ### Resources
 ---
 Learn more about how to leverage your Intel devices for Machine Learning:
@@ -335,15 +299,22 @@ Learn more about how to leverage your Intel devices for Machine Learning:
 
 [Inference with Optimum-Intel](https://github.com/huggingface/optimum-intel/blob/main/notebooks/openvino/optimum_openvino_inference.ipynb)
 
+[Optimum-Intel Transformers](https://huggingface.co/docs/optimum/main/en/intel/index)
+
+[NPU Devices](https://docs.openvino.ai/2025/openvino-workflow/running-inference/inference-devices-and-modes/npu-device.html)
 
 ## Acknowledgments
 
-OpenArc stands on the shoulders of several other projects:
+OpenArc stands on the shoulders of several other projects and I appreciate their work. 
 
 [Optimum-Intel](https://github.com/huggingface/optimum-intel)
+
 [OpenVINO](https://github.com/openvinotoolkit/openvino)
+
 [OpenVINO GenAI](https://github.com/openvinotoolkit/openvino.genai)
+
 [Transformers](https://github.com/huggingface/transformers)
+
 [FastAPI](https://github.com/fastapi/fastapi)
 
 

@@ -2,7 +2,7 @@ import openvino_genai as ov_genai
 
 
 
-model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/Ministral-8B-Instruct-2410-HF-awq-ov"
+model_dir = "/mnt/Ironwolf-4TB/Models/Pytorch/Hermes-3-Llama-3.2-3B-int4_sym-awq-se-ov"
 
 pipe = ov_genai.LLMPipeline(
     model_dir,       # Path to the model directory
@@ -10,10 +10,10 @@ pipe = ov_genai.LLMPipeline(
 )
 
 generation_config = ov_genai.GenerationConfig(
-    max_new_tokens=64
+    max_new_tokens=128
 )
 
-prompt = "We don't even have a chat template so strap in and let it ride!"
+prompt = "You're the fastest Llama this side of the equator"
 
 result = pipe.generate([prompt], generation_config=generation_config)
 perf_metrics = result.perf_metrics

@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 
-from typing import Optional, AsyncIterator, List, Any
+from typing import Optional, List, Any
 from pydantic import BaseModel
 from datetime import datetime
 from pathlib import Path
@@ -210,35 +210,25 @@ async def openai_chat_completions(request: ChatCompletionRequest):
         generation_config = OV_GenerationConfig(
             conversation=conversation,  # This matches the original working format
             temperature=request.temperature or 0.7,
-            max_new_tokens=request.max_tokens or 512, # Handles both max_tokens and max_new_tokens via alias
+            max_new_tokens=request.max_tokens, # Handles both max_tokens and max_new_tokens via alias
             stop_sequences=request.stop or [],
+            top_p=request.top_p,
+            top_k=request.top_k,
             repetition_penalty=1.0,
             do_sample=True,
             num_return_sequences=1
         )
 
-
         if request.stream:
             async def stream_generator():
-                # Performance tracking variables
-                start_time = time.perf_counter()
-                first_token_time = None
-                token_count = 0
                 try:
                     # Route to the appropriate stream generator based on model type
                     if model_instance.model_metadata["model_type"] == ModelType.VISION:
                         stream_method = model_instance.generate_vision_stream
-                    else:
+                    elif model_instance.model_metadata["model_type"] == ModelType.TEXT:
                         stream_method = model_instance.generate_stream
                         
                     async for token in stream_method(generation_config):
-                        token_count += 1
-
-                        # Record time of first token
-                        if token_count == 1:
-                            first_token_time = time.perf_counter()
-                            eval_time = first_token_time - start_time
-
                         # Properly escape the content for JSON, preserving all whitespace
                         escaped_token = json.dumps(token)[1:-1]  # Remove surrounding quotes
                         yield f"data: {{\"object\": \"chat.completion.chunk\", \"choices\": [{{\"delta\": {{\"content\": \"{escaped_token}\"}}}}]}}\n\n"
@@ -246,21 +236,20 @@ async def openai_chat_completions(request: ChatCompletionRequest):
                 except Exception as e:
                     print(f"Error during streaming: {str(e)}")
                 finally:
-                    # Calculate final metrics
-                    end_time = time.perf_counter()
-                    total_time = end_time - start_time
-
                     yield "data: [DONE]\n\n"
 
             return StreamingResponse(stream_generator(), media_type="text/event-stream")
 
         else:
             # For non-streaming responses, use the appropriate generate method
+            model_type = model_instance.model_metadata["model_type"]
             if model_type == ModelType.VISION:
                 generated_text, metrics = model_instance.generate_text(generation_config)
-            else:
+            elif model_type == ModelType.TEXT:
                 generated_text, metrics = model_instance.generate_text(generation_config)
-                
+            else:
+                raise HTTPException(status_code=400, detail=f"Unsupported model type '{model_type}' for chat completions.")
+            
             return JSONResponse(content={
                 "id": f"ov-{uuid.uuid4()}",
                 "object": "chat.completion",

@@ -16,10 +16,6 @@ from .optimum_base_config import (
     OV_PerformanceConfig
 )
 
-
-
-# Next we define the inference engine and utility functions.
-
 class Optimum_PerformanceMetrics:
     def __init__(self, performance_config: OV_PerformanceConfig):
         self.performance_config = performance_config
