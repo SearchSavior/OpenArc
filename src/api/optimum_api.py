@@ -23,6 +23,7 @@ from src.engine.optimum.optimum_base_config import (
     OV_LoadModelConfig,
     OV_Config,
     OV_GenerationConfig,
+    OV_PerformanceConfig,
     create_optimum_model,
     ModelType
 )
@@ -68,27 +69,6 @@ def get_final_model_id(model_id: str) -> str:
     """Extracts the final segment of the model id path using pathlib."""
     return Path(model_id).name
 
-class ChatCompletionRequest(BaseModel):
-    messages: Any
-    model: str = "default"
-    temperature: Optional[float] = 0.7
-    max_tokens: Optional[int] = 4096
-    stream: Optional[bool] = False
-    stop: Optional[List[str]] = None
-
-    class Config:
-        extra = "ignore"
-
-class CompletionRequest(BaseModel):
-    prompt: str
-    model: str = "default"
-    temperature: Optional[float] = 0.7
-    max_tokens: Optional[int] = 4096
-    stream: Optional[bool] = False
-    stop: Optional[List[str]] = None
-
-    class Config:
-        extra = "ignore"
 
 @app.post("/optimum/model/load", dependencies=[Depends(verify_api_key)])
 async def load_model(load_config: OV_LoadModelConfig, ov_config: OV_Config):
@@ -124,32 +104,6 @@ async def unload_model(model_id: str):
         return {"status": "success", "message": "Model unloaded successfully"}
     return {"status": "success", "message": f"Model {model_id} was not loaded"}
 
-@app.post("/optimum/generate", dependencies=[Depends(verify_api_key)])
-async def generate_text(generation_config: OV_GenerationConfig):
-    """Generate text either as a stream or a full response, based on the stream field"""
-    global model_instances
-    logger.info("POST /optimum/generate called with generation_config: %s", generation_config)
-    if not generation_config.model in model_instances:
-        raise HTTPException(status_code=400, detail=f"No model loaded for model {generation_config.model}")
-    
-    model_instance = model_instances[generation_config.model]
-    
-    # Check if the client requested streaming
-    if generation_config.stream:
-        async def text_stream() -> AsyncIterator[str]:
-            async for token in model_instance.generate_stream(generation_config):
-                yield token
-        return StreamingResponse(text_stream(), media_type="text/event-stream")
-    else:
-        try:
-            generated_text, metrics = model_instance.generate_text(generation_config)
-            return {
-                "generated_text": generated_text,
-                "performance_metrics": metrics
-            }
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
-
 @app.get("/optimum/status", dependencies=[Depends(verify_api_key)])
 async def get_status():
     """Get current model status and performance metrics"""
@@ -170,6 +124,28 @@ async def get_status():
 
 
 # OpenAI-like API
+
+class ChatCompletionRequest(BaseModel):
+    messages: Any
+    model: str = "default"
+    temperature: Optional[float] = 0.7
+    max_tokens: Optional[int] = 4096
+    stream: Optional[bool] = False
+    stop: Optional[List[str]] = None
+
+    class Config:
+        extra = "ignore"
+
+class CompletionRequest(BaseModel):
+    prompt: str
+    model: str = "default"
+    temperature: Optional[float] = 0.7
+    max_tokens: Optional[int] = 4096
+    stream: Optional[bool] = False
+    stop: Optional[List[str]] = None
+
+    class Config:
+        extra = "ignore"
 
 
 @app.get("/v1/models", dependencies=[Depends(verify_api_key)])
@@ -230,22 +206,6 @@ async def openai_chat_completions(request: ChatCompletionRequest):
                 for msg in request.messages
             ]
 
-        # Toggle debug output here
-        DEBUG = False
-        if DEBUG:
-            print("\n=== Received Request ===")
-            print("Model:", request.model)
-            print("Raw messages:", request.messages)
-            print("Params - temperature:", request.temperature)
-            print("Params - max_tokens:", request.max_tokens)
-
-            try:
-                from transformers import AutoTokenizer
-                tokenizer = AutoTokenizer.from_pretrained(request.model)
-                prompt_len=len(tokenizer.apply_chat_template(request.messages))
-            except Exception as e:
-                print(f"Token counting error: {e}")
-
         # Create generation config with conversation structure
         generation_config = OV_GenerationConfig(
             conversation=conversation,  # This matches the original working format
@@ -257,8 +217,6 @@ async def openai_chat_completions(request: ChatCompletionRequest):
             num_return_sequences=1
         )
 
-        # Use model type to determine which generation method to use
-        model_type = model_instance.model_metadata["model_type"]
 
         if request.stream:
             async def stream_generator():
@@ -268,7 +226,7 @@ async def openai_chat_completions(request: ChatCompletionRequest):
                 token_count = 0
                 try:
                     # Route to the appropriate stream generator based on model type
-                    if model_type == ModelType.VISION:
+                    if model_instance.model_metadata["model_type"] == ModelType.VISION:
                         stream_method = model_instance.generate_vision_stream
                     else:
                         stream_method = model_instance.generate_stream
@@ -291,15 +249,6 @@ async def openai_chat_completions(request: ChatCompletionRequest):
                     # Calculate final metrics
                     end_time = time.perf_counter()
                     total_time = end_time - start_time
-
-                    if first_token_time and DEBUG:
-                        tokens_per_second = token_count / (end_time - start_time)
-                        eval_tokens_per_second = prompt_len / eval_time
-
-                        print("\n=== Streaming Performance ===")
-                        print(f"Total generation time: {total_time:.3f} seconds")
-                        print(f"Prompt evaluation: {prompt_len} tokens in {eval_time:.3f} seconds ({eval_tokens_per_second:.2f} T/s)")
-                        print(f"Response generation: {token_count} tokens in ({tokens_per_second:.2f} T/s)")
 
                     yield "data: [DONE]\n\n"
 

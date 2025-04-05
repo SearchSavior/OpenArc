@@ -10,7 +10,7 @@ pipe = ov_genai.LLMPipeline(
 )
 
 generation_config = ov_genai.GenerationConfig(
-    max_new_tokens=128
+    max_new_tokens=64
 )
 
 prompt = "We don't even have a chat template so strap in and let it ride!"
