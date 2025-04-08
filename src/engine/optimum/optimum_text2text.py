@@ -139,6 +139,7 @@ class Optimum_Text2TextCore:
             if generation_time > 0 and num_tokens_generated > 0:
                 tokens_per_second = num_tokens_generated / generation_time
                 average_token_latency = generation_time / num_tokens_generated
+                
                 performance_metrics = {
                     "ttft": round(ttft, 2),
                     "generation_time": round(generation_time, 2),
