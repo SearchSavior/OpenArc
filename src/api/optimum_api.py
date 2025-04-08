@@ -1,7 +1,6 @@
 # The first implementation of the OpenAI-like API was contributed by @gapeleon.
 # They are one hero among many future heroes working to make OpenArc better. 
 
-
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -23,7 +22,6 @@ from src.engine.optimum.optimum_base_config import (
     OV_LoadModelConfig,
     OV_Config,
     OV_GenerationConfig,
-    OV_PerformanceConfig,
     create_optimum_model,
     ModelType
 )
@@ -33,7 +31,7 @@ from src.engine.optimum.optimum_base_config import (
 # This block prevents clogging the API logs 
 warnings.filterwarnings("ignore", message="__array__ implementation doesn't accept a copy keyword")
 
-app = FastAPI(title="OpenVINO Inference API")
+app = FastAPI(title="OpenArc API")
 
 # Configure CORS
 app.add_middleware(
@@ -48,7 +46,6 @@ app.add_middleware(
 model_instances = {}
 
 logger = logging.getLogger("optimum_api")
-logger.setLevel(logging.DEBUG)
 
 # API key authentication
 API_KEY = os.getenv("OPENARC_API_KEY")
@@ -66,9 +63,8 @@ async def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(sec
     return credentials.credentials
 
 def get_final_model_id(model_id: str) -> str:
-    """Extracts the final segment of the model id path using pathlib."""
+    """Extracts the final segment of the model id path so we dont display the whole path."""
     return Path(model_id).name
-
 
 @app.post("/optimum/model/load", dependencies=[Depends(verify_api_key)])
 async def load_model(load_config: OV_LoadModelConfig, ov_config: OV_Config):
@@ -132,9 +128,11 @@ class ChatCompletionRequest(BaseModel):
     max_tokens: Optional[int] = 4096
     stream: Optional[bool] = False
     stop: Optional[List[str]] = None
+    top_p: Optional[float] = None
+    top_k: Optional[int] = None
 
-    class Config:
-        extra = "ignore"
+    #class Config:
+    #    extra = "ignore"
 
 class CompletionRequest(BaseModel):
     prompt: str
@@ -143,9 +141,11 @@ class CompletionRequest(BaseModel):
     max_tokens: Optional[int] = 4096
     stream: Optional[bool] = False
     stop: Optional[List[str]] = None
+    top_p: Optional[float] = None
+    top_k: Optional[int] = None
 
-    class Config:
-        extra = "ignore"
+    #class Config:
+    #    extra = "ignore"
 
 
 @app.get("/v1/models", dependencies=[Depends(verify_api_key)])
@@ -212,8 +212,8 @@ async def openai_chat_completions(request: ChatCompletionRequest):
             temperature=request.temperature or 0.7,
             max_new_tokens=request.max_tokens, # Handles both max_tokens and max_new_tokens via alias
             stop_sequences=request.stop or [],
-            top_p=request.top_p,
-            top_k=request.top_k,
+            top_p=request.top_p or 0.9,  # default value for top_p
+            top_k=request.top_k or 50,   # default value for top_k
             repetition_penalty=1.0,
             do_sample=True,
             num_return_sequences=1
@@ -221,6 +221,7 @@ async def openai_chat_completions(request: ChatCompletionRequest):
 
         if request.stream:
             async def stream_generator():
+                final_metrics = None
                 try:
                     # Route to the appropriate stream generator based on model type
                     if model_instance.model_metadata["model_type"] == ModelType.VISION:
@@ -228,14 +229,19 @@ async def openai_chat_completions(request: ChatCompletionRequest):
                     elif model_instance.model_metadata["model_type"] == ModelType.TEXT:
                         stream_method = model_instance.generate_stream
                         
-                    async for token in stream_method(generation_config):
-                        # Properly escape the content for JSON, preserving all whitespace
-                        escaped_token = json.dumps(token)[1:-1]  # Remove surrounding quotes
+                    async for token, performance_metrics in stream_method(generation_config):
+                        # Save the latest metrics (will be the final ones at the end)
+                        if performance_metrics and "generation_time" in performance_metrics:
+                            final_metrics = performance_metrics
+                        # Only stream the token, don't log metrics here
+                        escaped_token = json.dumps(token)[1:-1]
                         yield f"data: {{\"object\": \"chat.completion.chunk\", \"choices\": [{{\"delta\": {{\"content\": \"{escaped_token}\"}}}}]}}\n\n"
 
                 except Exception as e:
                     print(f"Error during streaming: {str(e)}")
                 finally:
+                    if final_metrics:
+                        logger.info(f"Performance metrics: {final_metrics}")
                     yield "data: [DONE]\n\n"
 
             return StreamingResponse(stream_generator(), media_type="text/event-stream")
@@ -290,6 +296,8 @@ async def openai_completions(request: CompletionRequest):
         temperature=request.temperature or 0.7,
         max_new_tokens=request.max_tokens or 8192,
         stop_sequences=request.stop or [],
+        top_p=request.top_p or 0.9,  # default value for top_p
+        top_k=request.top_k or 50,   # default value for top_k
         repetition_penalty=1.0,
         do_sample=True,
         num_return_sequences=1

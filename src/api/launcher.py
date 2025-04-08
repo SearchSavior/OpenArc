@@ -11,7 +11,7 @@ logger = logging.getLogger("ov_api")
 
 def start_server(host: str = "0.0.0.0", openarc_port: int = 8000, reload: bool = False):
     """
-    Start the OpenVINO Inference API server
+    Launches the OpenArc API server
     
     Args:
         host: Host to bind the server to

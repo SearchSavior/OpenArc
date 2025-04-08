@@ -1,115 +1,39 @@
-from optimum.intel import OVModelForCausalLM
-from transformers import AutoTokenizer
-from transformers.generation.streamers import TextIteratorStreamer
-from threading import Thread
-
-from typing import Any, AsyncIterator, Dict, Optional
-
 import gc
 import time
 import traceback
+from threading import Thread
+from typing import Any, AsyncIterator, Dict, Optional
+
+from optimum.intel import OVModelForCausalLM
+from transformers import AutoTokenizer
+from transformers.generation.streamers import TextIteratorStreamer
 
 from .optimum_base_config import (
-    OV_Config, 
-    OV_LoadModelConfig, 
-    OV_GenerationConfig, 
-    OV_PerformanceConfig
+    OV_Config,
+    OV_GenerationConfig,
+    OV_LoadModelConfig,
 )
-
-class Optimum_PerformanceMetrics:
-    def __init__(self, performance_config: OV_PerformanceConfig):
-        self.performance_config = performance_config
-        self.start_time = None
-        self.end_time = None
-        self.eval_start_time = None
-        self.eval_end_time = None
-        
-    def start_generation_timer(self):
-        """Start the generation timer"""
-        self.start_time = time.perf_counter()
-        
-    def stop_generation_timer(self):
-        """Stop the generation timer"""
-        self.end_time = time.perf_counter()
-        self.performance_config.generation_time = self.end_time - self.start_time
-        
-    def start_eval_timer(self):
-        """Start the evaluation timer"""
-        self.eval_start_time = time.perf_counter()
-        
-    def stop_eval_timer(self):
-        """Stop the evaluation timer"""
-        self.eval_end_time = time.perf_counter()
-        self.performance_config.eval_time = self.eval_end_time - self.eval_start_time
-        
-    def count_tokens(self, input_text: str, output_text: str, tokenizer: AutoTokenizer):
-        """Count tokens in input and output text using the model's tokenizer"""
-        try:
-            # Count input tokens
-            input_tokens = len(tokenizer.encode(input_text))
-            self.performance_config.input_tokens = input_tokens
-            
-            # Count output tokens
-            output_tokens = len(tokenizer.encode(output_text))
-            self.performance_config.output_tokens = output_tokens
-            
-            # Calculate new tokens
-            self.performance_config.new_tokens = output_tokens
-            
-        except Exception as e:
-            print(f"Error counting tokens: {str(e)}")
-            return None
-
-    def get_performance_metrics(self) -> Dict[str, Any]:
-        """Get all performance metrics as a dictionary"""
-        return {
-            "generation_time": self.performance_config.generation_time,
-            "input_tokens": self.performance_config.input_tokens,
-            "output_tokens": self.performance_config.output_tokens,
-            "new_tokens": self.performance_config.new_tokens,
-            "eval_time": self.performance_config.eval_time,
-            "tokens_per_second": (self.performance_config.new_tokens / self.performance_config.generation_time) 
-                if self.performance_config.generation_time and self.performance_config.new_tokens else None
-        }
-
-    def print_performance_report(self):
-        """Print a formatted performance report"""
-        metrics = self.get_performance_metrics()
-        
-        print("\n" + "="*50)
-        print("INFERENCE PERFORMANCE REPORT")
-        print("="*50)
-        
-        print(f"\nGeneration Time: {metrics['generation_time']:.3f} seconds")
-        print(f"Evaluation Time: {metrics['eval_time']:.3f} seconds")
-        print(f"Input Tokens: {metrics['input_tokens']}")
-        print(f"Output Tokens: {metrics['output_tokens']}")
-        print(f"New Tokens Generated: {metrics['new_tokens']}")
-        
-        if metrics['tokens_per_second']:
-            print(f"Tokens/Second: {metrics['tokens_per_second']:.2f}")
-            
-        print("="*50)
 
 class Optimum_Text2TextCore:
     """
-    Loads an OpenVINO model and tokenizer,
-    Applies a chat template to conversation messages, and generates a response.
-    Exposed to the /generate endpoints.
+    - Initialize the Optimum_Text2TextCore class when enum ModelType (as model_type) is TEXT.
+    - Loads an OpenVINO model and HuggingFace tokenizer
+    - Used for text-to-text generation only
+    - Any model which can be converted with the Optimum-CLI tool will work. 
+
     """
     def __init__(self, load_model_config: OV_LoadModelConfig, ov_config: Optional[OV_Config] = None):
         """
         Args:
-            load_model_config: An instance of OV_LoadModelConfig containing parameters
-                               such as id_model, device, export_model, use_cache, and token IDs.
-            ov_config: Optional OV_Config instance with additional model options.
+            load_model_config: An instance of OV_LoadModelConfig from POST /optimum/model/load
+                               
+            ov_config: An instance of OV_Config from POST /optimum/model/load 
         """
         self.load_model_config = load_model_config
         self.ov_config = ov_config
         self.model = None
         self.tokenizer = None
-        self.performance_metrics = Optimum_PerformanceMetrics(OV_PerformanceConfig())
-        
+
     def load_model(self):
         """Load the tokenizer and model."""
         print(f"Loading model {self.load_model_config.id_model} on device {self.load_model_config.device}...")
@@ -134,19 +58,35 @@ class Optimum_Text2TextCore:
         self.tokenizer = AutoTokenizer.from_pretrained(self.load_model_config.id_model)
         print("Tokenizer loaded successfully.")
 
-    # TODO: add performance metrics to generate_stream so we can track the same metrics in generate_text
-
-    async def generate_stream(self, generation_config: OV_GenerationConfig) -> AsyncIterator[str]:
+    async def generate_stream(self, generation_config: OV_GenerationConfig) -> AsyncIterator[tuple[str, Dict[str, Any]]]:
         """
-        Asynchronously stream generated text tokens.
+        Asynchronously stream generated text tokens along with performance metrics.
         
         Args:
             generation_config: Configuration for text generation containing conversation history
                              and generation parameters
         
         Yields:
-            Generated text tokens as they become available
+            Tuple of (new_text, performance_metrics)
+
+            new_text: Generated text tokens as they become available
+
+            performance_metrics contains
+                - ttft: Time to first token
+                - generation_time: Time taken to generate the text
+                - tokens_per_second: Tokens per second
+                - average_token_latency: Average token latency
+                - num_tokens_generated: Number of tokens generated
         """
+
+        performance_metrics = {
+            "ttft": None,
+            "generation_time": None,    
+            "tokens_per_second": None,
+            "average_token_latency": None,
+            "num_tokens_generated": None,
+        }
+
         try:
             # Convert conversation to input ids using the chat template
             input_ids = self.tokenizer.apply_chat_template(
@@ -174,19 +114,45 @@ class Optimum_Text2TextCore:
 
             # Create and start the generation thread
             thread = Thread(target=self.model.generate, kwargs=generation_kwargs)
+            
+            first_token_received = False
+            first_token_time = 0.0
+            generate_start = time.perf_counter()
             thread.start()
 
+            new_text = ""
             # Stream the generated text
-            for new_text in streamer:
-                yield new_text
+            for new_token in streamer:
+                new_text += new_token
+                if not first_token_received:
+                    first_token_time = time.perf_counter()
+                    ttft = first_token_time - generate_start
+                    first_token_received = True
+                yield new_token, {"ttft": ttft}
+
+            thread.join()
+            generate_end = time.perf_counter()
+            
+            generation_time = generate_end - generate_start
+            num_tokens_generated = len(self.tokenizer.encode(new_text, return_tensors="pt")[0]) - input_ids.shape[1]
+            
+            if generation_time > 0 and num_tokens_generated > 0:
+                tokens_per_second = num_tokens_generated / generation_time
+                average_token_latency = generation_time / num_tokens_generated
+                performance_metrics = {
+                    "ttft": round(ttft, 2),
+                    "generation_time": round(generation_time, 2),
+                    "tokens_per_second": round(tokens_per_second, 2),
+                    "average_token_latency": round(average_token_latency, 2),
+                    "num_tokens_generated": num_tokens_generated,
+                }
+            
+            yield new_text, performance_metrics
 
         except Exception as e:
             print(f"Error during streaming generation: {str(e)}")
             traceback.print_exc()
             raise
-        
-        finally:
-            thread.join()
 
     def generate_text(self, generation_config: OV_GenerationConfig) -> tuple[str, Dict[str, Any]]:
         """
@@ -195,19 +161,10 @@ class Optimum_Text2TextCore:
         Args:
             generation_config: Configuration for text generation containing conversation history
                              and generation parameters
-        
         Returns:
-            Tuple of (generated_text, performance_metrics)
+            Tuple of (generated_text)
         """
         try:
-            # Initialize performance tracking
-
-
-            # Convert conversation to input text for token counting
-            input_text = "\n".join([f"{m['role']}: {m['content']}" for m in generation_config.conversation])
-            
-            # Start generation timer
-            self.performance_metrics.start_generation_timer()
 
             # Generate input ids
             input_ids = self.tokenizer.apply_chat_template(
@@ -238,20 +195,7 @@ class Optimum_Text2TextCore:
             # Decode the generated tokens
             generated_text = self.tokenizer.decode(new_tokens, skip_special_tokens=True)
             
-            # Stop generation timer
-            self.performance_metrics.stop_generation_timer()
-            
-            # Count tokens using the model's tokenizer
-            self.performance_metrics.count_tokens(
-                input_text=input_text,
-                output_text=generated_text,
-                tokenizer=self.tokenizer
-            )
-            
-            # Get performance metrics
-            metrics = self.performance_metrics.get_performance_metrics()
-            
-            return generated_text, metrics
+            return generated_text
 
         except Exception as e:
             print(f"Error during text generation: {str(e)}")

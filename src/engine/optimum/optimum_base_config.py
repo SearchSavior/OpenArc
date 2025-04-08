@@ -1,22 +1,16 @@
 from enum import Enum
-from transformers import AutoTokenizer
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any
-import time
+from typing import Optional, Any
 
 class ModelType(str, Enum):
     """
-    Stores identifiers for model types: should be extended to include other model types as OpenArc grows.
-    In the future we will have 
-        EMBEDDING = "EMBEDDING"
-        DIFFUSION = "DIFFUSION"
-
+    Identifiers for model_type: should be extended to include other model types as OpenArc grows. 
+     
+     TEXT = "TEXT"
+     VISION = "VISION"
     """
     TEXT = "TEXT"
     VISION = "VISION"
-
-
-
 
 class OV_Config(BaseModel):
     """
@@ -56,7 +50,6 @@ class OV_LoadModelConfig(BaseModel):
     . model_type: type of model based on the architecture/task.
         - "TEXT" for text-to-text models
         - "VISION" for image-to-text models
-
     """
     id_model: str = Field(..., description="Model identifier or path")
     model_type: ModelType = Field(..., description="Type of model (TEXT or VISION)")
@@ -97,108 +90,6 @@ class OV_GenerationConfig(BaseModel):
     do_sample: bool = Field(True, description="Use sampling for generation")
     num_return_sequences: int = Field(1, description="Number of sequences to return")
 
-class OV_PerformanceConfig(BaseModel):
-    '''
-    Performance metrics for generation.
-    
-    args:
-        generation_time: Optional[float] = Field(None, description="Generation time in seconds")
-        input_tokens: Optional[int] = Field(None, description="Number of input tokens")
-        output_tokens: Optional[int] = Field(None, description="Number of output tokens")
-        new_tokens: Optional[int] = Field(None, description="Number of new tokens generated")
-        eval_time: Optional[float] = Field(None, description="Evaluation time in seconds")
-    '''
-    generation_time: Optional[float] = Field(None, description="Generation time in seconds")
-    input_tokens: Optional[int] = Field(None, description="Number of input tokens")
-    output_tokens: Optional[int] = Field(None, description="Number of output tokens")
-    new_tokens: Optional[int] = Field(None, description="Number of new tokens generated")
-    eval_time: Optional[float] = Field(None, description="Evaluation time in seconds")
-
-class Optimum_PerformanceMetrics:
-    """
-    Performance metrics for generation.
-
-    args:
-        performance_config: OV_PerformanceConfig = Field(description="Performance configuration")
-        start_time: Optional[float] = Field(None, description="Start time")
-        end_time: Optional[float] = Field(None, description="End time")
-        eval_start_time: Optional[float] = Field(None, description="Evaluation start time")
-        eval_end_time: Optional[float] = Field(None, description="Evaluation end time") 
-    """
-    def __init__(self, performance_config: OV_PerformanceConfig):
-        self.performance_config = performance_config
-        self.start_time = None
-        self.end_time = None
-        self.eval_start_time = None
-        self.eval_end_time = None
-        
-    def start_generation_timer(self):
-        """Start the generation timer"""
-        self.start_time = time.perf_counter()
-        
-    def stop_generation_timer(self):
-        """Stop the generation timer"""
-        self.end_time = time.perf_counter()
-        self.performance_config.generation_time = self.end_time - self.start_time
-        
-    def start_eval_timer(self):
-        """Start the evaluation timer"""
-        self.eval_start_time = time.perf_counter()
-        
-    def stop_eval_timer(self):
-        """Stop the evaluation timer"""
-        self.eval_end_time = time.perf_counter()
-        self.performance_config.eval_time = self.eval_end_time - self.eval_start_time
-        
-    def count_tokens(self, input_text: str, output_text: str, tokenizer: AutoTokenizer):
-        """Count tokens in input and output text using the model's tokenizer"""
-        try:
-            # Count input tokens
-            input_tokens = len(tokenizer.encode(input_text))
-            self.performance_config.input_tokens = input_tokens
-            
-            # Count output tokens
-            output_tokens = len(tokenizer.encode(output_text))
-            self.performance_config.output_tokens = output_tokens
-            
-            # Calculate new tokens
-            self.performance_config.new_tokens = output_tokens
-            
-        except Exception as e:
-            print(f"Error counting tokens: {str(e)}")
-            return None
-
-    def get_performance_metrics(self) -> Dict[str, Any]:
-        """Get all performance metrics as a dictionary"""
-        return {
-            "generation_time": self.performance_config.generation_time,
-            "input_tokens": self.performance_config.input_tokens,
-            "output_tokens": self.performance_config.output_tokens,
-            "new_tokens": self.performance_config.new_tokens,
-            "eval_time": self.performance_config.eval_time,
-            "tokens_per_second": (self.performance_config.new_tokens / self.performance_config.generation_time) 
-                if self.performance_config.generation_time and self.performance_config.new_tokens else None
-        }
-
-    def print_performance_report(self):
-        """Print a formatted performance report"""
-        metrics = self.get_performance_metrics()
-        
-        print("\n" + "="*50)
-        print("INFERENCE PERFORMANCE REPORT")
-        print("="*50)
-        
-        print(f"\nGeneration Time: {metrics['generation_time']:.3f} seconds")
-        print(f"Evaluation Time: {metrics['eval_time']:.3f} seconds")
-        print(f"Input Tokens: {metrics['input_tokens']}")
-        print(f"Output Tokens: {metrics['output_tokens']}")
-        print(f"New Tokens Generated: {metrics['new_tokens']}")
-        
-        if metrics['tokens_per_second']:
-            print(f"Tokens/Second: {metrics['tokens_per_second']:.2f}")
-            
-        print("="*50)
-
 def create_optimum_model(load_model_config: OV_LoadModelConfig, ov_config: Optional[OV_Config] = None):
     """
     Factory function to create the appropriate Optimum model based on configuration.
@@ -208,7 +99,13 @@ def create_optimum_model(load_model_config: OV_LoadModelConfig, ov_config: Optio
         ov_config: Optional OpenVINO configuration
         
     Returns:
-        An instance of the appropriate model class (Text2Text or Vision2Text)
+        An instance of the appropriate model class (TEXT or VISION)
+    
+    Defines: load_model_metadata
+
+    
+
+
     """
     # Import model classes here to avoid circular imports
     from .optimum_image2text import Optimum_Image2TextCore
@@ -221,7 +118,7 @@ def create_optimum_model(load_model_config: OV_LoadModelConfig, ov_config: Optio
         model_instance = Optimum_Text2TextCore(load_model_config, ov_config)
     
     # Store metadata from load_model_config and ov_config in model_instance
-    # This will be used for dynamic routing decisions at inference time
+    # This will be used for routing decisions at inference time so we can keep more than one model in memory OR on different devices.
     model_instance.model_metadata = {
         # Model configuration metadata
         "id_model": load_model_config.id_model,

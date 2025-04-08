@@ -1,4 +1,3 @@
-import asyncio
 import base64
 import gc
 import threading
@@ -13,32 +12,26 @@ from PIL import Image
 from transformers import AutoProcessor, TextIteratorStreamer
 
 from .optimum_base_config import (
-    Optimum_PerformanceMetrics,
     OV_Config,
     OV_GenerationConfig,
-    OV_LoadModelConfig,
-    OV_PerformanceConfig,
+    OV_LoadModelConfig
 )
 
 # Suppress specific deprecation warnings from optimum implementation of numpy arrays
 # This block prevents clogging the API logs 
 warnings.filterwarnings("ignore", message="__array__ implementation doesn't accept a copy keyword")
-
-
     
 class Optimum_Image2TextCore:
     """
-    Loads an OpenVINO model and tokenizer,
+    Loads an OpenVINO model and processor,
     Applies a chat template to conversation messages, and generates a response.
-    Exposed to the /generate endpoints.
-
+    
         For OpenVINO the vision models is split into two parts:
         . language_model: The language model part of the vision model.
         . text_embeddings: The text embeddings part of the vision model.
         . vision_embeddings: The vision embeddings part of the vision model.
     """
     def __init__(self, load_model_config: OV_LoadModelConfig, ov_config: Optional[OV_Config] = None):
-
         """
         Args:
             load_model_config: An instance of OV_LoadModelConfig containing parameters
@@ -49,8 +42,7 @@ class Optimum_Image2TextCore:
         self.ov_config = ov_config
         self.model = None
         self.processor = None
-        self.performance_metrics = Optimum_PerformanceMetrics(OV_PerformanceConfig())
-        
+
     def load_model(self):
         """Load the tokenizer and vision model."""
         print(f"Loading model {self.load_model_config.id_model} on device {self.load_model_config.device}...")
@@ -74,27 +66,39 @@ class Optimum_Image2TextCore:
         self.processor = AutoProcessor.from_pretrained(self.load_model_config.id_model)
         print("Processor loaded successfully.")        
         
-    
     async def generate_vision_stream(
         self, 
         generation_config: OV_GenerationConfig
     ) -> AsyncIterator[str]:
         """
-        Asynchronously stream generated text from an image using the provided configuration.
+        Asynchronously stream generated text from an image using the provided configuration from 
+        OV_GenerationConfig in completion requests.
         
         Args:
             generation_config: Configuration for text generation
+                conversation: List of messages to generate text from, can include images
+                max_new_tokens: Maximum number of tokens to generate
+                temperature: Temperature for the model
+                top_p: Top-p value for the model
+                top_k: Top-k value for the model
+                repetition_penalty: Repetition penalty for the model
+                do_sample: Whether to sample from the model
+                num_return_sequences: Number of sequences to generate
             
         Yields:
-            Generated text tokens as they become available
+            new_text: Generated text tokens as they become available
+            performance_metrics: Performance metrics for the generation
+                ttft: Time to first token
+                generation_time: Time taken to generate the text
+                tokens_per_second: Tokens per second
+                average_token_latency: Average token latency
+                num_tokens_generated: Number of tokens generated
         """
         if not self.model or not self.processor:
             raise ValueError("Model not loaded. Call load_model first.")
         
         try:
-            start_time = time.time()
-            
-            # Extract images from conversation if present
+
             images = []
             text_conversation = []
             
@@ -131,17 +135,13 @@ class Optimum_Image2TextCore:
                         text_message["content"] = ""
                         text_conversation.append(text_message)
                 else:
-                    # Regular text message, add it directly to the list used for template application
                     text_conversation.append(message)
             
-            # Preprocess the inputs using the original conversation structure
-            # This allows the template to insert image tokens correctly
             text_prompt = self.processor.apply_chat_template(
                 generation_config.conversation, 
                 add_generation_prompt=True
             )
             
-            # Process both text and images if available
             if images:
                 inputs = self.processor(
                     text=[text_prompt],
@@ -156,10 +156,7 @@ class Optimum_Image2TextCore:
                     return_tensors="pt"
                 )
             
-            # Record input token count
-            self.performance_metrics.input_tokens = len(inputs.input_ids[0])
-            
-            # Initialize the streamer
+
             streamer = TextIteratorStreamer(
                 self.processor.tokenizer, 
                 skip_prompt=True, 
@@ -181,19 +178,40 @@ class Optimum_Image2TextCore:
             
             # Create and start the generation thread
             thread = threading.Thread(target=self.model.generate, kwargs=generation_kwargs)
+            
+            first_token_received = False
+            first_token_time = 0.0
+            generate_start = time.perf_counter()
             thread.start()
             
+            new_text = ""
             # Stream the generated text
-            token_count = 0
-            for new_text in streamer:
-                token_count += 1
-                yield new_text
-                # Small delay to prevent blocking the event loop
-                await asyncio.sleep(0.001)
+            for new_token in streamer:
+                new_text += new_token
+                if not first_token_received:
+                    first_token_time = time.perf_counter()
+                    ttft = first_token_time - generate_start
+                    first_token_received = True
+                yield new_token, {"ttft": ttft}
+
+            thread.join()
+            generate_end = time.perf_counter()
+
+            generation_time = generate_end - generate_start
+            num_tokens_generated = len(self.processor.tokenizer.encode(new_text, return_tensors="pt")[0]) - inputs.input_ids.shape[1]
             
-            # Update performance metrics
-            self.performance_metrics.new_tokens = token_count
-            self.performance_metrics.generation_time = time.time() - start_time
+            if generation_time > 0 and num_tokens_generated > 0:
+                tokens_per_second = num_tokens_generated / generation_time
+                average_token_latency = generation_time / num_tokens_generated  
+                performance_metrics = {
+                    "ttft": round(ttft, 2),
+                    "generation_time": round(generation_time, 2),
+                    "tokens_per_second": round(tokens_per_second, 2),
+                    "average_token_latency": round(average_token_latency, 2),
+                    "num_tokens_generated": num_tokens_generated,
+                }
+                yield new_text, performance_metrics
+                
             
         except Exception as e:
             print(f"Error during vision generation: {str(e)}")
@@ -203,15 +221,6 @@ class Optimum_Image2TextCore:
         finally:
             if 'thread' in locals():
                 thread.join()
-
-    def get_performance_metrics(self) -> OV_PerformanceConfig:
-        """
-        Get the performance metrics from the last generation.
-        
-        Returns:
-            Performance metrics object
-        """
-        return self.performance_metrics
 
     def util_unload_model(self):
         """Unload model and free memory"""

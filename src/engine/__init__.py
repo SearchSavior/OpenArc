@@ -1,8 +1,7 @@
 from src.engine.optimum.optimum_base_config import (
     OV_Config,
     OV_LoadModelConfig,
-    OV_GenerationConfig,
-    OV_PerformanceConfig,
+    OV_GenerationConfig
 )
 
 from src.engine.optimum.optimum_text2text import Optimum_Text2TextCore
@@ -12,7 +11,6 @@ __all__ = [
     "OV_Config",
     "OV_LoadModelConfig",
     "OV_GenerationConfig",
-    "OV_PerformanceConfig",
     "Optimum_Text2TextCore",
     "Optimum_Image2TextCore"
 ]
