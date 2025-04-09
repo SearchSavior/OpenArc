@@ -1,6 +1,7 @@
 import gc
 import time
 import traceback
+import logging
 from threading import Thread
 from typing import Any, AsyncIterator, Dict, Optional
 
@@ -13,6 +14,9 @@ from .optimum_base_config import (
     OV_GenerationConfig,
     OV_LoadModelConfig,
 )
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class Optimum_Text2TextCore:
     """
@@ -79,13 +83,8 @@ class Optimum_Text2TextCore:
                 - num_tokens_generated: Number of tokens generated
         """
 
-        performance_metrics = {
-            "ttft": None,
-            "generation_time": None,    
-            "tokens_per_second": None,
-            "average_token_latency": None,
-            "num_tokens_generated": None,
-        }
+        performance_metrics = {}
+        new_text = ""
 
         try:
             # Convert conversation to input ids using the chat template
@@ -120,7 +119,6 @@ class Optimum_Text2TextCore:
             generate_start = time.perf_counter()
             thread.start()
 
-            new_text = ""
             # Stream the generated text
             for new_token in streamer:
                 new_text += new_token
@@ -128,7 +126,6 @@ class Optimum_Text2TextCore:
                     first_token_time = time.perf_counter()
                     ttft = first_token_time - generate_start
                     first_token_received = True
-                yield new_token, {"ttft": ttft}
 
             thread.join()
             generate_end = time.perf_counter()
@@ -147,11 +144,12 @@ class Optimum_Text2TextCore:
                     "average_token_latency": round(average_token_latency, 2),
                     "num_tokens_generated": num_tokens_generated,
                 }
-            
-            yield new_text, performance_metrics
+
+
+            yield new_text, performance_metrics  # Yield the final text and metrics
 
         except Exception as e:
-            print(f"Error during streaming generation: {str(e)}")
+            logger.error(f"Error during streaming generation: {str(e)}")
             traceback.print_exc()
             raise
 

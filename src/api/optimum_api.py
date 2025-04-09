@@ -221,7 +221,7 @@ async def openai_chat_completions(request: ChatCompletionRequest):
 
         if request.stream:
             async def stream_generator():
-                final_metrics = None
+                current_metrics = None
                 try:
                     # Route to the appropriate stream generator based on model type
                     if model_instance.model_metadata["model_type"] == ModelType.VISION:
@@ -230,9 +230,9 @@ async def openai_chat_completions(request: ChatCompletionRequest):
                         stream_method = model_instance.generate_stream
                         
                     async for token, performance_metrics in stream_method(generation_config):
-                        # Save the latest metrics (will be the final ones at the end)
-                        if performance_metrics and "generation_time" in performance_metrics:
-                            final_metrics = performance_metrics
+                        # Replace current_metrics with the latest performance_metrics
+                        if performance_metrics:
+                            current_metrics = performance_metrics
                         # Only stream the token, don't log metrics here
                         escaped_token = json.dumps(token)[1:-1]
                         yield f"data: {{\"object\": \"chat.completion.chunk\", \"choices\": [{{\"delta\": {{\"content\": \"{escaped_token}\"}}}}]}}\n\n"
@@ -240,8 +240,8 @@ async def openai_chat_completions(request: ChatCompletionRequest):
                 except Exception as e:
                     print(f"Error during streaming: {str(e)}")
                 finally:
-                    if final_metrics:
-                        logger.info(f"Performance metrics: {final_metrics}")
+                    if current_metrics:
+                        logger.info(f"Performance metrics: {current_metrics}")
                     yield "data: [DONE]\n\n"
 
             return StreamingResponse(stream_generator(), media_type="text/event-stream")
