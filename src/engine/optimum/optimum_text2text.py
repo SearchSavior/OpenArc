@@ -13,6 +13,7 @@ from .optimum_base_config import (
     OV_Config,
     OV_GenerationConfig,
     OV_LoadModelConfig,
+    ModelType
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -37,6 +38,10 @@ class Optimum_Text2TextCore:
         self.ov_config = ov_config
         self.model = None
         self.tokenizer = None
+        self.model_metadata = {
+            "model_type": ModelType.TEXT,
+            "id_model": load_model_config.id_model
+        }
 
     def load_model(self):
         """Load the tokenizer and model."""
@@ -62,18 +67,17 @@ class Optimum_Text2TextCore:
         self.tokenizer = AutoTokenizer.from_pretrained(self.load_model_config.id_model)
         print("Tokenizer loaded successfully.")
 
-    async def generate_stream(self, generation_config: OV_GenerationConfig) -> AsyncIterator[tuple[str, Dict[str, Any]]]:
+    async def generate_stream(self, generation_config: OV_GenerationConfig) -> AsyncIterator[tuple[Optional[str], Optional[Dict[str, Any]]]]:
         """
-        Asynchronously stream generated text tokens along with performance metrics.
-        
+        Asynchronously stream generated text tokens, followed by performance metrics.
+
         Args:
             generation_config: Configuration for text generation containing conversation history
                              and generation parameters
-        
-        Yields:
-            Tuple of (new_text, performance_metrics)
 
-            new_text: Generated text tokens as they become available
+        Yields:
+            - Tuple of (token, None) for each generated token.
+            - Tuple of (None, performance_metrics) once at the end.
 
             performance_metrics contains
                 - ttft: Time to first token
@@ -116,23 +120,26 @@ class Optimum_Text2TextCore:
             
             first_token_received = False
             first_token_time = 0.0
+            ttft = 0.0 # Initialize ttft
             generate_start = time.perf_counter()
             thread.start()
 
-            # Stream the generated text
+            # Stream the generated text tokens
             for new_token in streamer:
-                new_text += new_token
                 if not first_token_received:
                     first_token_time = time.perf_counter()
                     ttft = first_token_time - generate_start
                     first_token_received = True
+                new_text += new_token
+                yield new_token, None # Yield token, no metrics yet
 
             thread.join()
             generate_end = time.perf_counter()
-            
+
             generation_time = generate_end - generate_start
-            num_tokens_generated = len(self.tokenizer.encode(new_text, return_tensors="pt")[0]) - input_ids.shape[1]
-            
+            # Calculate num_tokens_generated based on the final accumulated text
+            num_tokens_generated = len(self.tokenizer.encode(new_text, return_tensors="pt")[0])
+
             if generation_time > 0 and num_tokens_generated > 0:
                 tokens_per_second = num_tokens_generated / generation_time
                 average_token_latency = generation_time / num_tokens_generated
@@ -145,8 +152,8 @@ class Optimum_Text2TextCore:
                     "num_tokens_generated": num_tokens_generated,
                 }
 
-
-            yield new_text, performance_metrics  # Yield the final text and metrics
+            # Yield final metrics after streaming tokens
+            yield None, performance_metrics
 
         except Exception as e:
             logger.error(f"Error during streaming generation: {str(e)}")
@@ -155,17 +162,17 @@ class Optimum_Text2TextCore:
 
     def generate_text(self, generation_config: OV_GenerationConfig) -> tuple[str, Dict[str, Any]]:
         """
-        Generate text without streaming and track performance metrics.
-        
+        Generate text without streaming.
+        (Note: This implementation currently doesn't calculate/return metrics)
+
         Args:
             generation_config: Configuration for text generation containing conversation history
                              and generation parameters
         Returns:
-            Tuple of (generated_text)
+            Tuple of (generated_text, performance_metrics)
         """
+        performance_metrics = {}
         try:
-
-            # Generate input ids
             input_ids = self.tokenizer.apply_chat_template(
                 generation_config.conversation,
                 tokenize=True,
@@ -173,7 +180,6 @@ class Optimum_Text2TextCore:
                 return_tensors="pt"
             )
 
-            # Create generation kwargs from config
             generation_kwargs = dict(
                 input_ids=input_ids,
                 max_new_tokens=generation_config.max_new_tokens,
@@ -185,16 +191,33 @@ class Optimum_Text2TextCore:
                 num_return_sequences=generation_config.num_return_sequences,
             )
 
-            # Generate outpus from the model
+
+            generate_start = time.perf_counter()
+
             outputs = self.model.generate(**generation_kwargs)
-            
+
+            generate_end = time.perf_counter()
+
             # Extract new tokens by excluding the input tokens
             new_tokens = outputs[0][input_ids.shape[1]:]
-            
-            # Decode the generated tokens
+
             generated_text = self.tokenizer.decode(new_tokens, skip_special_tokens=True)
-            
-            return generated_text
+
+            generation_time = generate_end - generate_start
+            num_tokens_generated = len(new_tokens)
+
+            if generation_time > 0 and num_tokens_generated > 0:
+                tokens_per_second = num_tokens_generated / generation_time
+                average_token_latency = generation_time / num_tokens_generated
+
+                performance_metrics = {
+                    "generation_time": round(generation_time, 2),
+                    "tokens_per_second": round(tokens_per_second, 2),
+                    "average_token_latency": round(average_token_latency, 2),
+                    "num_tokens_generated": num_tokens_generated,
+                }
+
+            return generated_text, performance_metrics
 
         except Exception as e:
             print(f"Error during text generation: {str(e)}")
@@ -211,7 +234,3 @@ class Optimum_Text2TextCore:
         
         gc.collect()
         print("Model unloaded and memory cleaned up")
-
- 
-        
-        

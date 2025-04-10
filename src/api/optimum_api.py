@@ -228,20 +228,22 @@ async def openai_chat_completions(request: ChatCompletionRequest):
                         stream_method = model_instance.generate_vision_stream
                     elif model_instance.model_metadata["model_type"] == ModelType.TEXT:
                         stream_method = model_instance.generate_stream
-                        
-                    async for token, performance_metrics in stream_method(generation_config):
-                        # Replace current_metrics with the latest performance_metrics
-                        if performance_metrics:
-                            current_metrics = performance_metrics
-                        # Only stream the token, don't log metrics here
-                        escaped_token = json.dumps(token)[1:-1]
-                        yield f"data: {{\"object\": \"chat.completion.chunk\", \"choices\": [{{\"delta\": {{\"content\": \"{escaped_token}\"}}}}]}}\n\n"
+
+                    async for token_chunk, metrics_chunk in stream_method(generation_config):
+                        if token_chunk is not None:
+                            # Stream the token chunk
+                            escaped_token = json.dumps(token_chunk)[1:-1]
+                            yield f"data: {{\"object\": \"chat.completion.chunk\", \"choices\": [{{\"delta\": {{\"content\": \"{escaped_token}\"}}}}]}}\n\n"
+                        if metrics_chunk is not None:
+                            # Store the final metrics when received
+                            current_metrics = metrics_chunk
 
                 except Exception as e:
-                    print(f"Error during streaming: {str(e)}")
+                    logger.error(f"Error during streaming: {str(e)}", exc_info=True) # Log traceback
                 finally:
                     if current_metrics:
-                        logger.info(f"Performance metrics: {current_metrics}")
+                        # Log the full metrics dictionary as structured JSON
+                        logger.info(f"Performance metrics: {json.dumps(current_metrics, indent=2)}")
                     yield "data: [DONE]\n\n"
 
             return StreamingResponse(stream_generator(), media_type="text/event-stream")
@@ -255,7 +257,11 @@ async def openai_chat_completions(request: ChatCompletionRequest):
                 generated_text, metrics = model_instance.generate_text(generation_config)
             else:
                 raise HTTPException(status_code=400, detail=f"Unsupported model type '{model_type}' for chat completions.")
-            
+
+            # Log metrics server-side for non-streaming requests
+            if metrics:
+                 logger.info(f"Performance metrics (non-streaming): {json.dumps(metrics, indent=2)}")
+
             return JSONResponse(content={
                 "id": f"ov-{uuid.uuid4()}",
                 "object": "chat.completion",
@@ -265,10 +271,13 @@ async def openai_chat_completions(request: ChatCompletionRequest):
                     "message": {"role": "assistant", "content": generated_text},
                     "finish_reason": "length"
                 }],
+                # Include the full performance metrics dict here
+                "performance": metrics,
+                # Keep timings for token counts (if available, otherwise they'll be 0)
                 "timings": {
-                    "prompt_tokens": metrics.get("input_tokens", 0),
-                    "completion_tokens": metrics.get("output_tokens", 0),
-                    "total_tokens": metrics.get("input_tokens", 0) + metrics.get("output_tokens", 0)
+                    "prompt_tokens": metrics.get("input_tokens", 0), # Note: input_tokens not calculated yet
+                    "completion_tokens": metrics.get("num_tokens_generated", 0),
+                    "total_tokens": metrics.get("input_tokens", 0) + metrics.get("num_tokens_generated", 0)
                 }
             })
 
