@@ -10,7 +10,7 @@ ov_config = {"PERFORMANCE_HINT": "LATENCY"}
 
 print("Loading model...")
 start_load_time = time.time()
-model = OVModelForVisualCausalLM.from_pretrained(model_id, export=False, device="GPU.2", ov_config=ov_config)
+model = OVModelForVisualCausalLM.from_pretrained(model_id, export=False, device="GPU.1", ov_config=ov_config)
 processor = AutoProcessor.from_pretrained(model_id)
 
 
@@ -23,7 +23,7 @@ conversation = [
         "role": "user",
         "content": [
             {
-                "image": image
+                "type": "image"
             },
             {"type": "text", "text": "Describe this image."},
         ],
@@ -60,3 +60,5 @@ print(f"Model Load Time     : {load_time:>9.2f} sec")
 print(f"Generation Time     : {generation_time:>9.2f} sec")
 print(f"Throughput          : {tokens_per_second:>9.2f} t/s")
 print(f"Avg Latency/Token   : {average_token_latency:>9.3f} sec")
+
+print(output_text)

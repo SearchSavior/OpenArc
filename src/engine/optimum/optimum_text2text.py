@@ -131,7 +131,7 @@ class Optimum_Text2TextCore:
                     ttft = first_token_time - generate_start
                     first_token_received = True
                 new_text += new_token
-                yield new_token, None # Yield token, no metrics yet
+                yield new_token, None
 
             thread.join()
             generate_end = time.perf_counter()

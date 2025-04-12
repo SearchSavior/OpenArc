@@ -14,7 +14,8 @@ from transformers import AutoProcessor, TextIteratorStreamer
 from .optimum_base_config import (
     OV_Config,
     OV_GenerationConfig,
-    OV_LoadModelConfig
+    OV_LoadModelConfig, 
+    ModelType
 )
 
 # Suppress specific deprecation warnings from optimum implementation of numpy arrays
@@ -42,6 +43,10 @@ class Optimum_Image2TextCore:
         self.ov_config = ov_config
         self.model = None
         self.processor = None
+        self.model_metadata = {
+            "model_type": ModelType.VISION,
+            "id_model": load_model_config.id_model
+        }
 
     def load_model(self):
         """Load the tokenizer and vision model."""
@@ -98,7 +103,7 @@ class Optimum_Image2TextCore:
             raise ValueError("Model not loaded. Call load_model first.")
         
         try:
-
+            performance_metrics = {}
             images = []
             text_conversation = []
             
@@ -181,28 +186,32 @@ class Optimum_Image2TextCore:
             
             first_token_received = False
             first_token_time = 0.0
+            ttft = 0.0
+            num_tokens_generated = 0  # Initialize token counter
             generate_start = time.perf_counter()
             thread.start()
             
             new_text = ""
             # Stream the generated text
             for new_token in streamer:
+                num_tokens_generated += 1  # Increment token count
                 new_text += new_token
                 if not first_token_received:
                     first_token_time = time.perf_counter()
                     ttft = first_token_time - generate_start
                     first_token_received = True
-                yield new_token, {"ttft": ttft}
+                new_text += new_token
+                yield new_token, None
 
             thread.join()
             generate_end = time.perf_counter()
-
+            # Calculate num_tokens_generated based on the final accumulated text
             generation_time = generate_end - generate_start
-            num_tokens_generated = len(self.processor.tokenizer.encode(new_text, return_tensors="pt")[0]) - inputs.input_ids.shape[1]
             
             if generation_time > 0 and num_tokens_generated > 0:
                 tokens_per_second = num_tokens_generated / generation_time
                 average_token_latency = generation_time / num_tokens_generated  
+                
                 performance_metrics = {
                     "ttft": round(ttft, 2),
                     "generation_time": round(generation_time, 2),
@@ -210,7 +219,8 @@ class Optimum_Image2TextCore:
                     "average_token_latency": round(average_token_latency, 2),
                     "num_tokens_generated": num_tokens_generated,
                 }
-                yield new_text, performance_metrics
+
+            yield new_text, performance_metrics
                 
             
         except Exception as e:

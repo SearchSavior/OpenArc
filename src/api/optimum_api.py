@@ -249,10 +249,11 @@ async def openai_chat_completions(request: ChatCompletionRequest):
             return StreamingResponse(stream_generator(), media_type="text/event-stream")
 
         else:
-            # For non-streaming responses, use the appropriate generate method
+            # For non-streaming responses, use the appropriate generate method based on model type
             model_type = model_instance.model_metadata["model_type"]
             if model_type == ModelType.VISION:
-                generated_text, metrics = model_instance.generate_text(generation_config)
+                # Call the new vision-specific non-streaming method
+                generated_text, metrics = model_instance.generate_vision_text(generation_config)
             elif model_type == ModelType.TEXT:
                 generated_text, metrics = model_instance.generate_text(generation_config)
             else:
@@ -273,11 +274,11 @@ async def openai_chat_completions(request: ChatCompletionRequest):
                 }],
                 # Include the full performance metrics dict here
                 "performance": metrics,
-                # Keep timings for token counts (if available, otherwise they'll be 0)
+                # Use the metrics calculated by the engine (input_tokens for image, output_tokens for generated)
                 "timings": {
-                    "prompt_tokens": metrics.get("input_tokens", 0), # Note: input_tokens not calculated yet
-                    "completion_tokens": metrics.get("num_tokens_generated", 0),
-                    "total_tokens": metrics.get("input_tokens", 0) + metrics.get("num_tokens_generated", 0)
+                    "prompt_tokens": metrics.get("input_tokens", 0), # This now represents image tokens for VISION
+                    "completion_tokens": metrics.get("output_tokens", 0),
+                    "total_tokens": metrics.get("input_tokens", 0) + metrics.get("output_tokens", 0)
                 }
             })
 
