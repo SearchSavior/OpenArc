@@ -161,7 +161,6 @@ class Optimum_Image2TextCore:
                     return_tensors="pt"
                 )
             
-
             streamer = TextIteratorStreamer(
                 self.processor.tokenizer, 
                 skip_prompt=True, 
@@ -181,20 +180,18 @@ class Optimum_Image2TextCore:
                 streamer=streamer
             )
             
-            # Create and start the generation thread
             thread = threading.Thread(target=self.model.generate, kwargs=generation_kwargs)
             
             first_token_received = False
             first_token_time = 0.0
             ttft = 0.0
-            num_tokens_generated = 0  # Initialize token counter
+            num_tokens_generated = 0
             generate_start = time.perf_counter()
             thread.start()
             
             new_text = ""
-            # Stream the generated text
             for new_token in streamer:
-                num_tokens_generated += 1  # Increment token count
+                num_tokens_generated += 1
                 new_text += new_token
                 if not first_token_received:
                     first_token_time = time.perf_counter()
@@ -205,7 +202,6 @@ class Optimum_Image2TextCore:
 
             thread.join()
             generate_end = time.perf_counter()
-            # Calculate num_tokens_generated based on the final accumulated text
             generation_time = generate_end - generate_start
             
             if generation_time > 0 and num_tokens_generated > 0:
@@ -220,7 +216,7 @@ class Optimum_Image2TextCore:
                     "num_tokens_generated": num_tokens_generated,
                 }
 
-            yield new_text, performance_metrics
+            yield None, performance_metrics
                 
             
         except Exception as e:

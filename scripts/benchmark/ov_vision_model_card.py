@@ -4,7 +4,7 @@ from transformers import AutoProcessor
 from optimum.intel.openvino import OVModelForVisualCausalLM
 
 
-model_id = "/mnt/Ironwolf-4TB/Models/Pytorch/Qwen2.5-VL-7B-Instruct-int4_sym-ov"
+model_id = "/mnt/Ironwolf-4TB/Models/Pytorch/gemma-3-4b-it-int4_asym-ov"
 
 ov_config = {"PERFORMANCE_HINT": "LATENCY"}
 
@@ -41,7 +41,7 @@ print(f"Input token length: {len(inputs.input_ids[0])}")
 
 # Inference: Generation of the output with performance metrics
 start_time = time.time()
-output_ids = model.generate(**inputs, max_new_tokens=1024)
+output_ids = model.generate(**inputs, max_new_tokens=1024, eos_token_id=700)
 
 generated_ids = [output_ids[len(input_ids) :] for input_ids, output_ids in zip(inputs.input_ids, output_ids)]
 output_text = processor.batch_decode(generated_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True)
