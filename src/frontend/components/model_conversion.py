@@ -417,13 +417,12 @@ class ConversionTool:
             Use the arguments below to configure the export process based on the OpenVINO exporter documentation.
             Then run the generated command in the terminal where your OpenArc environment is activated.
             """,
-            # article=INTRODUCTION, # Assuming INTRODUCTION is defined elsewhere or commented out
             flagging_mode='auto' # Keep or remove based on preference
         )
 
         return interface
 
-# Example usage (optional, keep commented out for library use)
+
 # if __name__ == "__main__":
 #     tool = ConversionTool()
 #     app = tool.gradio_app()

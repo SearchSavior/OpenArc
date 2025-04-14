@@ -12,10 +12,10 @@ from PIL import Image
 from transformers import AutoProcessor, TextIteratorStreamer
 
 from .optimum_base_config import (
+    ModelType,
     OV_Config,
     OV_GenerationConfig,
-    OV_LoadModelConfig, 
-    ModelType
+    OV_LoadModelConfig,
 )
 
 # Suppress specific deprecation warnings from optimum implementation of numpy arrays

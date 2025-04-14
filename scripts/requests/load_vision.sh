@@ -6,7 +6,7 @@ API_URL="http://localhost:8000/optimum/model/load"
 # JSON payload
 JSON_PAYLOAD='{
     "load_config": {
-        "id_model": "/mnt/Ironwolf-4TB/Models/Pytorch/Qwen2.5-VL-7B-Instruct-int4_sym-ov",
+        "id_model": "/mnt/Ironwolf-4TB/Models/Pytorch/gemma-3-4b-it-int4_asym-ov",
         "use_cache": true,
         "device": "GPU.2",
         "export_model": false,

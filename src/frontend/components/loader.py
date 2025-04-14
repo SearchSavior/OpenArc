@@ -1,5 +1,3 @@
-
-
 from pathlib import Path
 import gradio as gr
 import json
@@ -57,21 +55,6 @@ class Optimum_Loader:
         except Exception as e:
             return {"error": f"Error reading generation config: {str(e)}"}  
         
-    def read_tokenizer_config(self, id_model):
-        """Read the tokenizer config file from the model directory and display it in the dashboard as a JSON object.
-        It might be overkill to include this file in the dashboard, but it's included for completeness.
-        OpenArc's goal is to be as flexible as working inside of a script; in that inference scenario you would invedtigate these values and hardcode them.
-        Therefore it would not matter if the tokenizer config matches a standardized format for different models. To make OpenArc more scalable, we account for this.
-        """
-        try:
-            model_path = Path(id_model)
-            tokenizer_config_path = model_path / "tokenizer_config.json"    
-            
-            if tokenizer_config_path.exists():
-                return json.loads(tokenizer_config_path.read_text())
-            return {"message": f"No tokenizer_config.json found in {str(tokenizer_config_path)}"}
-        except Exception as e:
-            return {"error": f"Error reading tokenizer config: {str(e)}"}   
         
     def create_interface(self):
         with gr.Tab("Loader"):
@@ -111,10 +94,10 @@ class Optimum_Loader:
                         value=True,
                         info="Whether to use dynamic shapes. Default is True. Should only be disabled for NPU inference."
                     ),
-                    'is_vision_model': gr.Checkbox(
-                        label="Is Vision Model",
-                        value=False,
-                        info="Whether the model is a vision model. Default is False."
+                    'model_type': gr.Dropdown(
+                        label="Model Type",
+                        choices=["TEXT", "VISION"],
+                        info="Defines the type of model to load. No default; must be specified."
                     )
                 })
 
@@ -176,7 +159,6 @@ class Optimum_Loader:
             with gr.Row():
                 self.components.update({
                     'load_button': gr.Button("Load Model", variant="primary"),
-                    'unload_button': gr.Button("Unload Model", variant="secondary"),
                     'status_button': gr.Button("Check Status", variant="secondary")
                 })
 
@@ -204,12 +186,6 @@ class Optimum_Loader:
                     value={"message": "Generation config will appear here when model path is entered..."},
                 )   
 
-            with gr.Accordion("Tokenizer Config", open=True):
-                self.components['tokenizer_config_viewer'] = gr.JSON(
-                    label="Tokenizer Configuration",
-                    value={"message": "Tokenizer config will appear here when model path is entered..."},
-                )   
-
     def setup_button_handlers(self):
         self.build_load_request()
         
@@ -232,12 +208,6 @@ class Optimum_Loader:
             outputs=[self.components['generation_config_viewer']]
         )
 
-        self.components['id_model'].change(
-            fn=self.read_tokenizer_config,
-            inputs=[self.components['id_model']],
-            outputs=[self.components['tokenizer_config_viewer']]
-        )
-        
     def build_load_request(self):
         self.components['load_button'].click(
             fn=self.payload_constructor.load_model,
@@ -245,17 +215,11 @@ class Optimum_Loader:
                 self.components[key] for key in [
                     'id_model', 'device', 'use_cache', 'export_model',
                     'num_streams', 'performance_hint', 'precision_hint',
-                    'is_vision_model',
+                    'model_type',
                     'bos_token_id', 'eos_token_id', 'pad_token_id',
                     'enable_hyperthreading', 'inference_num_threads', 'dynamic_shapes'
                 ]
             ],
-            outputs=[self.components['debug_log']]
-        )
-        
-        self.components['unload_button'].click(
-            fn=self.payload_constructor.unload_model,
-            inputs=None,
             outputs=[self.components['debug_log']]
         )
 

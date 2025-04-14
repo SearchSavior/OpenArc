@@ -4,6 +4,11 @@ from ..tools.device_query import DeviceDataQuery, DeviceDiagnosticQuery
 
 
 class DeviceInfoTool:
+    """
+    This class is used to get information about the devices available on the system.
+    It uses tools from the Openvino runtime directly to get the information and is not part of 
+    Optimum-Intel or OpenVINO GenAI.
+    """
     def __init__(self):
         self.device_data_query = DeviceDataQuery()
         self.device_diagnostic_query = DeviceDiagnosticQuery()

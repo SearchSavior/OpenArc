@@ -2,9 +2,15 @@ import gradio as gr
 from pathlib import Path
 
 class OpenArc_Documentation:
+    """
+    The idea of this class is to help keep the documentation organized in a way that will be easy to migrate
+    to a new frontend in the future.
+    Also, keeping everything in its own md file is probably better for searchability from outside GitHub.
+    """
+    
     def __init__(self):
         self.doc_components = {}
-        # Organize documentation files into categories
+
         self.doc_categories = {
             "Performance Hints": [
                 "LATENCY",
