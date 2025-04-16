@@ -16,7 +16,6 @@ def start_server(host: str = "0.0.0.0", openarc_port: int = 8000, reload: bool =
     Args:
         host: Host to bind the server to
         port: Port to bind the server to
-        reload: Whether to enable auto-reload on code changes
     """
     logger.info(f"Starting OpenVINO Inference API server on {host}:{openarc_port}")
     logger.info("Available endpoints:")
@@ -33,6 +32,5 @@ def start_server(host: str = "0.0.0.0", openarc_port: int = 8000, reload: bool =
         "src.api.optimum_api:app",
         host=host,
         port=openarc_port,
-        reload=reload,
         log_level="info"
     )

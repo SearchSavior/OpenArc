@@ -87,7 +87,7 @@ class OV_GenerationConfig(BaseModel):
     top_k: int = Field(50, description="Top-k sampling parameter")
     top_p: float = Field(0.9, description="Top-p sampling parameter")
     repetition_penalty: float = Field(1.0, description="Repetition penalty")
-    do_sample: bool = Field(False, description="Use sampling for generation")
+    do_sample: bool = Field(True, description="Use sampling for generation")
     num_return_sequences: int = Field(1, description="Number of sequences to return")
 
 def create_optimum_model(load_model_config: OV_LoadModelConfig, ov_config: Optional[OV_Config] = None):
