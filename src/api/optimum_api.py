@@ -125,7 +125,7 @@ class ChatCompletionRequest(BaseModel):
     messages: Any
     model: str = "default"
     temperature: Optional[float] = None
-    max_tokens: Optional[int] = None
+    max_tokens: Optional[int] = 8192
     stream: Optional[bool] = False
     stop: Optional[List[str]] = None
     top_p: Optional[float] = None
