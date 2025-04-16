@@ -12,7 +12,8 @@ Sister repo for Projects using OpenArc: [OpenArcProjects](https://github.com/Sea
 Under the hood it's a strongly typed fastAPI implementation over a growing collection of Transformers integrated AutoModel classes from Optimum-Intel enabling inference on a wide range of tasks, models and source frameworks.
 
 OpenArc currently supports text generation and text generation with vision. Support for speculative decoding, generating embeddings, speech tasks, image generation, PaddleOCR, and others are planned.
-Currently implemented:
+
+## Currently implemented:
 
 [OVModelForCausalLM](https://github.com/huggingface/optimum-intel/blob/main/optimum/intel/openvino/modeling_decoder.py#L422)
 
@@ -194,9 +195,9 @@ Example:
     http://0.0.0.0:8000/v1
 
 - Here you need to set the API key manually
-- When you hit the refresh button OpenWebUI sends a GET request to the OpenArc server to get the list of models
+- When you hit the refresh button OpenWebUI sends a GET request to the OpenArc server to get the list of models at v1/models
 
-In the uvicorn logs where the server is running this request should report:
+Serverside logs should report:
 			
 	"GET /v1/models HTTP/1.1" 200 OK
 
@@ -204,6 +205,7 @@ In the uvicorn logs where the server is running this request should report:
 
 - Load the model you want to use from the dashboard
 - Select the connection you just created and use the refresh button to update the list of models
+- if you use API keys and have a list of models these might be towards the bottom
 
 ## Convert to [OpenVINO IR](https://docs.openvino.ai/2025/documentation/openvino-ir-format.html)
 
@@ -232,7 +234,6 @@ This tool respects the positional arguments defined [here](https://huggingface.c
 | [DeepSeek-R1-Distill-Qwen-14B-int4-awq-ov](https://huggingface.co/Echo9Zulu/DeepSeek-R1-Distill-Qwen-14B-int4-awq-ov/tree/main)             | 7.68 GB            |
 | [Phi-4-o1-int4_asym-awq-weight_quantization_error-ov](https://huggingface.co/Echo9Zulu/Phi-4-o1-int4_asym-awq-weight_quantization_error-ov) | 8.11 GB            |
 | [Mistral-Small-24B-Instruct-2501-int4_asym-ov](https://huggingface.co/Echo9Zulu/Mistral-Small-24B-Instruct-2501-int4_asym-ov)		| 12.9 GB	     |	
-| [Qwen2.5-72B-Instruct-int4-ns-ov](https://huggingface.co/Echo9Zulu/Qwen2.5-72B-Instruct-int4-ns-ov/tree/main)                              | 39 GB              |
 
 Documentation on choosing parameters for conversion is coming soon. 
 
@@ -311,7 +312,7 @@ Learn more about how to leverage your Intel devices for Machine Learning:
 
 ## Acknowledgments
 
-OpenArc stands on the shoulders of several other projects and I appreciate their work. 
+OpenArc stands on the shoulders of several other projects:
 
 [Optimum-Intel](https://github.com/huggingface/optimum-intel)
 
@@ -323,6 +324,7 @@ OpenArc stands on the shoulders of several other projects and I appreciate their
 
 [FastAPI](https://github.com/fastapi/fastapi)
 
+Thank for yoru work!!
 
 
 
