@@ -1,4 +1,3 @@
-
 from pydantic import BaseModel
 from typing import Optional
 import requests
@@ -39,13 +38,13 @@ class OVConfig(BaseModel):
     PERFORMANCE_HINT: Optional[str] = None
     ENABLE_HYPERTHREADING: Optional[bool] = None
     INFERENCE_NUM_THREADS: Optional[str] = None
-    PRECISION_HINT: Optional[str] = None
+    INFERENCE_PRECISION_HINT: Optional[str] = None
 
 class Payload_Constructor:
     def __init__(self):
         self.generation_config = {}
 
-    def load_model(self, id_model, device, use_cache, export_model, num_streams, performance_hint, precision_hint, model_type, bos_token_id, eos_token_id, pad_token_id, enable_hyperthreading, inference_num_threads, dynamic_shapes):
+    def load_model(self, id_model, device, use_cache, export_model, num_streams, performance_hint, inference_precision_hint, model_type, bos_token_id, eos_token_id, pad_token_id, enable_hyperthreading, inference_num_threads, dynamic_shapes):
         """
         Constructs and sends the load model request based on UI inputs
         
@@ -57,7 +56,7 @@ class Payload_Constructor:
             export_model (bool): Whether to export the model
             num_streams (str): Number of inference streams
             performance_hint (str): Performance optimization strategy
-            precision_hint (str): Model precision for computation
+            INFERENCE_PRECISION_HINT (str): Model precision for computation
             bos_token_id (str): BOS token ID
             eos_token_id (str): EOS token ID
             pad_token_id (str): PAD token ID
@@ -85,7 +84,7 @@ class Payload_Constructor:
             PERFORMANCE_HINT=performance_hint if performance_hint else None,
             ENABLE_HYPERTHREADING=enable_hyperthreading,
             INFERENCE_NUM_THREADS=inference_num_threads if inference_num_threads else None,
-            PRECISION_HINT=precision_hint if precision_hint else None
+            INFERENCE_PRECISION_HINT=inference_precision_hint if inference_precision_hint else None
         )
 
         try:

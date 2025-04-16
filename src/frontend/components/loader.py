@@ -136,7 +136,7 @@ class Optimum_Loader:
                         value="",
                         info="Select performance optimization strategy"
                     ),
-                    'precision_hint': gr.Dropdown(
+                    'inference_precision_hint': gr.Dropdown(
                         choices=["", "auto", "fp16", "fp32", "int8"],
                         label="Precision Hint",
                         value="",
@@ -214,7 +214,7 @@ class Optimum_Loader:
             inputs=[
                 self.components[key] for key in [
                     'id_model', 'device', 'use_cache', 'export_model',
-                    'num_streams', 'performance_hint', 'precision_hint',
+                    'num_streams', 'performance_hint', 'inference_precision_hint',
                     'model_type',
                     'bos_token_id', 'eos_token_id', 'pad_token_id',
                     'enable_hyperthreading', 'inference_num_threads', 'dynamic_shapes'

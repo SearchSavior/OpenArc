@@ -19,14 +19,14 @@ class OV_Config(BaseModel):
     args:
         NUM_STREAMS: Optional[str] = Field(None, description="Number of inference streams")
         PERFORMANCE_HINT: Optional[str] = Field(None, description="LATENCY, THROUGHPUT, CUMULATIVE_THROUGHPUT")
-        PRECISION_HINT: Optional[str] = Field(None, description="Options: auto, fp32, fp16, int8")
+        INFERENCE_PRECISION_HINT: Optional[str] = Field(None, description="Options: auto, fp32, fp16, int8")
         ENABLE_HYPER_THREADING: Optional[bool] = Field(None, description="Enable hyper-threading")
         INFERENCE_NUM_THREADS: Optional[int] = Field(None, description="Number of inference threads")
         SCHEDULING_CORE_TYPE: Optional[str] = Field(None, description="Options: ANY_CORE, PCORE_ONLY, ECORE_ONLY") 
     """
     NUM_STREAMS: Optional[str] = Field(None, description="Number of inference streams")
     PERFORMANCE_HINT: Optional[str] = Field(None, description="LATENCY, THROUGHPUT, CUMULATIVE_THROUGHPUT")
-    PRECISION_HINT: Optional[str] = Field(None, description="Options: auto, fp32, fp16, int8")
+    INFERENCE_PRECISION_HINT: Optional[str] = Field(None, description="Options: auto, fp32, fp16, int8")
     ENABLE_HYPER_THREADING: Optional[bool] = Field(None, description="Enable hyper-threading")
     INFERENCE_NUM_THREADS: Optional[int] = Field(None, description="Number of inference threads")
     SCHEDULING_CORE_TYPE: Optional[str] = Field(None, description="Options: ANY_CORE, PCORE_ONLY, ECORE_ONLY")
@@ -87,7 +87,7 @@ class OV_GenerationConfig(BaseModel):
     top_k: int = Field(50, description="Top-k sampling parameter")
     top_p: float = Field(0.9, description="Top-p sampling parameter")
     repetition_penalty: float = Field(1.0, description="Repetition penalty")
-    do_sample: bool = Field(True, description="Use sampling for generation")
+    do_sample: bool = Field(False, description="Use sampling for generation")
     num_return_sequences: int = Field(1, description="Number of sequences to return")
 
 def create_optimum_model(load_model_config: OV_LoadModelConfig, ov_config: Optional[OV_Config] = None):
@@ -128,18 +128,15 @@ def create_optimum_model(load_model_config: OV_LoadModelConfig, ov_config: Optio
         "pad_token_id": load_model_config.pad_token_id,
         "eos_token_id": load_model_config.eos_token_id,
         "bos_token_id": load_model_config.bos_token_id,
-        
-        # Model type (now using enum)
         "model_type": load_model_config.model_type,
     }
     
-    # Add OpenVINO configuration parameters if provided
     if ov_config:
         ov_config_dict = ov_config.model_dump(exclude_unset=True)
         model_instance.model_metadata.update({
             "NUM_STREAMS": ov_config_dict.get("NUM_STREAMS"),
             "PERFORMANCE_HINT": ov_config_dict.get("PERFORMANCE_HINT"),
-            "PRECISION_HINT": ov_config_dict.get("PRECISION_HINT"),
+            "INFERENCE_PRECISION_HINT": ov_config_dict.get("INFERENCE_PRECISION_HINT"),
             "ENABLE_HYPER_THREADING": ov_config_dict.get("ENABLE_HYPER_THREADING"),
             "INFERENCE_NUM_THREADS": ov_config_dict.get("INFERENCE_NUM_THREADS"),
             "SCHEDULING_CORE_TYPE": ov_config_dict.get("SCHEDULING_CORE_TYPE")

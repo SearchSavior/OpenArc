@@ -124,28 +124,29 @@ async def get_status():
 class ChatCompletionRequest(BaseModel):
     messages: Any
     model: str = "default"
-    temperature: Optional[float] = 0.7
-    max_tokens: Optional[int] = 4096
+    temperature: Optional[float] = None
+    max_tokens: Optional[int] = None
     stream: Optional[bool] = False
     stop: Optional[List[str]] = None
     top_p: Optional[float] = None
     top_k: Optional[int] = None
+    repetition_penalty: Optional[float] = None
+    do_sample: Optional[bool] = None
+    num_return_sequences: Optional[int] = None
 
-    #class Config:
-    #    extra = "ignore"
 
 class CompletionRequest(BaseModel):
     prompt: str
     model: str = "default"
-    temperature: Optional[float] = 0.7
-    max_tokens: Optional[int] = 4096
+    temperature: Optional[float] = None
+    max_tokens: Optional[int] = None
     stream: Optional[bool] = False
     stop: Optional[List[str]] = None
     top_p: Optional[float] = None
     top_k: Optional[int] = None
-
-    #class Config:
-    #    extra = "ignore"
+    repetition_penalty: Optional[float] = None
+    do_sample: Optional[bool] = None
+    num_return_sequences: Optional[int] = None  
 
 
 @app.get("/v1/models", dependencies=[Depends(verify_api_key)])
@@ -206,24 +207,29 @@ async def openai_chat_completions(request: ChatCompletionRequest):
                 for msg in request.messages
             ]
 
-        # Create generation config with conversation structure
-        generation_config = OV_GenerationConfig(
-            conversation=conversation,  # This matches the original working format
-            temperature=request.temperature or 0.7,
-            max_new_tokens=request.max_tokens, # Handles both max_tokens and max_new_tokens via alias
-            stop_sequences=request.stop or [],
-            top_p=request.top_p or 0.9,  # default value for top_p
-            top_k=request.top_k or 50,   # default value for top_k
-            repetition_penalty=1.0,
-            do_sample=True,
-            num_return_sequences=1
-        )
+        # Build config dict, only include non-None values
+        config_kwargs = {
+            "conversation": conversation,
+            "temperature": request.temperature,
+            "max_new_tokens": request.max_tokens,
+            "top_p": request.top_p,
+            "top_k": request.top_k,
+            "repetition_penalty": request.repetition_penalty,
+            "do_sample": request.do_sample,
+            "num_return_sequences": request.num_return_sequences,
+            "stream": request.stream,
+            # Note: stop_sequences is not part of OV_GenerationConfig, handled separately if needed
+        }
+        # Remove keys with value None
+        config_kwargs = {k: v for k, v in config_kwargs.items() if v is not None}
+
+        # Create generation config with filtered arguments
+        generation_config = OV_GenerationConfig(**config_kwargs)
 
         if request.stream:
             async def stream_generator():
                 current_metrics = None
                 try:
-                    # Route to the appropriate stream generator based on model type
                     if model_instance.model_metadata["model_type"] == ModelType.VISION:
                         stream_method = model_instance.generate_vision_stream
                     elif model_instance.model_metadata["model_type"] == ModelType.TEXT:
@@ -272,11 +278,9 @@ async def openai_chat_completions(request: ChatCompletionRequest):
                     "message": {"role": "assistant", "content": generated_text},
                     "finish_reason": "length"
                 }],
-                # Include the full performance metrics dict here
                 "performance": metrics,
-                # Use the metrics calculated by the engine (input_tokens for image, output_tokens for generated)
                 "timings": {
-                    "prompt_tokens": metrics.get("input_tokens", 0), # This now represents image tokens for VISION
+                    "prompt_tokens": metrics.get("input_tokens", 0),
                     "completion_tokens": metrics.get("output_tokens", 0),
                     "total_tokens": metrics.get("input_tokens", 0) + metrics.get("output_tokens", 0)
                 }

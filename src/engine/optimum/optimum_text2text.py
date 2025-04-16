@@ -47,7 +47,7 @@ class Optimum_Text2TextCore:
         """Load the tokenizer and model."""
         print(f"Loading model {self.load_model_config.id_model} on device {self.load_model_config.device}...")
 
-        # Extract its configuration as a dict
+        # Extract its configuration as a dict 
         ov_config_dict = self.ov_config.model_dump(exclude_unset=True) if self.ov_config else {}
         
         # Load model with token IDs from config
