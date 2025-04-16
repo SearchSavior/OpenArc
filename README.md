@@ -7,11 +7,11 @@ Sister repo for Projects using OpenArc: [OpenArcProjects](https://github.com/Sea
 > [!NOTE]
 > OpenArc is under active development. Expect breaking changes.
 
-**OpenArc** is an inference engine built with Optimum-Intel to leverage hardware acceleration on Intel CPUs, GPUs and NPUs through the OpenVINO runtime through it's strong integration with Huggingface Transformers.
+**OpenArc** is an inference engine built with Optimum-Intel to leverage hardware acceleration on Intel CPUs, GPUs and NPUs through OpenVINO runtime that integrates closely with Transformers. 
 
-Under the hood it's a strongly typed fastAPI implementation over a growing collection of Transformers integrated AutoModel classes from Optimum-Intel enabling inference on a wide range of models for different tasks which the OpenVINO runtime can accelerate. OpenArc can help developer build with LLMs on Intel devices in way that's easier than the approach I took to learning OpenVINO. Instead of an added integration
+Under the hood it's a strongly typed fastAPI implementation over a growing collection of Transformers integrated AutoModel classes from Optimum-Intel enabling inference on a wide range of tasks, models and source frameworks.
 
-OpenArc currently supports text generation and text generation with vision. Support for speculative decoding, generating embeddings, speech tasks, image generation, PaddleOCR and others are planned.
+OpenArc currently supports text generation and text generation with vision. Support for speculative decoding, generating embeddings, speech tasks, image generation, PaddleOCR, and others are planned.
 Currently implemented:
 
 [OVModelForCausalLM](https://github.com/huggingface/optimum-intel/blob/main/optimum/intel/openvino/modeling_decoder.py#L422)
@@ -21,14 +21,14 @@ Currently implemented:
 ## Features
 
 - OpenAI compatible endpoints
-- Validated OpenWebUI support
+- Validated OpenWebUI support, but it should work elsewhere
 - Load multiple vision/text models concurrently on multiple devices for hotswap.
 - **Most** HuggingFace text generation models
 - Growing set of vision capable LLMs:
     - Qwen2-VL 
-    - Qwen2.5-VL
-    - Validated collection
-- Gradio management dashboard
+    - Qwen2.5-VL 
+    - Gemma3
+### Gradio management dashboard
    - Load models with OpenVINO optimizations 
    - Build conversion commands
    - See loaded models
@@ -37,7 +37,13 @@ Currently implemented:
    - Query device properties
    - View tokenizer data
    - View architecture metadata from config.json
-
+### Performance metrics on every completion
+   - ttft: time to generate first token
+   - generation_time : time to generate the whole response
+   - number of tokens: total generated tokens for that request
+   - tokens per second: measures throughput.
+   - average token latency: helpful for optimizing zero shot classification tasks
+ 	  
 ## System Requirments 
 
 OpenArc has been built on top of the OpenVINO runtime; as a result OpenArc supports the same range of hardware **but requires device specifc drivers** this document will not cover in-depth.
@@ -244,7 +250,7 @@ Notes on the test:
 
 - No advanced openvino parameters were chosen
 - Fixed input length
-- Multi-turn scenarios were not evaluated i.e, I ran the basic prompt without follow ups
+- I sent one user message 
 - Quant strategies for models are not considered
 - I converted each of these models myself (I'm working on standardizing model cards to share this information more directly)
 - OpenVINO generates a cache on first inference so metrics are on second generation
