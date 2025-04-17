@@ -1,39 +1,41 @@
 # Welcome to OpenARC
 
-[![Discord](https://img.shields.io/discord/1341627368581628004?logo=Discord&logoColor=%23ffffff&label=Discord&link=https%3A%2F%2Fdiscord.gg%2FmaMY7QjG)](https://discord.gg/maMY7QjG)!
+[![Discord](https://img.shields.io/discord/1341627368581628004?logo=Discord&logoColor=%23ffffff&label=Discord&link=https%3A%2F%2Fdiscord.gg%2FmaMY7QjG)](https://discord.gg/maMY7QjG)
 
 Sister repo for Projects using OpenArc: [OpenArcProjects](https://github.com/SearchSavior/OpenArcProjects)
 
 > [!NOTE]
 > OpenArc is under active development. Expect breaking changes.
 
-**OpenArc** is an inference engine built with Optimum-Intel to leverage hardware acceleration on Intel CPUs, GPUs and NPUs through OpenVINO runtime that integrates closely with Transformers. 
+**OpenArc** is an inference engine built with Optimum-Intel to leverage hardware acceleration on Intel CPUs, GPUs and NPUs through OpenVINO runtime that integrates closely with Huggingface Transformers. 
 
-Under the hood OpenArc a strongly typed fastAPI implementation over a growing collection of Transformers integrated AutoModel classes from Optimum-Intel enabling inference on a wide range of tasks, models and source frameworks.
+Under the hood OpenArc implements fastAPI over a growing collection of Transformers integrated AutoModel classes from Optimum-Intel. These enable accelerating inference on a wide range of tasks, models and source frameworks.
 
 OpenArc currently supports text generation and text generation with vision. Support for speculative decoding, generating embeddings, speech tasks, image generation, PaddleOCR, and others are planned.
 
-## Currently implemented:
+Currently implemented:
 
 [OVModelForCausalLM](https://github.com/huggingface/optimum-intel/blob/main/optimum/intel/openvino/modeling_decoder.py#L422)
 
 [OVModelForVisualCausalLM](https://github.com/huggingface/optimum-intel/blob/main/optimum/intel/openvino/modeling_visual_language.py#L309)
 
+OpenArc enables a similar workflow to what's possible with Ollama, LM-Studio or OpenRouter but with hardware acceleration from OpenVINO C++ runtime.
+
 ## Features
 
 - OpenAI compatible endpoints
 - Validated OpenWebUI support, but it should work elsewhere
-- Load multiple vision/text models concurrently on multiple devices for hotswap.
+- Load multiple vision/text models concurrently on multiple devices for hotswap/multi agent workflows
 - **Most** HuggingFace text generation models
 - Growing set of vision capable LLMs:
     - Qwen2-VL 
     - Qwen2.5-VL 
-    - Gemma3
+    - Gemma 3
 ### Gradio management dashboard
    - Load models with OpenVINO optimizations 
    - Build conversion commands
    - See loaded models and chosen optimizations
-   - Unload models
+   - Unload models and view metadata about 
    - Query detected devices
    - Query device properties
    - View tokenizer data
@@ -235,7 +237,7 @@ This tool respects the positional arguments defined [here](https://huggingface.c
 | [Phi-4-o1-int4_asym-awq-weight_quantization_error-ov](https://huggingface.co/Echo9Zulu/Phi-4-o1-int4_asym-awq-weight_quantization_error-ov) | 8.11 GB            |
 | [Mistral-Small-24B-Instruct-2501-int4_asym-ov](https://huggingface.co/Echo9Zulu/Mistral-Small-24B-Instruct-2501-int4_asym-ov)		| 12.9 GB	     |	
 
-Documentation on choosing parameters for conversion is coming soon. 
+Documentation on choosing parameters for conversion is coming soon; we also have a channel in Discord for this topic. 
 
 > [!NOTE]
 > The optimum CLI tool integrates several different APIs from several different Intel projects; it is a better alternative than using APIs in from_pretrained() methods. 
@@ -246,18 +248,15 @@ Documentation on choosing parameters for conversion is coming soon.
 
 ## Performance with OpenVINO runtime
 
-
 Notes on the test:
 
-- No advanced openvino parameters were chosen
+- No openvino optimization parameters were used
 - Fixed input length
 - I sent one user message 
 - Quant strategies for models are not considered
 - I converted each of these models myself (I'm working on standardizing model cards to share this information more directly)
 - OpenVINO generates a cache on first inference so metrics are on second generation
 - Seconds were used for readability
-
-
 
 Test System:
 
@@ -270,7 +269,7 @@ OS: Ubuntu 24.04
 Kernel: 6.9.4-060904-generic
 
 Prompt: "We don't even have a chat template so strap in and let it ride!"
-
+max_new_tokens= 128
 ---
 
 ### GPU Performance: 1x Arc A770
