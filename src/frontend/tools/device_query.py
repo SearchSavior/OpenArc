@@ -2,7 +2,6 @@
 
 import openvino as ov
 import logging as log
-import sys
 
 class DeviceDiagnosticQuery:
     def __init__(self):
@@ -13,20 +12,13 @@ class DeviceDiagnosticQuery:
         """Returns a list of available OpenVINO devices."""
         return self.available_devices
 
-if __name__ == "__main__":
-    device_query = DeviceDiagnosticQuery()
-    print(device_query.get_available_devices())
+#if __name__ == "__main__":
+#    device_query = DeviceDiagnosticQuery()
+#    print(device_query.get_available_devices())
 
 
     # Device Query: 
 # Taken from https://github.com/openvinotoolkit/openvino/blob/master/samples/python/hello_query_device/hello_query_device.py
-
-
-import openvino as ov
-
-import logging as log
-import sys
-
 
 class DeviceDataQuery:
     def __init__(self):
@@ -69,11 +61,11 @@ class DeviceDataQuery:
                 log.info(f'\t\t{key}: {value}')
             log.info('')
 
-def main():
-    log.basicConfig(format='[ %(levelname)s ] %(message)s', level=log.INFO, stream=sys.stdout)
-    query = DeviceDataQuery()
-    query.print_device_info()
-    return 0
+#def main():
+#    log.basicConfig(format='[ %(levelname)s ] %(message)s', level=log.INFO, stream=sys.stdout)
+#    query = DeviceDataQuery()
+#    query.print_device_info()
+#    return 0
 
-if __name__ == '__main__':
-    sys.exit(main())
+#if __name__ == '__main__':
+#    sys.exit(main())

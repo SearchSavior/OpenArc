@@ -7,7 +7,5 @@ if __name__ == "__main__":
                         help="Host to bind the server to (default: 0.0.0.0)")
     parser.add_argument("--openarc-port", type=int, default=8000, 
                         help="Port to bind the server to (default: 8000)")
-    parser.add_argument("--reload", action="store_true", 
-                        help="Enable auto-reload on code changes")
     args = parser.parse_args()
-    start_server(host=args.host, openarc_port=args.openarc_port, reload=args.reload) 
+    start_server(host=args.host, openarc_port=args.openarc_port) 

@@ -10,3 +10,6 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .obsidian/
+.gradio/
+.venv/
+.vscode/

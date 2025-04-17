@@ -1,6 +1,6 @@
 import uvicorn
 import logging
-from src.api.optimum_api import app
+# from src.api.optimum_api import app
 
 # Configure logging
 logging.basicConfig(
@@ -11,12 +11,11 @@ logger = logging.getLogger("ov_api")
 
 def start_server(host: str = "0.0.0.0", openarc_port: int = 8000, reload: bool = False):
     """
-    Start the OpenVINO Inference API server
+    Launches the OpenArc API server
     
     Args:
         host: Host to bind the server to
         port: Port to bind the server to
-        reload: Whether to enable auto-reload on code changes
     """
     logger.info(f"Starting OpenVINO Inference API server on {host}:{openarc_port}")
     logger.info("Available endpoints:")
@@ -33,6 +32,5 @@ def start_server(host: str = "0.0.0.0", openarc_port: int = 8000, reload: bool =
         "src.api.optimum_api:app",
         host=host,
         port=openarc_port,
-        reload=reload,
         log_level="info"
     )
