@@ -1,6 +1,4 @@
-# OpenArc/start_dashboard.py
 import argparse
-
 import gradio as gr
 
 from src.frontend.components.device_info import DeviceInfoTool
