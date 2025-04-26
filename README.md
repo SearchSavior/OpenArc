@@ -133,7 +133,7 @@ Set your API key as an environment variable:
 Build Optimum-Intel from source to get the latest support:
 
 ```
-pip install optimum[openvino]+https://github.com/huggingface/optimum-intel
+pip install "optimum-intel[openvino] @ git+https://github.com/huggingface optimum-intel"
 ```
 
 ### Windows
@@ -151,7 +151,8 @@ Set your API key as an environment variable:
 Build Optimum-Intel from source to get the latest support:
 
 ```
-pip install optimum[openvino]+https://github.com/huggingface/optimum-intel
+pip install "optimum-intel[openvino] @ git+https://github.com/huggingface optimum-intel"
+
 ```
 
 > [!Tips]
