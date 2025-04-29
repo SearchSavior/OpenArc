@@ -2,7 +2,6 @@ import base64
 import gc
 import threading
 import time
-import traceback
 import logging
 import warnings
 from io import BytesIO
@@ -20,7 +19,7 @@ from .optimum_base_config import (
 )
 
 # Suppress specific deprecation warnings from optimum implementation of numpy arrays
-# This block prevents clogging the API logs 
+# Prevents clogging the API logs 
 warnings.filterwarnings("ignore", message="__array__ implementation doesn't accept a copy keyword")
 logger = logging.getLogger(__name__)
     
@@ -220,7 +219,6 @@ class Optimum_Image2TextCore:
 
             yield None, performance_metrics
                 
-            
         except Exception as e:
             logger.error(f"Error during vision generation: {str(e)}", exc_info=True)
             raise
