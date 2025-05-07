@@ -53,7 +53,7 @@ OpenArc enables a similar workflow to what's possible with Ollama, LM-Studio or 
 
 OpenArc has been built on top of the OpenVINO runtime; as a result OpenArc supports the same range of hardware **but requires device specifc drivers** this document will not cover in-depth.
 
-Supported operating system are a bit different for each class of device. Please review [system requirments](https://docs.openvino.ai/2025/about-openvino/release-notes-openvino/system-requirements.html#cpu) for OpenVINO 2025.0.0.0 to learn which
+Supported operating system are a bit different for each class of device. Please review [system requirments](https://docs.openvino.ai/2025/about-openvino/release-notes-openvino/system-requirements.html#cpu) for OpenVINO 2025.1.0optimum to learn which
 
 - Windows versions are supported
 - Linux distributions are supported
@@ -169,18 +169,18 @@ OpenArc has two components:
 
 
 To launch the inference server run
-
-		python start_server.py --host 0.0.0.0 --openarc-port 8000
-
+```
+python start_server.py --host 0.0.0.0 --openarc-port 8000
+```
 
 > host: defines the ip address to bind the server to
 
 > openarc_port: defines the port which can be used to access the server			
 
 To launch the dashboard run
-
-		python start_dashboard.py --openarc-port 8000
-
+```
+python start_dashboard.py --openarc-port 8000
+```
 > openarc_port: defines the port which requests from the dashboard use
 
 Run these in two different terminals.
