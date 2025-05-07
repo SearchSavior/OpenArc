@@ -11,6 +11,8 @@
 
 Under the hood OpenArc implements fastAPI over a growing collection of Transformers integrated AutoModel classes from Optimum-Intel. These enable accelerating inference on a wide range of tasks, models and source frameworks.
 
+## Currently implemented
+
 OpenArc currently supports text generation and text generation with vision. Support for speculative decoding, generating embeddings, speech tasks, image generation, PaddleOCR, and others are planned.
 
 Currently implemented:
