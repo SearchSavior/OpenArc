@@ -9,11 +9,11 @@
 
 **OpenArc** is an inference engine built with Optimum-Intel to leverage hardware acceleration on Intel CPUs, GPUs and NPUs through OpenVINO runtime that integrates closely with Huggingface Transformers. 
 
-Under the hood OpenArc implements fastAPI over a growing collection of Transformers integrated AutoModel classes from Optimum-Intel. These enable accelerating inference on a wide range of tasks, models and source frameworks.
+Under the hood OpenArc hosts a webserver over a growing collection of Transformers integrated AutoModel classes from Optimum-Intel. These enable accelerating inference on a wide range of tasks, models and source frameworks.
 
 ## Currently implemented
 
-OpenArc currently supports text generation and text generation with vision. Support for speculative decoding, generating embeddings, speech tasks, image generation, PaddleOCR, and others are planned.
+OpenArc currently supports text generation and text generation with vision. Support for speculative decoding, generating embeddings, speech tasks, image generation, PaddleOCR, and other 
 
 Currently implemented:
 
@@ -204,6 +204,14 @@ Example:
 Serverside logs should report:
 			
 	"GET /v1/models HTTP/1.1" 200 OK
+
+### Other Frontends
+
+OpenArc _mostly_ conforms to the openai API specification. In practice this means other frontends, python classes and community tooling will be compatible. 
+
+Tested:
+
+(mikupad)[https://github.com/lmg-anon/mikupad]
 
 ### Usage:
 
