@@ -115,7 +115,7 @@ If you need help installing drivers:
 
     This was a bit harder to list out as the system requirments page does not include an itemized list. However, it is safe to assume that if a device contains an Intel NPU it will be supported.
 
-    The Gradio dashboard has tools for querying your device under the Tools tab.
+    The Gradio dashboard has tools for querying your device under the Tools tab to learn what optimization properties are selected by default.
 
 </details>
 
@@ -133,7 +133,7 @@ Set your API key as an environment variable:
 Build Optimum-Intel from source to get the latest support:
 
 ```
-pip install "optimum-intel[openvino] @ git+https://github.com/huggingface optimum-intel"
+pip install "optimum-intel[openvino] @ git+https://github.com/huggingface/optimum-intel"
 ```
 
 ### Windows
@@ -151,8 +151,7 @@ Set your API key as an environment variable:
 Build Optimum-Intel from source to get the latest support:
 
 ```
-pip install "optimum-intel[openvino] @ git+https://github.com/huggingface optimum-intel"
-
+pip install "optimum-intel[openvino] @ git+https://github.com/huggingface/optimum-intel"
 ```
 
 > [!Tips]
