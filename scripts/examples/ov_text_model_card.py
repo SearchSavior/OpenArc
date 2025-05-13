@@ -3,9 +3,8 @@ from threading import Thread
 from transformers import AutoTokenizer, TextIteratorStreamer
 from optimum.intel.openvino import OVModelForCausalLM
 
-
-model_id = "/mnt/Ironwolf-4TB/Models/Pytorch/Hermes-3-Llama-3.2-3B-int4_sym-awq-se-ov" # Can be a local path or an HF id
-# ov_config = {"PERFORMANCE_HINT": "LATENCY"}
+model_id = "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen3-0.6B-fp16-ov" # Can be a local path or an HF id
+ov_config = {"PERFORMANCE_HINT": "LATENCY"}
 
 print("Loading model...")
 load_time = time.perf_counter()
@@ -13,7 +12,7 @@ model = OVModelForCausalLM.from_pretrained(
     model_id,
     export=False,
     device="GPU.0",
-   # ov_config=ov_config
+    ov_config=ov_config
 )
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 load_time = time.perf_counter() - load_time
@@ -31,7 +30,7 @@ inputs = tokenizer(text=text_prompt_templated, return_tensors="pt")
 input_token_count = inputs['input_ids'].shape[1]
 
 streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
-generation_kwargs = dict(inputs, streamer=streamer, max_new_tokens=128)
+generation_kwargs = dict(inputs, streamer=streamer, max_new_tokens=8192)
 thread = Thread(target=model.generate, kwargs=generation_kwargs)
 
 first_token_received = False
