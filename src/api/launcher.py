@@ -8,7 +8,8 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[logging.StreamHandler()]
 )
-logger = logging.getLogger("ov_api")
+
+logger = logging.getLogger("OpenArc-Server")
 
 def start_server(host: str = "0.0.0.0", openarc_port: int = 8000, reload: bool = False):
     """
@@ -18,7 +19,7 @@ def start_server(host: str = "0.0.0.0", openarc_port: int = 8000, reload: bool =
         host: Host to bind the server to
         port: Port to bind the server to
     """
-    logger.info(f"Starting OpenVINO Inference API server on {host}:{openarc_port}")
+    logger.info(f"Launching OpenArc on {host}:{openarc_port}")
     logger.info("Available endpoints:")
     logger.info("  - POST   optimum/model/load      Load a model")
     logger.info("  - DELETE optimum/model/unload    Unload current model")
