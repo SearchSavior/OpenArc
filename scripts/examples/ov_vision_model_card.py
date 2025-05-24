@@ -1,20 +1,19 @@
 import time
 from PIL import Image
-from transformers import AutoProcessor
+from transformers import AutoProcessor, TextStreamer
 from optimum.intel.openvino import OVModelForVisualCausalLM
 
 
-model_id = "/mnt/Ironwolf-4TB/Models/Pytorch/gemma-3-4b-it-int4_asym-ov"
+model_id = "/mnt/Ironwolf-4TB/Models/OpenVINO/Gemma/gemma-3-4b-it-qat-int4-unquantized-OpenVINO/gemma-3-4b-it-qat-int4_asym-ov"
 
 ov_config = {"PERFORMANCE_HINT": "LATENCY"}
 
 print("Loading model...")
 start_load_time = time.time()
-model = OVModelForVisualCausalLM.from_pretrained(model_id, export=False, device="GPU.1", ov_config=ov_config)
+model = OVModelForVisualCausalLM.from_pretrained(model_id, export=False, device="CPU", ov_config=ov_config)
 processor = AutoProcessor.from_pretrained(model_id)
 
-
-image_path = r"/home/echo/Projects/OpenArc/scripts/benchmark/dedication.png"
+image_path = r"/home/echo/Projects/OpenArc/scripts/examples/dedication.png"
 image = Image.open(image_path)
 image = image.convert("RGB")
 
@@ -30,21 +29,23 @@ conversation = [
     }
 ]
 
-# Preprocess the inputs
-text_prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
+# Instead, just use your text prompt directly:
+text_prompt = "Describe this image."
 
-inputs = processor(text=[text_prompt], images=[image], padding=True, return_tensors="pt")
+# Preprocess the inputs using model.preprocess_inputs
+inputs = model.preprocess_inputs(text=text_prompt, image=image, processor=processor)
 
 # Print number of tokens
-input_token_count = len(inputs.input_ids[0])
-print(f"Input token length: {len(inputs.input_ids[0])}")
+input_token_count = len(inputs["input_ids"][0])
+print(f"Input token length: {input_token_count}")
 
 # Inference: Generation of the output with performance metrics
 start_time = time.time()
-output_ids = model.generate(**inputs, max_new_tokens=1024, eos_token_id=700)
+streamer = TextStreamer(processor.tokenizer, skip_prompt=True, skip_special_tokens=True)
+output_ids = model.generate(**inputs, max_new_tokens=28, do_sample=True, streamer=streamer)
 
-generated_ids = [output_ids[len(input_ids) :] for input_ids, output_ids in zip(inputs.input_ids, output_ids)]
-output_text = processor.batch_decode(generated_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True)
+generated_ids = [output_ids[len(input_ids) :] for input_ids, output_ids in zip(inputs["input_ids"], output_ids)]
+output_text = processor.batch_decode(generated_ids, clean_up_tokenization_spaces=True, skip_special_tokens=True)
 
 num_tokens_generated = len(generated_ids[0])
 load_time = time.time() - start_load_time

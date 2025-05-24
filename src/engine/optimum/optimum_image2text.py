@@ -123,8 +123,8 @@ class Optimum_Image2TextCore:
                                 if len(base64_data) > 1:
                                     # Decode base64 to binary
                                     image_data = base64.b64decode(base64_data[1])
-                                    # Convert to PIL Image
-                                    image = Image.open(BytesIO(image_data))
+                                    # Convert to PIL Image and ensure RGB
+                                    image = Image.open(BytesIO(image_data)).convert("RGB")
                                     images.append(image)
                         # If it's a text content item
                         elif isinstance(content_item, dict) and content_item.get("type") == "text":
@@ -151,15 +151,17 @@ class Optimum_Image2TextCore:
             if images:
                 inputs = self.processor(
                     text=[text_prompt],
-                    images=images,
+                    images=[images],
                     padding=True, 
-                    return_tensors="pt"
+                    return_tensors="pt",
+                    add_generation_prompt=True
                 )
             else:
                 inputs = self.processor(
                     text=[text_prompt],
                     padding=True, 
-                    return_tensors="pt"
+                    return_tensors="pt",
+                    add_generation_prompt=True
                 )
             
             streamer = TextIteratorStreamer(
