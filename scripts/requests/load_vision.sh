@@ -8,15 +8,15 @@ JSON_PAYLOAD='{
     "load_config": {
         "id_model": "/mnt/Ironwolf-4TB/Models/OpenVINO/gemma-3-4b-it-int8_asym-ov",
         "use_cache": true,
-        "device": "GPU.2",
+        "device": "GPU.1",
         "export_model": false,
         "pad_token_id": null,
         "eos_token_id": null,
         "model_type": "VISION"
     },
     "ov_config": {
-        "NUM_STREAMS": "1",
-        "PERFORMANCE_HINT": "LATENCY"
+        "PERFORMANCE_HINT": "LATENCY",
+        "INFERENCE_PRECISION_HINT": "INT8"
     }
 }'
 
