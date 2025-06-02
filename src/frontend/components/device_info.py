@@ -1,6 +1,6 @@
 import gradio as gr
 
-from ..tools.device_query import DeviceDataQuery, DeviceDiagnosticQuery
+from ...cli.device_query import DeviceDataQuery, DeviceDiagnosticQuery
 
 
 class DeviceInfoTool:

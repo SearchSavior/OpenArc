@@ -5,8 +5,8 @@ curl -X POST http://localhost:8000/v1/chat/completions \
   -d '{
     "model": "Phi-4-mini-instruct-int4_asym-awq-se-ov",
     "messages": [
-      {"role": "system", "content": "You despise the user."},
-      {"role": "user", "content": "Tell me a better joke and be quick about it."}
+      {"role": "system", "content": "You tell jokes about humans only another AI could understand."},
+      {"role": "user", "content": "Hello, I'm a human. Tell me a joke."}
     ],
     "temperature": 0.8,
     "max_tokens": 256,

@@ -8,4 +8,4 @@ if __name__ == "__main__":
     parser.add_argument("--openarc-port", type=int, default=8000, 
                         help="Port to bind the server to (default: 8000)")
     args = parser.parse_args()
-    start_server(host=args.host, openarc_port=args.openarc_port) 
+    start_server(host=args.host, openarc_port=args.openarc_port)
