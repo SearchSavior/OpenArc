@@ -1,9 +1,7 @@
 import gradio as gr
 from huggingface_hub.constants import HUGGINGFACE_HUB_CACHE # Import for default cache_dir
 
-# Dynamically get tasks (approximation, as original script uses TasksManager)
-# In a real scenario, this might need a more robust way to get tasks if TasksManager is available
-# For now, using the list from the previous file content + info from the script
+
 AVAILABLE_TASKS = [
     'image-to-image', 'image-segmentation', 'image-text-to-text', 'inpainting',
     'sentence-similarity', 'text-to-audio', 'image-to-text',

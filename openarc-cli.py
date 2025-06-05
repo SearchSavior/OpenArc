@@ -261,33 +261,72 @@ class OpenArcCLI:
             return 1
 
 
-
 def create_parser():
     """Create the argument parser."""
     parser = argparse.ArgumentParser(
         description='OpenArc CLI - Load and manage models with OpenVINO optimization',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
+Thank's for checking out this project. It means a lot. 
+---
+
+Welcome to the OpenArc CLI!
+
+This tool makes it easier to inferface with the OpenArc server. 
+
+
+- Load models into the OpenArc server
+- Check the status of loaded models
+- Unload models
+- Query device properties
+- Query installed devices
+
+
 Examples:
   # Load a text model onto GPU.0, which is always the first GPU
-  %(prog)s python openarc-cli.py load --model /mnt/Ironwolf-4TB/Models/OpenVINO/Phi-4-mini-instruct-int4_asym-awq-se-ov   --model_type TEXT   --use_cache  --device GPU.0   --dynamic_shapes   --pad_token_id 50256   --bos_token_id 50256   --eos_token_id 50256   --PERFORMANCE_HINT LATENCY
+  %(prog)s python openarc-cli.py load \
+    --model "path/to/text/model"   \
+    --model_type TEXT   \
+    --use_cache  \
+    --device GPU.0   \
+    --dynamic_shapes   \
+    --pad_token_id int \
+    --bos_token_id int \
+    --eos_token_id int \
+    --PERFORMANCE_HINT LATENCY
 
-  # Load a vision model with optimization settings  
-  %(prog)s load --model microsoft/git-base-coco --model_type VISION --device GPU.0 \\
-    --PERFORMANCE_HINT LATENCY --INFERENCE_PRECISION_HINT fp16
+  # Load a vision model onto GPU.0  
+   %(prog)s python openarc-cli.py load \
+    --model "path/to/vision/model"   \
+    --model_type VISION   \
+    --use_cache  \
+    --device GPU.0   \
+    --dynamic_shapes   \
+    --pad_token_id int \
+    --bos_token_id int \
+    --eos_token_id int \
+    --PERFORMANCE_HINT LATENCY
+
 
   # Get status of loaded models
+    - Sends GET to /v1/models
+    - Returns a list of model-ids (id_model in the src)
+    - 
   %(prog)s python openarc-cli.py status
 
   # Unload a specific model
-  %(prog)s python openarc-cli.py unload --model-id "microsoft/DialoGPT-medium"
+  %(prog)s python openarc-cli.py unload --model-id "model-name" [this should be one of the model-ids returned by the status command]
 
   # Query all device properties. 
-  # This shows us what performance properties are available for each device.
-  # It can be difficult to read 
+    - A report detailing supported performance properties
+    - These are device specific and cannot be changed 
+    - The runtime uses these to determine how to use OpenVINO optimizations... optimally.
+    - IN this sense, most of the performance properties are actually *over-writing* the default values seen here 
+
   %(prog)s python openarc-cli.py device-data
 
   # Diagnose available devices
+    - Use to check if your devices are detected. Useful for debugging driver issues.
   %(prog)s python openarc-cli.py device-diagnose
 
 Environment Variables:
