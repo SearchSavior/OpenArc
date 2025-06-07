@@ -1,4 +1,4 @@
-![CLI Help Screen](assets/openarc_logo.png)
+![CLI Help Screen](assets/openarc_DOOM.png)
 
 [![Discord](https://img.shields.io/discord/1341627368581628004?logo=Discord&logoColor=%23ffffff&label=Discord&link=https%3A%2F%2Fdiscord.gg%2FmaMY7QjG)](https://discord.gg/maMY7QjG)
 [![Hugging Face](https://img.shields.io/badge/🤗%20Hugging%20Face-Echo9Zulu-yellow)](https://huggingface.co/Echo9Zulu)
@@ -61,17 +61,28 @@ Here are some other useful commands:
 To launch the server:
 
 ```
-python openarc_cli.py --help
+python openarc_cli.py serve start
 ```
 
 
-To load a model:
+To load a model open another temrinal:
 
 ```
-python openarc_cli.py --help
+python openarc_cli.py load --help
 ```
+This menu gives a breakdown of how the many different optimzation parameters work and broadly how they can be used together. 
 
-To 
+
+![CLI Help Screen](assets/load.png)
+
+
+The CLI application will surface C++ errors from the OpenVINO runtime as you tinker; in practice this is sort of like print debugging your LLM optimizations.
+
+OpenVINO documentation refers to how you use the different options as "inference scenarios".
+
+An inference scenario is a combination of usecase and hardware. For example, I have found on my work servers that changing INFERENCE_NUM_THREADS can make it easier to run multiple models on the same socket without resource contention; though OpenArc doesn't document this specifically, the tooling is in place to experiment.  
+
+Other options follow a similar structure; use --help to explore the tool!
 
 ## System Requirments 
 
