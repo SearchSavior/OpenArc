@@ -13,3 +13,4 @@ __pycache__/
 .gradio/
 .venv/
 .vscode/
+.openarc-cli-config.yaml

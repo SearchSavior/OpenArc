@@ -11,7 +11,7 @@ logging.basicConfig(
 
 logger = logging.getLogger("OpenArc-Server")
 
-def start_server(host: str = "0.0.0.0", openarc_port: int = 8000, reload: bool = False):
+def start_server(host: str = "0.0.0.0", openarc_port: int = 8001, reload: bool = False):
     """
     Launches the OpenArc API server
     

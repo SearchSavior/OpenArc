@@ -15,3 +15,5 @@ dependencies:
     - gradio
     - pydantic
     - uvicorn
+    - rich-click
+    - pyyaml

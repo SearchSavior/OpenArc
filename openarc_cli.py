@@ -1,23 +1,24 @@
 #!/usr/bin/env python3
 """
-OpenArc CLI Tool - Command-line interface for OpenArc model loading operations.
+OpenArc CLI Tool - Command-line interface for OpenArc server operations.
 """
-import traceback
 import json
 import os
 import sys
+import traceback
+from pathlib import Path
+
 import requests
-
-
 import rich_click as click
-from rich.console import Console
-from rich.table import Table
-from rich.panel import Panel
+import yaml
 from rich import print as rprint
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
 from rich.text import Text
 
-from src.cli.device_query import DeviceDataQuery, DeviceDiagnosticQuery
 from src.api.launcher import start_server
+from src.cli.device_query import DeviceDataQuery, DeviceDiagnosticQuery
 
 click.rich_click.STYLE_OPTIONS_TABLE_LEADING = 1
 click.rich_click.STYLE_OPTIONS_TABLE_BOX = "SIMPLE"
@@ -31,11 +32,46 @@ click.rich_click.STYLE_COMMANDS_TABLE_ROW_STYLES = ["magenta", "yellow", "cyan",
 
 console = Console()
 
+# Configuration handling - use project root directory
+PROJECT_ROOT = Path(__file__).parent
+CONFIG_FILE = PROJECT_ROOT / "openarc-cli-config.yaml"
+
+def save_cli_config(host: str, port: int):
+    """Save server configuration to YAML config file."""
+    config = {
+        "server": {
+            "host": host,
+            "port": port
+        },
+        "created_by": "openarc-cli",
+        "version": "1.0"
+    }
+    
+    with open(CONFIG_FILE, "w") as f:
+        yaml.dump(config, f, default_flow_style=False, indent=2)
+    
+    console.print(f"📝 [dim]Configuration saved to: {CONFIG_FILE}[/dim]")
+
+def load_cli_config():
+    """Load server configuration from YAML config file."""
+    if CONFIG_FILE.exists():
+        try:
+            with open(CONFIG_FILE, "r") as f:
+                config = yaml.safe_load(f)
+                if config and "server" in config:
+                    return config["server"]
+        except (yaml.YAMLError, FileNotFoundError, KeyError):
+            console.print(f"[yellow]Warning: Could not read config file {CONFIG_FILE}[/yellow]")
+    
+    return {"host": "localhost", "port": 8000}  # defaults
+
 class OpenArcCLI:
     def __init__(self, base_url=None, api_key=None):
-        # Always check the environment variable if base_url is not provided
-        self.base_url = base_url or os.getenv('OPENARC_BASE_URL', 'http://localhost:8000')
-        self.api_key = api_key or os.getenv('OPENARC_API_KEY', '')
+        if base_url is None:
+            config = load_cli_config()
+            base_url = f"http://{config['host']}:{config['port']}"
+        self.base_url = base_url
+        self.api_key = api_key or os.getenv('OPENARC_API_KEY')
         
     def get_headers(self):
         """Get headers for API requests."""
@@ -83,7 +119,6 @@ def cli():
 
     To get started add --help to one of the commands below to view its documentation.
     """
-
 
 @cli.command()
 
@@ -274,7 +309,7 @@ def cli():
               )
 
 @click.pass_context
-def load(ctx, model, type_model, device, use_cache, dynamic_shapes,
+def load(ctx, model, model_type, device, use_cache, dynamic_shapes,
          pad_token_id, eos_token_id, bos_token_id, num_streams, performance_hint,
          inference_precision_hint, enable_hyper_threading, inference_num_threads,
          scheduling_core_type):
@@ -284,7 +319,7 @@ def load(ctx, model, type_model, device, use_cache, dynamic_shapes,
     # Build load_config from arguments
     load_config = {
         "id_model": model,
-        "type_model": type_model,
+        "model_type": model_type,
         "use_cache": use_cache,
         "device": device,
         "dynamic_shapes": dynamic_shapes,
@@ -337,7 +372,6 @@ def load(ctx, model, type_model, device, use_cache, dynamic_shapes,
         console.print(f"❌ [red]Request failed:[/red] {e}")
         ctx.exit(1)
 
-
 @cli.command()
 @click.option('--model-id', required=True, help='Model ID to unload')
 @click.pass_context
@@ -384,17 +418,6 @@ def status(ctx):
             loaded_models = result.get("loaded_models", {})
             total_models = result.get("total_models_loaded", 0)
             
-            # Create a nice table for the status
-            table = Table(
-                title=f"📈 Status Report - {total_models} model(s) loaded",
-                expand=False
-            )
-            table.add_column("Model ID", style="cyan", no_wrap=True, max_width=24)
-            table.add_column("Status", style="green", no_wrap=True, max_width=12)
-            table.add_column("Device", style="magenta", no_wrap=True, max_width=12)
-            table.add_column("Type", style="yellow", no_wrap=True, max_width=10)
-            table.add_column("Performance Hint", style="blue", no_wrap=True, max_width=20)
-            
             if not loaded_models:
                 console.print("[yellow]No models currently loaded.[/yellow]")
             else:
@@ -402,12 +425,57 @@ def status(ctx):
                     device = model_info.get("device", "unknown")
                     status_val = model_info.get("status", "unknown")
                     metadata = model_info.get("model_metadata", {})
-                    type_model = metadata.get("type_model", "unknown")
-                    perf_hint = metadata.get("PERFORMANCE_HINT", "none")
-                    
-                    table.add_row(model_id, status_val, device, type_model, perf_hint)
-                
-                console.print(table)
+                    model_type = metadata.get("model_type", "unknown")
+                    use_cache = str(metadata.get("use_cache", "-"))
+                    dynamic_shapes = str(metadata.get("dynamic_shapes", "-"))
+                    pad_token_id = str(metadata.get("pad_token_id", "-"))
+                    eos_token_id = str(metadata.get("eos_token_id", "-"))
+                    bos_token_id = str(metadata.get("bos_token_id", "-"))
+                    num_streams = str(metadata.get("NUM_STREAMS", "-"))
+                    precision = str(metadata.get("INFERENCE_PRECISION_HINT", "-"))
+                    perf_hint = str(metadata.get("PERFORMANCE_HINT", "-"))
+                    inf_num_threads = str(metadata.get("INFERENCE_NUM_THREADS", "-"))
+                    enable_ht = str(metadata.get("ENABLE_HYPER_THREADING", "-"))
+                    sched_core_type = str(metadata.get("SCHEDULING_CORE_TYPE", "-"))
+
+                    model_table = Table(show_header=False, box=None, pad_edge=False)
+
+                    model_table.add_row(Text("Model Info", style="bold underline cyan"), "")
+                    model_table.add_row("Model ID", f"[cyan]{model_id}[/cyan]")
+                    model_table.add_row("Type", f"[yellow]{model_type}[/yellow]")
+                    model_table.add_row("Status", f"[green]{status_val}[/green]" if status_val == "loaded" else f"[red]{status_val}[/red]")
+                    model_table.add_row("", "")
+
+                    # Device Info Section
+                    model_table.add_row(Text("Device Info", style="bold underline magenta"), "")
+                    model_table.add_row("Device", f"[magenta]{device}[/magenta]")
+                    model_table.add_row("Use Cache", use_cache)
+                    model_table.add_row("Dynamic Shapes", dynamic_shapes)
+                    model_table.add_row("", "")
+
+                    # Token IDs Section
+                    model_table.add_row(Text("Token IDs", style="bold underline yellow"), "")
+                    model_table.add_row("Pad Token ID", pad_token_id)
+                    model_table.add_row("EOS Token ID", eos_token_id)
+                    model_table.add_row("BOS Token ID", bos_token_id)
+                    model_table.add_row("", "")
+
+                    # Performance Settings Section
+                    model_table.add_row(Text("Performance Settings", style="bold underline green"), "")
+                    model_table.add_row("NUM_STREAMS", num_streams)
+                    model_table.add_row("INFERENCE_PRECISION_HINT", precision)
+                    model_table.add_row("PERFORMANCE_HINT", perf_hint)
+                    model_table.add_row("INFERENCE_NUM_THREADS", inf_num_threads)
+                    model_table.add_row("ENABLE_HYPER_THREADING", enable_ht)
+                    model_table.add_row("SCHEDULING_CORE_TYPE", sched_core_type)
+
+                    panel = Panel(
+                        model_table,
+                        title=f"🧩 Model: [bold]{model_id}[/bold]",
+                        border_style="blue" if status_val == "loaded" else "red"
+                    )
+                    console.print(panel)
+                console.print(f"\n[green]Total models loaded: {total_models}[/green]")
             
         else:
             console.print(f"❌ [red]Error getting status: {response.status_code}[/red]")
@@ -499,17 +567,27 @@ def serve():
     pass
 
 @serve.command("start")
+
 @click.option("--host", type=str, default="0.0.0.0", show_default=True,
               help="""
               - Host to bind the server to
               """)
-@click.option("--openarc-port", type=int, default=8000, show_default=True,
+
+@click.option("--openarc-port", 
+              type=int, 
+              default=8000, 
+              show_default=True,
               help="""
               - Port to bind the server to
               """)
 
 def start(host, openarc_port):
-    """Start the OpenArc API server."""
+    """
+    - 'start' reads --host and --openarc-port and saves them to the config file. Then it starts the server and will read
+    """
+    # Save server configuration for other CLI commands to use
+    save_cli_config(host, openarc_port)
+    
     console.print(f"🚀 [green]Starting OpenArc server on {host}:{openarc_port}[/green]")
     start_server(host=host, openarc_port=openarc_port)
 
