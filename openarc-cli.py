@@ -126,8 +126,6 @@ def cli():
 
               - Edge cases may require disabling cache, probably based on model architecture.
 
-
-
               """)
 
 @click.option('--dynamic-shapes/--no-dynamic-shapes',
@@ -276,7 +274,7 @@ def cli():
               )
 
 @click.pass_context
-def load(ctx, model, model_type, device, use_cache, dynamic_shapes,
+def load(ctx, model, type_model, device, use_cache, dynamic_shapes,
          pad_token_id, eos_token_id, bos_token_id, num_streams, performance_hint,
          inference_precision_hint, enable_hyper_threading, inference_num_threads,
          scheduling_core_type):
@@ -286,7 +284,7 @@ def load(ctx, model, model_type, device, use_cache, dynamic_shapes,
     # Build load_config from arguments
     load_config = {
         "id_model": model,
-        "model_type": model_type,
+        "type_model": type_model,
         "use_cache": use_cache,
         "device": device,
         "dynamic_shapes": dynamic_shapes,
@@ -369,7 +367,6 @@ def unload(ctx, model_id):
         console.print(f"❌ [red]Request failed:[/red] {e}")
         ctx.exit(1)
 
-
 @cli.command()
 @click.pass_context
 def status(ctx):
@@ -405,10 +402,10 @@ def status(ctx):
                     device = model_info.get("device", "unknown")
                     status_val = model_info.get("status", "unknown")
                     metadata = model_info.get("model_metadata", {})
-                    model_type = metadata.get("model_type", "unknown")
+                    type_model = metadata.get("type_model", "unknown")
                     perf_hint = metadata.get("PERFORMANCE_HINT", "none")
                     
-                    table.add_row(model_id, status_val, device, model_type, perf_hint)
+                    table.add_row(model_id, status_val, device, type_model, perf_hint)
                 
                 console.print(table)
             
@@ -420,7 +417,6 @@ def status(ctx):
     except requests.exceptions.RequestException as e:
         console.print(f"❌ [red]Request failed:[/red] {e}")
         ctx.exit(1)
-
 
 @cli.group()
 @click.pass_context
@@ -511,6 +507,7 @@ def serve():
               help="""
               - Port to bind the server to
               """)
+
 def start(host, openarc_port):
     """Start the OpenArc API server."""
     console.print(f"🚀 [green]Starting OpenArc server on {host}:{openarc_port}[/green]")

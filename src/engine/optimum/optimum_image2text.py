@@ -45,7 +45,7 @@ class Optimum_Image2TextCore:
         self.model = None
         self.processor = None
         self.model_metadata = {
-            "model_type": ModelType.VISION,
+            "type_model": ModelType.VISION,
             "id_model": load_model_config.id_model
         }
 
