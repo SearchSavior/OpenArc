@@ -1,13 +1,14 @@
-name: OpenArc_test2
+name: OpenArc_build5
 channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.11
+  - python=3.11.11
   - pip
   - pip:
-    - transformers==4.51.0 --no-deps
+    - transformers==4.52.3
     - optimum[openvino]
+    - openvino==2025.1.0
     - openvino==2025.1.0
     - openvino-tokenizers==2025.1.0.0
     - openvino-genai==2025.1.0.0
@@ -15,3 +16,5 @@ dependencies:
     - gradio
     - pydantic
     - uvicorn
+    - rich-click
+    - pyyaml

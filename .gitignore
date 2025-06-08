@@ -7,9 +7,13 @@ __pycache__/
 *.pyc
 *.egg-info/
 *.egg
+*.pyc
+*.log
+*.env
 .pytest_cache/
 .mypy_cache/
 .obsidian/
 .gradio/
 .venv/
 .vscode/
+.openarc-cli-config.yaml

@@ -6,17 +6,23 @@ API_URL="http://localhost:8000/optimum/model/load"
 # JSON payload
 JSON_PAYLOAD='{
     "load_config": {
-        "id_model": "/mnt/Ironwolf-4TB/Models/OpenVINO/Llama-3.1-Nemotron-Nano-8B-v1-int4_sym-awq-se-ov",
+        "id_model": "/mnt/Ironwolf-4TB/Models/OpenVINO/Phi-4-mini-instruct-int4_asym-awq-se-ov",
+        "model_type": "TEXT",
         "use_cache": true,
-        "device": "GPU.1",
+        "device": "GPU.0",
+        "dynamic_shapes": true,
         "export_model": false,
         "pad_token_id": null,
         "eos_token_id": null,
-        "model_type": "TEXT"
+        "bos_token_id": null
     },
     "ov_config": {
-        "NUM_STREAMS": "1",
-        "PERFORMANCE_HINT": "LATENCY"
+        "PERFORMANCE_HINT": "LATENCY",
+        "INFERENCE_PRECISION_HINT" : "null",
+        "ENABLE_HYPERTHREADING" : "true",
+        "INFERENCE_NUM_THREADS" : "4",
+        "SCHEDULING_CORE_TYPE" : "null",
+        "NUM_STREAMS" : "null"
     }
 }'
 

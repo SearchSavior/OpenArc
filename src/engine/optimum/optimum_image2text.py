@@ -2,7 +2,7 @@ import base64
 import gc
 import threading
 import time
-import traceback
+import logging
 import warnings
 from io import BytesIO
 from typing import AsyncIterator, Optional
@@ -19,8 +19,9 @@ from .optimum_base_config import (
 )
 
 # Suppress specific deprecation warnings from optimum implementation of numpy arrays
-# This block prevents clogging the API logs 
+# Prevents clogging the API logs 
 warnings.filterwarnings("ignore", message="__array__ implementation doesn't accept a copy keyword")
+logger = logging.getLogger(__name__)
     
 class Optimum_Image2TextCore:
     """
@@ -50,7 +51,7 @@ class Optimum_Image2TextCore:
 
     def load_model(self):
         """Load the tokenizer and vision model."""
-        print(f"Loading model {self.load_model_config.id_model} on device {self.load_model_config.device}...")
+        logger.info(f"Loading model {self.load_model_config.id_model} on device {self.load_model_config.device}...")
 
         # Extract its configuration as a dict
         ov_config_dict = self.ov_config.model_dump(exclude_unset=True) if self.ov_config else {}
@@ -66,10 +67,10 @@ class Optimum_Image2TextCore:
             eos_token_id=self.load_model_config.eos_token_id,
             bos_token_id=self.load_model_config.bos_token_id
         )
-        print("Model loaded successfully.")
+        logger.info("Model loaded successfully.")
 
         self.processor = AutoProcessor.from_pretrained(self.load_model_config.id_model)
-        print("Processor loaded successfully.")        
+        logger.info("Processor loaded successfully.")
         
     async def generate_vision_stream(
         self, 
@@ -122,8 +123,8 @@ class Optimum_Image2TextCore:
                                 if len(base64_data) > 1:
                                     # Decode base64 to binary
                                     image_data = base64.b64decode(base64_data[1])
-                                    # Convert to PIL Image
-                                    image = Image.open(BytesIO(image_data))
+                                    # Convert to PIL Image and ensure RGB
+                                    image = Image.open(BytesIO(image_data)).convert("RGB")
                                     images.append(image)
                         # If it's a text content item
                         elif isinstance(content_item, dict) and content_item.get("type") == "text":
@@ -150,15 +151,17 @@ class Optimum_Image2TextCore:
             if images:
                 inputs = self.processor(
                     text=[text_prompt],
-                    images=images,
+                    images=[images],
                     padding=True, 
-                    return_tensors="pt"
+                    return_tensors="pt",
+                    add_generation_prompt=True
                 )
             else:
                 inputs = self.processor(
                     text=[text_prompt],
                     padding=True, 
-                    return_tensors="pt"
+                    return_tensors="pt",
+                    add_generation_prompt=True
                 )
             
             streamer = TextIteratorStreamer(
@@ -218,10 +221,8 @@ class Optimum_Image2TextCore:
 
             yield None, performance_metrics
                 
-            
         except Exception as e:
-            print(f"Error during vision generation: {str(e)}")
-            traceback.print_exc()
+            logger.error(f"Error during vision generation: {str(e)}", exc_info=True)
             raise
         
         finally:
@@ -237,4 +238,4 @@ class Optimum_Image2TextCore:
         self.processor = None
         
         gc.collect()
-        print("Model unloaded and memory cleaned up")
+        logger.info("Model unloaded and memory cleaned up")

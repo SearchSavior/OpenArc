@@ -1,22 +1,23 @@
 # The first implementation of the OpenAI-like API was contributed by @gapeleon.
 # They are one hero among many future heroes working to make OpenArc better. 
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
-
+from fastapi.exceptions import RequestValidationError
 from typing import Optional, List, Any
 from pydantic import BaseModel
 from datetime import datetime
 from pathlib import Path
 
-import warnings
 import logging
+import warnings
 import time
 import uuid
 import json
 import os
+import sys
 
 from src.engine.optimum.optimum_base_config import (
     OV_LoadModelConfig,
@@ -26,10 +27,36 @@ from src.engine.optimum.optimum_base_config import (
     ModelType
 )
 
-
 # Suppress specific deprecation warnings from optimum implementation of numpy arrays
 # This block prevents clogging the API logs 
 warnings.filterwarnings("ignore", message="__array__ implementation doesn't accept a copy keyword")
+
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+file_handler = logging.FileHandler('openarc_api.log')
+file_handler.setLevel(logging.INFO)
+
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
+console_handler.setFormatter(formatter)
+
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+
+if not root_logger.handlers:
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(console_handler)
+
+for module in ["optimum", "openvino"]:
+    module_logger = logging.getLogger(module)
+    module_logger.setLevel(logging.INFO)
+    
+    module_logger.propagate = True
 
 app = FastAPI(title="OpenArc API")
 
@@ -45,11 +72,28 @@ app.add_middleware(
 # Global state to store multiple model instances
 model_instances = {}
 
-logger = logging.getLogger("optimum_api")
-
 # API key authentication
 API_KEY = os.getenv("OPENARC_API_KEY")
 security = HTTPBearer()
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.error(f"Validation error: {exc.errors()}", exc_info=True)
+    return JSONResponse(
+        status_code=422,
+        content={"status": "error", "detail": exc.errors()}
+    )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    # Log the full traceback with the original logger structure
+    import traceback
+    logger.error(f"Full traceback:\n{''.join(traceback.format_tb(exc.__traceback__))}")
+    return JSONResponse(
+        status_code=500,
+        content={"status": "error", "detail": str(exc)}
+    )
 
 async def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Verify the API key provided in the Authorization header"""

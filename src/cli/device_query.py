@@ -17,7 +17,7 @@ class DeviceDiagnosticQuery:
 #    print(device_query.get_available_devices())
 
 
-    # Device Query: 
+# Device Query: 
 # Taken from https://github.com/openvinotoolkit/openvino/blob/master/samples/python/hello_query_device/hello_query_device.py
 
 class DeviceDataQuery:

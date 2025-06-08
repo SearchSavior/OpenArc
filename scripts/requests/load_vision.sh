@@ -6,16 +6,15 @@ API_URL="http://localhost:8000/optimum/model/load"
 # JSON payload
 JSON_PAYLOAD='{
     "load_config": {
-        "id_model": "/mnt/Ironwolf-4TB/Models/Pytorch/gemma-3-4b-it-int4_asym-ov",
+        "id_model": "/mnt/Ironwolf-4TB/Models/OpenVINO/Idefics3-8B-Llama3-OpenVINO/Idefics3-8B-Llama3-int4_asym-ov",
         "use_cache": true,
-        "device": "GPU.2",
+        "device": "GPU.1",
         "export_model": false,
         "pad_token_id": null,
         "eos_token_id": null,
         "model_type": "VISION"
     },
     "ov_config": {
-        "NUM_STREAMS": "1",
         "PERFORMANCE_HINT": "LATENCY"
     }
 }'

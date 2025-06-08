@@ -191,7 +191,6 @@ class Optimum_Text2TextCore:
                 num_return_sequences=generation_config.num_return_sequences,
             )
 
-
             generate_start = time.perf_counter()
 
             outputs = self.model.generate(**generation_kwargs)
