@@ -29,7 +29,7 @@ Support for speculative decoding, generating embeddings, speech tasks, image gen
     - Qwen2.5-VL 
     - Gemma 3
 
-## Brand NEW Command Line Application!
+### NEW Command Line Application!
   - Built with click and rich-click
   - OpenArc's server has been thoroughly documented there. Much cleaner!
   - Coupled with officual documentation this makes learning OpenVINO easier. 
