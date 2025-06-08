@@ -7,6 +7,7 @@ __pycache__/
 *.pyc
 *.egg-info/
 *.egg
+*.pyc
 .pytest_cache/
 .mypy_cache/
 .obsidian/
