@@ -8,6 +8,8 @@ __pycache__/
 *.egg-info/
 *.egg
 *.pyc
+*.log
+*.env
 .pytest_cache/
 .mypy_cache/
 .obsidian/
