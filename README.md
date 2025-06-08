@@ -4,11 +4,14 @@
 [![Hugging Face](https://img.shields.io/badge/🤗%20Hugging%20Face-Echo9Zulu-yellow)](https://huggingface.co/Echo9Zulu)
 
 
+
 > [!NOTE]
 > OpenArc is under active development. Expect breaking changes.
 
 
+
 **OpenArc** is an inference engine which makes using Intel devices as accelerators easier.
+
 
 Powered by Optimum-Intel to leverage hardware acceleration on Intel CPUs, GPUs and NPUs through OpenVINO runtime, OpenArc integrates closely with Huggingface Transformers making the inference-work our codebase performs easy to understand.    
 
@@ -62,7 +65,6 @@ To launch the server:
 ```
 python openarc_cli.py serve start
 ```
-
 
 To load a model open another temrinal:
 
@@ -153,8 +155,6 @@ pip install optimum[openvino]+https://github.com/huggingface/optimum-intel
 - Try not to use the environment for other ML projects. Soon we will have uv.
 </details>
 
-
-
 ## OpenWebUI
 
 > [!NOTE]
@@ -171,6 +171,14 @@ Example:
 Serverside logs should report:
 			
 	"GET /v1/models HTTP/1.1" 200 OK
+
+### Other Frontends
+
+OpenArc _mostly_ conforms to the openai API specification. In practice this means other frontends, python classes and community tooling will be compatible. 
+
+Tested:
+
+(mikupad)[https://github.com/lmg-anon/mikupad]
 
 ### Usage:
 
