@@ -4,21 +4,19 @@
 [![Hugging Face](https://img.shields.io/badge/🤗%20Hugging%20Face-Echo9Zulu-yellow)](https://huggingface.co/Echo9Zulu)
 
 
-
 > [!NOTE]
 > OpenArc is under active development. Expect breaking changes.
 
 
-**OpenArc** is an inference engine which make using Intel devices as accelerators with OpenVINO easier.
+**OpenArc** is an inference engine which makes using Intel devices as accelerators easier.
 
-Built with Optimum-Intel to leverage hardware acceleration on Intel CPUs, GPUs and NPUs through OpenVINO runtime that integrates closely with Huggingface Transformers. 
+ Built with Optimum-Intel to leverage hardware acceleration on Intel CPUs, GPUs and NPUs through OpenVINO runtime that integrates closely with Huggingface Transformers. 
 
 Under the hood OpenArc implements a FastAPI layer over a growing collection of Transformers integrated AutoModel classes from Optimum-Intel. These enable accelerating inference on a wide range of tasks, models and source frameworks.
 
-OpenArc currently supports **text generation** and **text generation** with vision. 
+OpenArc currently supports **text generation** and **text generation with vision** over OpenAI API endpoints. 
 
 Support for speculative decoding, generating embeddings, speech tasks, image generation, PaddleOCR, and others are planned.
-
 
 ## Features
 
@@ -31,14 +29,15 @@ Support for speculative decoding, generating embeddings, speech tasks, image gen
     - Qwen2.5-VL 
     - Gemma 3
 
-### Brand new command line application!
+## Brand NEW Command Line Application!
   - Built with click and rich-click
-  - OpenArc has been thoroughly documented there. Using  easier!
-
+  - OpenArc's server has been thoroughly documented there. Much cleaner!
+  - Coupled with officual documentation this makes learning OpenVINO easier. 
+  
 ### Performance metrics on every completion
    - ttft: time to generate first token
    - generation_time : time to generate the whole response
-   - number of tokens: total generated tokens for that request
+   - number of tokens: total generated tokens for that request (includes thinking tokens)
    - tokens per second: measures throughput.
    - average token latency: helpful for optimizing zero or few shot tasks
  	  
@@ -76,87 +75,37 @@ This menu gives a breakdown of how the many different optimzation parameters wor
 ![CLI Help Screen](assets/load.png)
 
 
-The CLI application will surface C++ errors from the OpenVINO runtime as you tinker; in practice this is sort of like print debugging your LLM optimizations.
+The CLI application will surface C++ errors from the OpenVINO runtime as you tinker; in practice this is sort of like print debugging your LLM optimizations directly from the engine, often leading you directly into the source code.
 
-OpenVINO documentation refers to how you use the different options as "inference scenarios".
-
-An inference scenario is a combination of usecase and hardware. For example, I have found on my work servers that changing INFERENCE_NUM_THREADS can make it easier to run multiple models on the same socket without resource contention; though OpenArc doesn't document this specifically, the tooling is in place to experiment.  
+In practice this helps get through the sometimes vague documentation, especially for edge cases.
 
 Other options follow a similar structure; use --help to explore the tool!
 
 ## System Requirments 
 
-OpenArc has been built on top of the OpenVINO runtime; as a result OpenArc supports the same range of hardware **but requires device specifc drivers** this document will not cover in-depth.
+- OpenArc has been built on top of the OpenVINO runtime; as a result OpenArc    supports the same range of hardware **but requires device specifc drivers** this document will not cover in-depth.
+ 
+- See [OpenVINO System Requirments](https://docs.openvino.ai/2025/about-openvino/ release-notes-openvino/system-requirements.html#cpu) to get the most updated information.
 
-Supported operating system are a bit different for each class of device. Please review [system requirments](https://docs.openvino.ai/2025/about-openvino/release-notes-openvino/system-requirements.html#cpu) for OpenVINO 2025.0.0.0 to learn which
-
-- Windows versions are supported
-- Linux distributions are supported
-- kernel versions are required
-	- My system uses 6.14.4-061404-generic with Ubuntu 24.04 LTS.
-- commands for different package managers
-- other required dependencies for GPU and NPU
-
-If you need help installing drivers:
-	- Join the [Discord](https://discord.gg/PnuTBVcr)
+- If you need help installing drivers:
+	- Join our [Discord](https://discord.gg/Bzz9hax9Jq)
 	- Open an issue
-	- Use [Linux Drivers](https://github.com/SearchSavior/OpenArc/discussions/11)
-	- Use [Windows Drivers](https://github.com/SearchSavior/OpenArc/discussions/12)
+	- [Linux Drivers](https://github.com/SearchSavior/OpenArc/discussions/11)
+	- [Windows Drivers](https://github.com/SearchSavior/OpenArc/discussions/12)
+
+After setting up the environment run
+
+```
+python openarc_cli.py tool device-properties
+```
+as a sanity test
+
+
+## Environment Setup 
 
 <details>
-  <summary>CPU</summary>
-	
-	Intel® Core™ Ultra Series 1 and Series 2 (Windows only )
-	
-	Intel® Xeon® 6 processor (preview)
-	
-	Intel Atom® Processor X Series
-	    
-	Intel Atom® processor with Intel® SSE4.2 support
-	
-	Intel® Pentium® processor N4200/5, N3350/5, N3450/5 with Intel® HD Graphics
-	
-	6th - 14th generation Intel® Core™ processors
-	
-	1st - 5th generation Intel® Xeon® Scalable Processors
+  <summary>Ubuntu</summary>
 
-	ARM CPUs with armv7a and higher, ARM64 CPUs with arm64-v8a and higher, Apple® Mac with Apple silicon
-
-</details>
-
-<details>
-  <summary>GPU</summary>
-	
-    Intel® Arc™ GPU Series
-
-    Intel® HD Graphics
-
-    Intel® UHD Graphics
-
-    Intel® Iris® Pro Graphics
-
-    Intel® Iris® Xe Graphics
-
-    Intel® Iris® Xe Max Graphics
-
-    Intel® Data Center GPU Flex Series
-
-    Intel® Data Center GPU Max Series
-
-</details>
-
-<details>
-  <summary>NPU</summary>
-
-    Intel® Core Ultra Series
-
-    This was a bit harder to list out as the system requirments page does not include an itemized list. However, it is safe to assume that if a device contains an Intel NPU it will be supported.
-
-    The Gradio dashboard has tools for querying your device under the Tools tab.
-
-</details>
-
-### Ubuntu
 
 Create the conda environment:
 
@@ -173,11 +122,19 @@ Build Optimum-Intel from source to get the latest support:
 pip install "optimum-intel[openvino] @ git+https://github.com/huggingface/optimum-intel"
 ```
 
-### Windows
+</details>
+
+<details>
+  <summary>Windows</summary>
 
 1. Install Miniconda from [here](https://www.anaconda.com/docs/getting-started/miniconda/install#windows-installation)
 
-2. Navigate to the directory containing the environment.yaml file and run
+2. Create the conda environment:
+  ```
+  conda env create -f environment.yaml
+  ```
+
+3. Navigate to the directory containing the environment.yaml file and run
 
 	conda env create -f environment.yaml
 
@@ -194,6 +151,8 @@ pip install optimum[openvino]+https://github.com/huggingface/optimum-intel
 > [!Tips]
 - Avoid setting up the environment from IDE extensions. 
 - Try not to use the environment for other ML projects. Soon we will have uv.
+</details>
+
 
 
 ## OpenWebUI
@@ -221,37 +180,42 @@ Serverside logs should report:
 
 ## Convert to [OpenVINO IR](https://docs.openvino.ai/2025/documentation/openvino-ir-format.html)
 
-There are a few source of models which can be used with OpenArc;
+There are a few sources of models which can be used with OpenArc;
 
 - [OpenVINO LLM Collection on HuggingFace](https://huggingface.co/collections/OpenVINO/llm-6687aaa2abca3bbcec71a9bd)
 
 - [My HuggingFace repo](https://huggingface.co/Echo9Zulu)
 	- My repo contains preconverted models for a variety of architectures and usecases
 	- OpenArc supports almost all of them 
+  - Includes NSFW, ERP and "exotic" community finetunes that Intel doesn't so take advantage!
   - **These get updated regularly so check back often!**
+  - If you read this here, *mention it on Discord* and I can quant a model you want to try. 
 
-You can easily craft conversion commands using my HF Space, [Optimum-CLI-Tool_tool](https://huggingface.co/spaces/Echo9Zulu/Optimum-CLI-Tool_tool) or in the OpenArc Dashboard.
+- Use the [Optimum-CLI Conversion documentation](https://huggingface.co/docs/optimum/main/en/intel/openvino/export) to learn how you can convert models to OpenVINO IR. 
 
-This tool respects the positional arguments defined [here](https://huggingface.co/docs/optimum/main/en/intel/openvino/export), then execute commands in the OpenArc environment.
+- Easily those craft conversion commands using my HF Space, [Optimum-CLI-Tool_tool](https://huggingface.co/spaces/Echo9Zulu/Optimum-CLI-Tool_tool), a Gradio application which helps you GUI-ify an often research intensive process.
+
+- If you use the CLI tool and get an error about an unsupported architecture or "missing export config" follow the link, [open an issue](https://github.com/huggingface/optimum-intel/issues) reference the model card and the maintainers will get back to you.  
+
+
+Here are some models to get started:
 
 | Models                                                                                                                                      | Compressed Weights |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
 | [Ministral-3b-instruct-int4_asym-ov](https://huggingface.co/Echo9Zulu/Ministral-3b-instruct-int4_asym-ov)                                   | 1.85 GB            |
 | [Hermes-3-Llama-3.2-3B-awq-ov](https://huggingface.co/Echo9Zulu/Hermes-3-Llama-3.2-3B-awq-ov)							| 1.8 GB |
 | [Llama-3.1-Tulu-3-8B-int4_asym-ov](https://huggingface.co/Echo9Zulu/Llama-3.1-Tulu-3-8B-int4_asym-ov/tree/main)                             | 4.68 GB            |
-| [Qwen2.5-7B-Instruct-1M-int4-ov](https://huggingface.co/Echo9Zulu/Qwen2.5-7B-Instruct-1M-int4-ov) | 4.46 GB            |
+| [DeepSeek-R1-0528-Qwen3-8B-OpenVINO](https://huggingface.co/Echo9Zulu/DeepSeek-R1-0528-Qwen3-8B-OpenVINO) |                |
 | [Meta-Llama-3.1-8B-SurviveV3-int4_asym-awq-se-wqe-ov](https://huggingface.co/Echo9Zulu/Meta-Llama-3.1-8B-SurviveV3-int4_asym-awq-se-wqe-ov) | 4.68 GB            |
-| [Falcon3-10B-Instruct-int4_asym-ov](https://huggingface.co/Echo9Zulu/Falcon3-10B-Instruct-int4_asym-ov)                                     | 5.74 GB            |
+| [Rocinante-12B-v1.1-int4_sym-awq-se-ov](https://huggingface.co/Echo9Zulu/Rocinante-12B-v1.1-int4_sym-awq-se-ov) | 6.92 GB            |
 | [Echo9Zulu/phi-4-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/phi-4-int4_asym-awq-ov) | 8.11 GB            |
 | [DeepSeek-R1-Distill-Qwen-14B-int4-awq-ov](https://huggingface.co/Echo9Zulu/DeepSeek-R1-Distill-Qwen-14B-int4-awq-ov/tree/main)             | 7.68 GB            |
-| [Phi-4-o1-int4_asym-awq-weight_quantization_error-ov](https://huggingface.co/Echo9Zulu/Phi-4-o1-int4_asym-awq-weight_quantization_error-ov) | 8.11 GB            |
+| [Homunculus-OpenVINO](https://huggingface.co/Echo9Zulu/Homunculus-OpenVINO) |             |
 | [Mistral-Small-24B-Instruct-2501-int4_asym-ov](https://huggingface.co/Echo9Zulu/Mistral-Small-24B-Instruct-2501-int4_asym-ov)		| 12.9 GB	     |	
+| [gemma-3-4b-it-int8_asym-ov](https://huggingface.co/Echo9Zulu/gemma-3-4b-it-int8_asym-ov) | 3.89 GB            |
 
-Documentation on choosing parameters for conversion is coming soon; we also have a channel in Discord for this topic. 
 
-> [!NOTE]
-> The optimum CLI tool integrates several different APIs from several different Intel projects; it is a better alternative than using APIs in from_pretrained() methods. 
-> It references prebuilt export configurations for each supported model architecture meaning **not all models are supported** but most are. If you use the CLI tool and get an error about an unsupported architecture follow the link, [open an issue](https://github.com/huggingface/optimum-intel/issues) with references to the model card and the maintainers will get back to you.  
+If you use the CLI tool and get an error about an unsupported architecture follow the link, [open an issue](https://github.com/huggingface/optimum-intel/issues) with references to the model card and the maintainers will get back to you.  
 
 > [!NOTE]
 > A naming convention for openvino converted models is coming soon. 
@@ -271,11 +235,15 @@ Notes on the test:
 Test System:
 
 CPU: Xeon W-2255 (10c, 20t) @3.7ghz
+
 GPU: 3x Arc A770 16GB Asrock Phantom
+
 RAM: 128gb DDR4 ECC 2933 mhz
+
 Disk: 4tb ironwolf, 1tb 970 Evo
 
 OS: Ubuntu 24.04
+
 Kernel: 6.9.4-060904-generic
 
 Prompt: "We don't even have a chat template so strap in and let it ride!"
@@ -342,9 +310,9 @@ OpenArc stands on the shoulders of several other projects:
 
 [FastAPI](https://github.com/fastapi/fastapi)
 
-[click]()
+[click](https://github.com/pallets/click)
 
-[rich-click]()
+[rich-click](https://github.com/ewels/rich-click)
 
 Thank for yoru work!!
 
