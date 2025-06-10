@@ -46,7 +46,10 @@ Support for speculative decoding, generating embeddings, speech tasks, image gen
  	  
 ## Command Line Application
 
-OpenArc now has a command line application for interfacing with the server! Gradio has been put to pasture. From those orange ashes 
+OpenArc now has a command line application for interfacing with the server! 
+
+Gradio has been put to pasture and has been replaced with a brand new UX flow meant to make using and learning OpenVINO easier. GitHub, Reddit and forums everywhere are full of people who learned OpenVINO
+
 
 To get started run
 
@@ -54,17 +57,35 @@ To get started run
 python openarc_cli.py --help
 ```
 
-The screen should look like this:
+Which gives:
 
 ![CLI Help Screen](assets/cli_main_help.png)
 
-Here are some other useful commands: 
+![NOTE] Whenever you get stuck simply add --help to see documentation. 
+
+### Launch Server
 
 To launch the server:
 
 ```
 python openarc_cli.py serve start
 ```
+
+For a more granular networking setup:
+
+```
+python openarc_cli.py serve start --start --openarc-port (your-port)
+```
+
+![CLI serve Screen](assets/cli_serve_start.png)
+
+We save the host/port configuration to 'openarc-cli-config.yaml' file. 
+
+The CLI always sends commands to the server wherever you start it from laying groundwork for easier containerization in the future
+
+### Load a Model 
+
+
 
 To load a model open another temrinal:
 
@@ -76,12 +97,24 @@ This menu gives a breakdown of how the many different optimzation parameters wor
 
 ![CLI Help Screen](assets/load.png)
 
+Here are some example commands with Qwen3 and Qwen2.5-VL on GPU
 
-The CLI application will surface C++ errors from the OpenVINO runtime as you tinker; in practice this is sort of like print debugging your LLM optimizations directly from the engine, often leading you directly into the source code.
+
+To load a Qwen3 model:
+```
+python openarc_cli.py load --model path/to/model --model-type TEXT --device GPU.0
+```
+
+To load a Qwen-2.5-VL model:
+```
+python openarc_cli.py load --model path/to/model --model-type VISION --device GPU.0
+```
+
+The CLI application will surface C++ errors from the OpenVINO runtime as you tinker; in practice this is sort of like print debugging your LLM optimizations directly from the engine, often leading you directly into the source code to understand things from the inside.
 
 In practice this helps get through the sometimes vague documentation, especially for edge cases.
 
-Other options follow a similar structure; use --help to explore the tool!
+Keep reading to see more about what models can be used with OpenArc and learn about model conversion. 
 
 ## System Requirments 
 
@@ -90,17 +123,18 @@ Other options follow a similar structure; use --help to explore the tool!
 - See [OpenVINO System Requirments](https://docs.openvino.ai/2025/about-openvino/ release-notes-openvino/system-requirements.html#cpu) to get the most updated information.
 
 - If you need help installing drivers:
-	- Join our [Discord](https://discord.gg/Bzz9hax9Jq)
-	- Open an issue
-	- [Linux Drivers](https://github.com/SearchSavior/OpenArc/discussions/11)
-	- [Windows Drivers](https://github.com/SearchSavior/OpenArc/discussions/12)
+	- [Join our Discord](https://discord.gg/Bzz9hax9Jq)
+	- [Linux Driver Issues](https://github.com/SearchSavior/OpenArc/discussions/11)
+	- [Windows Drivers Issues](https://github.com/SearchSavior/OpenArc/discussions/12)
 
 After setting up the environment run
 
 ```
-python openarc_cli.py tool device-properties
+python openarc_cli.py tool device-detect
 ```
 as a sanity test
+
+![device-detect](assets/cli_tool_device-detect.png)
 
 
 ## Environment Setup 
@@ -141,9 +175,9 @@ pip install "optimum-intel[openvino] @ git+https://github.com/huggingface/optimu
 	conda env create -f environment.yaml
 
 Set your API key as an environment variable:
-
-	setx OPENARC_API_KEY=<you-know-for-search>
-
+```
+setx OPENARC_API_KEY openarc-api-key
+```
 Build Optimum-Intel from source to get the latest support:
 
 ```
@@ -195,7 +229,7 @@ There are a few sources of models which can be used with OpenArc;
 - [My HuggingFace repo](https://huggingface.co/Echo9Zulu)
 	- My repo contains preconverted models for a variety of architectures and usecases
 	- OpenArc supports almost all of them 
-  - Includes NSFW, ERP and "exotic" community finetunes that Intel doesn't so take advantage!
+  - Includes NSFW, ERP and "exotic" community finetunes that Intel doesn't host take advantage!
   - **These get updated regularly so check back often!**
   - If you read this here, *mention it on Discord* and I can quant a model you want to try. 
 

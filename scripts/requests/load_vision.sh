@@ -12,7 +12,7 @@ JSON_PAYLOAD='{
         "export_model": false,
         "pad_token_id": null,
         "eos_token_id": null,
-        "model_type": "VISION"
+        "architecture_type": "VISION"
     },
     "ov_config": {
         "PERFORMANCE_HINT": "LATENCY"

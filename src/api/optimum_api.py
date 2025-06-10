@@ -228,7 +228,7 @@ async def openai_chat_completions(request: ChatCompletionRequest):
 
     try:
         # Handle vision model messages differently
-        if model_instance.model_metadata["model_type"] == ModelType.VISION:
+        if model_instance.model_metadata["architecture_type"] == ModelType.VISION:
             conversation = []
             for msg in request.messages:
                 if isinstance(msg["content"], list):
@@ -274,9 +274,9 @@ async def openai_chat_completions(request: ChatCompletionRequest):
             async def stream_generator():
                 current_metrics = None
                 try:
-                    if model_instance.model_metadata["model_type"] == ModelType.VISION:
+                    if model_instance.model_metadata["architecture_type"] == ModelType.VISION:
                         stream_method = model_instance.generate_vision_stream
-                    elif model_instance.model_metadata["model_type"] == ModelType.TEXT:
+                    elif model_instance.model_metadata["architecture_type"] == ModelType.TEXT:
                         stream_method = model_instance.generate_stream
 
                     async for token_chunk, metrics_chunk in stream_method(generation_config):
@@ -300,7 +300,7 @@ async def openai_chat_completions(request: ChatCompletionRequest):
 
         else:
             # For non-streaming responses, use the appropriate generate method based on model type
-            model_type = model_instance.model_metadata["model_type"]
+            model_type = model_instance.model_metadata["architecture_type"]
             if model_type == ModelType.VISION:
                 # Call the new vision-specific non-streaming method
                 generated_text, metrics = model_instance.generate_vision_text(generation_config)
@@ -362,7 +362,7 @@ async def openai_completions(request: CompletionRequest):
     )
 
     # Use model type to determine which generation method to use
-    model_type = model_instance.model_metadata["model_type"]
+    model_type = model_instance.model_metadata["architecture_type"]
 
     # Handle streaming response
     if request.stream:

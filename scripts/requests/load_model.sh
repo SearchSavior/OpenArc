@@ -7,7 +7,7 @@ API_URL="http://localhost:8000/optimum/model/load"
 JSON_PAYLOAD='{
     "load_config": {
         "id_model": "/mnt/Ironwolf-4TB/Models/OpenVINO/Phi-4-mini-instruct-int4_asym-awq-se-ov",
-        "model_type": "TEXT",
+        "architecture_type": "TEXT",
         "use_cache": true,
         "device": "GPU.0",
         "dynamic_shapes": true,

@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 class Optimum_Text2TextCore:
     """
-    - Initialize the Optimum_Text2TextCore class when enum ModelType (as model_type) is TEXT.
+            - Initialize the Optimum_Text2TextCore class when enum ModelType (as architecture_type) is TEXT.
     - Loads an OpenVINO model and HuggingFace tokenizer
     - Used for text-to-text generation only
     - Any model which can be converted with the Optimum-CLI tool will work. 
@@ -39,7 +39,7 @@ class Optimum_Text2TextCore:
         self.model = None
         self.tokenizer = None
         self.model_metadata = {
-            "model_type": ModelType.TEXT,
+            "architecture_type": ModelType.TEXT,
             "id_model": load_model_config.id_model
         }
 

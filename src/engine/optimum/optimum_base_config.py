@@ -4,7 +4,7 @@ from typing import Optional, Any
 
 class ModelType(str, Enum):
     """
-    Identifiers for model_type: should be extended to include other model types as OpenArc grows. 
+    Identifiers for architecture_type: should be extended to include other model types as OpenArc grows. 
      
      TEXT = "TEXT"
      VISION = "VISION"
@@ -47,12 +47,12 @@ class OV_LoadModelConfig(BaseModel):
     . bos_token_id: custom beginning of sequence token ID
 
     Architecture specific:
-    . model_type: type of model based on the architecture/task.
+    . architecture_type: type of model based on the architecture/task.
         - "TEXT" for text-to-text models
         - "VISION" for image-to-text models
     """
     id_model: str = Field(..., description="Model identifier or path")
-    model_type: ModelType = Field(..., description="Type of model (TEXT or VISION)")
+    architecture_type: ModelType = Field(..., description="Type of model (TEXT or VISION)")
     use_cache: Optional[bool] = Field(True, description="Whether to use cache for stateful models. For multi-gpu use false.")
     device: str = Field("CPU", description="Device options: CPU, GPU, AUTO")
     export_model: bool = Field(False, description="Whether to export the model")
@@ -112,7 +112,7 @@ def create_optimum_model(load_model_config: OV_LoadModelConfig, ov_config: Optio
     from .optimum_text2text import Optimum_Text2TextCore
     
     # Create the appropriate model instance based on configuration
-    if load_model_config.model_type == ModelType.VISION:
+    if load_model_config.architecture_type == ModelType.VISION:
         model_instance = Optimum_Image2TextCore(load_model_config, ov_config)
     else:
         model_instance = Optimum_Text2TextCore(load_model_config, ov_config)
@@ -128,7 +128,7 @@ def create_optimum_model(load_model_config: OV_LoadModelConfig, ov_config: Optio
         "pad_token_id": load_model_config.pad_token_id,
         "eos_token_id": load_model_config.eos_token_id,
         "bos_token_id": load_model_config.bos_token_id,
-        "model_type": load_model_config.model_type,
+        "architecture_type": load_model_config.architecture_type,
     }
     
     if ov_config:

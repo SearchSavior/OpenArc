@@ -319,7 +319,7 @@ def load(ctx, model, model_type, device, use_cache, dynamic_shapes,
     # Build load_config from arguments
     load_config = {
         "id_model": model,
-        "model_type": model_type,
+        "architecture_type": model_type,
         "use_cache": use_cache,
         "device": device,
         "dynamic_shapes": dynamic_shapes,
@@ -425,7 +425,7 @@ def status(ctx):
                     device = model_info.get("device", "unknown")
                     status_val = model_info.get("status", "unknown")
                     metadata = model_info.get("model_metadata", {})
-                    model_type = metadata.get("model_type", "unknown")
+                    model_type = metadata.get("architecture_type", "unknown")
                     use_cache = str(metadata.get("use_cache", "-"))
                     dynamic_shapes = str(metadata.get("dynamic_shapes", "-"))
                     pad_token_id = str(metadata.get("pad_token_id", "-"))
