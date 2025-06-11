@@ -9,13 +9,13 @@
 > OpenArc is under active development. Expect breaking changes.
 
 
-
 **OpenArc** is an inference engine which makes using Intel devices as accelerators easier.
+
 
 
 Powered by Optimum-Intel to leverage hardware acceleration on Intel CPUs, GPUs and NPUs through OpenVINO runtime, OpenArc integrates closely with Huggingface Transformers making the inference-work our codebase performs easy to understand.    
 
-Under the hood OpenArc implements a FastAPI layer over a growing collection of Transformers integrated AutoModel classes from Optimum-Intel. These enable accelerating inference on a wide range of tasks, models from many source frameworks.
+Under the hood OpenArc implements a FastAPI layer over a growing collection of classes from Optimum-Intel which cover on a wide range of tasks and model architectures.
 
 OpenArc currently supports **text generation** and **text generation with vision** over OpenAI API endpoints. 
 
