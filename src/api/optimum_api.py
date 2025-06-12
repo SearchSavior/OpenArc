@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Dict
 from pydantic import BaseModel
 from datetime import datetime
 from pathlib import Path
@@ -58,6 +58,20 @@ for module in ["optimum", "openvino"]:
     
     module_logger.propagate = True
 
+# OV_ModelPool class for managing model instances
+class OV_ModelPool:
+    def __init__(self):
+        self._models: Dict[str, Any] = {}
+        self.logger = logging.getLogger(__name__)
+    
+    def load_to_pool(self, model_id: str, model_instance) -> None:
+        """Load a model to the pool"""
+        self._models[model_id] = model_instance
+        self.logger.info(f"Model {model_id} loaded to pool")
+
+# Create global model pool instance
+model_pool = OV_ModelPool()
+
 app = FastAPI(title="OpenArc API")
 
 # Configure CORS
@@ -69,8 +83,6 @@ app.add_middleware(
     allow_headers=["*"],  
 )
 
-# Global state to store multiple model instances
-model_instances = {}
 
 # API key authentication
 API_KEY = os.getenv("OPENARC_API_KEY")
@@ -104,7 +116,11 @@ async def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(sec
             detail="Invalid API key",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
     return credentials.credentials
+
+# Global state to store multiple model instances
+model_instances = {}
 
 def get_final_model_id(model_id: str) -> str:
     """Extracts the final segment of the model id path so we dont display the whole path."""
@@ -113,7 +129,6 @@ def get_final_model_id(model_id: str) -> str:
 @app.post("/optimum/model/load", dependencies=[Depends(verify_api_key)])
 async def load_model(load_config: OV_LoadModelConfig, ov_config: OV_Config):
     """Load a model with the specified configuration"""
-    global model_instances
     logger.info("POST /optimum/model/load called with load_config: %s, ov_config: %s", load_config, ov_config)
     try:
         # Initialize new model using the factory function
@@ -127,7 +142,7 @@ async def load_model(load_config: OV_LoadModelConfig, ov_config: OV_Config):
         
         # Store the model instance with its ID as the key
         model_id = get_final_model_id(load_config.id_model)
-        model_instances[model_id] = new_model
+        model_pool.load_to_pool(model_id, new_model)
         
         return {"status": "success", "message": f"Model {model_id} loaded successfully"}
     except Exception as e:
