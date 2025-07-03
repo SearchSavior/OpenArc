@@ -10,10 +10,9 @@ __pycache__/
 *.pyc
 *.log
 *.env
+*.openarc-cli-config.yaml
+*.openarc_api.log
 .pytest_cache/
 .mypy_cache/
-.obsidian/
-.gradio/
 .venv/
 .vscode/
-.openarc-cli-config.yaml

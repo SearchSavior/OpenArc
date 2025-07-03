@@ -4,8 +4,8 @@ import gc
 from typing import List
 
 # Define model paths
-draft_model_path = r"/mnt/Ironwolf-4TB/Models/OpenVINO/Phi-4-mini-FastDraft-120M-int8-ov"
-main_model_path = r"/mnt/Ironwolf-4TB/Models/OpenVINO/Phi-lthy4-OpenVINO/Phi-lthy4-int4_sym-awq-ov"
+draft_model_path = r"/mnt/Ironwolf-4TB/Models/OpenVINO/Phi/Phi-4-mini-FastDraft-120M-int8-ov"
+main_model_path = r"/mnt/Ironwolf-4TB/Models/OpenVINO/Phi/Phi-4-mini-instruct-int4_asym-awq-se-ov"
 
 # Test prompts - mix of different types for comprehensive testing
 test_prompts = [
@@ -150,7 +150,7 @@ try:
     del draft_model
     gc.collect()
     
-    print(f"\nBenchmarking completed successfully!")
+    print("\nBenchmarking completed successfully!")
     print(f"Tested with {len(test_prompts)} different prompts")
     print(f"Main model device: {main_device}")
     print(f"Draft model device: {draft_device}")
