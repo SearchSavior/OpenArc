@@ -2,11 +2,11 @@ import openvino_genai as ov_genai
 
 
 
-model_dir = "/mnt/Ironwolf-4TB/Models/Pytorch/Hermes-3-Llama-3.2-3B-int4_sym-awq-se-ov"
+model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/Llama/Llama-3.1-Nemotron-Nano-8B-v1-int4_sym-awq-se-ov"
 
 pipe = ov_genai.LLMPipeline(
     model_dir,       # Path to the model directory
-    device="GPU.2",    # Define the device to use
+    device="GPU.0",    # Define the device to use
 )
 
 generation_config = ov_genai.GenerationConfig(

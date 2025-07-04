@@ -6,7 +6,7 @@ OpenVINO is an inference engine for leveraging diverse types of compute. To sque
 
 OpenVINO defaults to **int8_asym** when setting "export=True" in both **OVModelForCausalLM.from_pretrained()** and the Optimum CLI Export Tool if no arguments for weight_format are passed. 
 
-OpenArc has been designed for usecases which wander toward the bleeding edge of AI where users are expected to understand the nuance of datatypes, quantization strategies, calibration datasets, how these parameters contribute to accuracy loss and maybe have just come from IPEX or (as of 2.5) 'vanilla' Pytorch and are looking to optimize a deployment.
+OpenArc has been designed for usecases which wander toward the bleeding edge of AI where users are expected to understand the nuance of datatypes, quantization strategies, calibration datasets, how these parameters contribute to accuracy/quality degredation across tasks. Perhaps you have just come from IPEX or (as of 2.5) 'vanilla' Pytorch and are looking to optimize a deployment.
 
 For convience "export=False" is exposed on the /model/load endpoint; however I **strongly discourage** using it. To get the best performance from OpenVINO you have to get into the weeds.
 

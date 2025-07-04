@@ -11,8 +11,6 @@
 
 **OpenArc** is an inference engine which makes using Intel devices as accelerators easier.
 
-
-
 Powered by Optimum-Intel to leverage hardware acceleration on Intel CPUs, GPUs and NPUs through OpenVINO runtime, OpenArc integrates closely with Huggingface Transformers making the inference-work our codebase performs easy to understand.    
 
 Under the hood OpenArc implements a FastAPI layer over a growing collection of classes from Optimum-Intel which cover on a wide range of tasks and model architectures.
@@ -32,7 +30,7 @@ Support for speculative decoding, generating embeddings, speech tasks, image gen
     - Qwen2.5-VL 
     - Gemma 3
 
-### NEW Command Line Application!
+### Command Line Application!
   - Built with click and rich-click
   - OpenArc's server has been thoroughly documented there. Much cleaner!
   - Coupled with officual documentation this makes learning OpenVINO easier. 
@@ -290,6 +288,7 @@ Kernel: 6.9.4-060904-generic
 
 Prompt: "We don't even have a chat template so strap in and let it ride!"
 max_new_tokens= 128
+
 ---
 
 ### GPU Performance: 1x Arc A770
@@ -330,6 +329,8 @@ If you are interested in implementing support for another task join our Discord 
 ---
 Learn more about how to leverage your Intel devices for Machine Learning:
 
+[vllm with IPEX](https://docs.vllm.ai/en/v0.5.1/getting_started/xpu-installation.html)
+
 [openvino_notebooks](https://github.com/openvinotoolkit/openvino_notebooks)
 
 [Inference with Optimum-Intel](https://github.com/huggingface/optimum-intel/blob/main/notebooks/openvino/optimum_openvino_inference.ipynb)
@@ -356,7 +357,7 @@ OpenArc stands on the shoulders of several other projects:
 
 [rich-click](https://github.com/ewels/rich-click)
 
-Thank for yoru work!!
+Thank for your work!!
 
 
 
