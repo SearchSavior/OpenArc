@@ -3,7 +3,7 @@ from threading import Thread
 from transformers import AutoTokenizer, TextIteratorStreamer
 from optimum.intel.openvino import OVModelForCausalLM
 
-model_id = "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen3-0.6B-fp16-ov" # Can be a local path or an HF id
+model_id = "/mnt/Ironwolf-4TB/Models/OpenVINO/Phi/Phi-lthy4-OpenVINO/Phi-lthy4-int4_sym-awq-ov" # Can be a local path or an HF id
 ov_config = {"PERFORMANCE_HINT": "LATENCY", 
              #"INFERENCE_NUM_THREADS": 10, 
              #"ENABLE_HYPER_THREADING": True
@@ -14,7 +14,7 @@ load_time = time.perf_counter()
 model = OVModelForCausalLM.from_pretrained(
     model_id,
     export=False,
-    device="CPU",
+    device="GPU.0",
     ov_config=ov_config
 )
 tokenizer = AutoTokenizer.from_pretrained(model_id)

@@ -1,21 +1,23 @@
+import time
+import tiktoken
+
 from openvino_genai import (
     # LLMPipeline, 
     GenerationConfig, 
     ContinuousBatchingPipeline, 
     SchedulerConfig,
+    Tokenizer,
 )
-import time
-import tiktoken
 
-model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/Llama/Llama-3.1-Nemotron-Nano-8B-v1-int4_sym-awq-se-ov"
+model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/Llama/Hermes-3-Llama-3.2-3B-int4_sym-awq-se-ov"
 
 # Initialize tiktoken encoder
 tokenizer = tiktoken.get_encoding("cl100k_base")  # GPT-4 tokenizer
-
+genai_tokenizer = Tokenizer(str(model_dir))
 # Configure scheduler with proper parameters
 scheduler_config = SchedulerConfig()
 scheduler_config.max_num_batched_tokens = 2048  # Increased for longer conversations
-scheduler_config.max_num_seqs = 24  # Batch size for padding
+scheduler_config.max_num_seqs = 12  # Batch size for padding
 scheduler_config.cache_size = 8  # Increased KV cache size
 scheduler_config.dynamic_split_fuse = True
 scheduler_config.enable_prefix_caching = True
@@ -25,11 +27,12 @@ pipeline = ContinuousBatchingPipeline(
     model_dir, 
     device="GPU.0", 
     scheduler_config=scheduler_config,
+    tokenizer=genai_tokenizer,
 )
 
 # Generation config for padding prompts (shorter responses)
 pad_generation_config = GenerationConfig(
-    max_new_tokens=50,  # Shorter for padding
+    max_new_tokens=80,  # Shorter for padding
     temperature=0.1,
     top_p=0.9,
     do_sample=True
@@ -37,7 +40,7 @@ pad_generation_config = GenerationConfig(
 
 # Generation config for main conversation (longer responses)
 main_generation_config = GenerationConfig(
-    max_new_tokens=200,  # Longer for main conversation
+    max_new_tokens=2048,  # Longer for main conversation
     temperature=0.7,
     top_p=0.9,
     do_sample=True
@@ -62,6 +65,21 @@ Then tell me what you're hearing.
 Then tell me what you're smelling.
 Then tell me what you're tasting.
 Then tell me what you're touching.
+Sure do wish I had a pickle.
+Sure do wish I had a pickle.    
+Sure do wish I had a pickle.    
+Sure do wish I had a pickle.        
+Sure do wish I had a pickle.    
+Sure do wish I had a pickle.    
+Help me sharped my pickle.
+Help me sharped my pickle.
+Help me sharped my pickle.
+Explain machine learning in simple terms and always be super verbose you know what I'm saying dog
+THen tell me whats for dinner, and whats 
+Then tell me what you're thinking about.
+Then tell me what you're doing.
+Then tell me what you're feeling.
+Then tell me what you're seeing.
 """
 
 # Multi-turn conversation simulation
@@ -81,7 +99,7 @@ conversation_state = {
     "performance_metrics": []
 }
 
-def create_batch_prompts(conversation_prompt, batch_size=160):
+def create_batch_prompts(conversation_prompt, batch_size=10):
     """Create a batch where one prompt is the conversation and others are padding"""
     batch = []
     generation_configs = []
@@ -218,7 +236,7 @@ print(f"Max cache usage: {metrics.max_cache_usage:.2f}%")
 print(f"Average cache usage: {metrics.avg_cache_usage:.2f}%")
 
 # Analysis of conversation growth impact
-print(f"\n🔍 CONVERSATION GROWTH ANALYSIS:")
+print("\n🔍 CONVERSATION GROWTH ANALYSIS:")
 first_turn_metrics = conversation_state["performance_metrics"][0]
 last_turn_metrics = conversation_state["performance_metrics"][-1]
 

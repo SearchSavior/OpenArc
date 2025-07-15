@@ -1,30 +1,39 @@
+import time
+
 from openvino_genai import (
-    # LLMPipeline, 
     GenerationConfig, 
     ContinuousBatchingPipeline, 
     SchedulerConfig,
+    Tokenizer,
 )
-import time
+# import openvino.properties.hint as ov_config
 
-model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/Phi/Phi-lthy4-OpenVINO/Phi-lthy4-int4_sym-ov"
+
+model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/Phi/Phi-lthy4-OpenVINO/Phi-lthy4-int4_sym-awq-ov"
+#model_dir = "/mnt/Ironwolf-4TB/Models/Pytorch/Mistral/MS3.2-24B-Magnum-Diamond-int4_asym-ov"
+
+genai_tokenizer = Tokenizer(str(model_dir))
 # Configure scheduler with proper parameters
 scheduler_config = SchedulerConfig()
-scheduler_config.max_num_batched_tokens = 1024  # Maximum tokens to batch together
-scheduler_config.max_num_seqs = 30  # Maximum number of sequences (batch size)
-scheduler_config.cache_size = 4  # KV cache size in GB
+scheduler_config.max_num_batched_tokens = 2048  # Maximum tokens to batch together
+scheduler_config.max_num_seqs = 48  # Maximum number of sequences (batch size)
+scheduler_config.cache_size = 6  # KV cache size in GB
 scheduler_config.dynamic_split_fuse = True  # Split prompt/generate phases
 scheduler_config.enable_prefix_caching = True  # Enable KV-block caching
+#scheduler_config.use_cache_eviction = False
 
 # Initialize the continuous batching pipeline
 pipeline = ContinuousBatchingPipeline(
     model_dir, 
     device="GPU.0", 
     scheduler_config=scheduler_config,
+    tokenizer=genai_tokenizer,
+    #properties={}
 )
 
 # Set generation configuration
 generation_config = GenerationConfig(
-    max_new_tokens=128,
+    max_new_tokens=1024,
     temperature=0.7,
     top_p=0.9,
     do_sample=True
@@ -54,15 +63,33 @@ prompts = [
     "Write a short story about a bear",
     "Write a short story about a fox",
     "Write a short story about a wolf",
-    "Write a short story about a rabbit",
     "Write a short story about a snake",
-    "Write a short story about a crocodile",
-    "Write a short story about a hippo",
-    "Write a short story about a elephant",
-    "Write a short story about a giraffe",
-    "Write a short story about a zebra",
-    "Write a short story about a monkey",
-    "Write a short story about a panda",
+    "Write a short story about a frog",
+    "Write a short story about a turtle",
+    "Write a short story about a fish",
+    "Write a short story about a bird",
+    "Write a short story about a dog",
+    "Write a short story about a cat",
+    "Write a short story about a horse",
+    "Write a short story about a cow",
+    "Write a short story about a pig",
+    "Write a short story about a sheep",
+    "Write a short story about a goat",
+    "Write a short story about a chicken",
+    "Write a short story about a duck",
+    "Write a short story about a goose",
+    "Write a short story about a turkey",
+    "Write a short story about a lion",
+    "Write a short story about a tiger",
+    "Write a short story about a bear",
+    "Write a short story about a fox",
+    "Write a short story about a wolf",
+    "Write a short story about a snake",
+    "Write a short story about a frog",
+    "Write a short story about a turtle",
+    "Write a short story about a fish",
+    "Write a short story about a bird",
+
 ]
 
 # Create a list of generation configs (one for each prompt)
