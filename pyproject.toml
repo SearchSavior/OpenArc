@@ -1,0 +1,28 @@
+[project]
+name = "OpenArc"
+version = "1.0.5"
+description = "OpenArc is an inference server for OpenVINO AI models."
+authors = [
+    {name = "Emerson Tatelbaum", email = "etatelbaum.psc@gmail.com"}
+]
+
+readme = "README.md"
+requires-python = ">=3.11"
+
+dependencies = [
+    "click>=8.2.1",
+    "fastapi>=0.116.1",
+    "openvino-genai>=2025.2.0.0",
+    "optimum[openvino]>=1.26.1",
+    "pydantic>=2.11.7",
+    "pyyaml>=6.0.2",
+    "rich-click>=1.8.9",
+    "uvicorn>=0.35.0",
+]
+
+[project.scripts]
+openarc = "src.cli.openarc_cli:cli"
+
+[tool.uv]
+dev-dependencies = []
+package = true

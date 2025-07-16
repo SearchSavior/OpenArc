@@ -6,8 +6,8 @@ model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/Llama/Hermes-3-Llama-3.2-3B-int4_
 
 pipe = ov_genai.LLMPipeline(
     model_dir,       # Path to the model directory
-    device="HETERO:GPU.0,GPU.1",    # Define the device to use
-    config={ov_config.model_distribution_policy: "PIPELINE_PARALLEL"}
+   # device="HETERO:GPU.0,GPU.1",    # Define the device to use
+   # config={ov_config.model_distribution_policy: "PIPELINE_PARALLEL"}
 )
 
 generation_config = ov_genai.GenerationConfig(
