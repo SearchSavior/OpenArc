@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.scripts]
-openarc = "src.cli.openarc_cli:cli"
+openarc = "cli.openarc_cli:cli"
 
 [tool.uv]
 dev-dependencies = []
