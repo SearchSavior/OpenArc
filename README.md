@@ -140,10 +140,19 @@ as a sanity test
 <details>
   <summary>Ubuntu</summary>
 
+Install uv from [here](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)
 
-Create the conda environment:
+After cloning use:
 
-	conda env create -f environment.yaml
+```
+uv sync
+```
+
+Activate your environment with:
+
+```
+source .venv/bin/activate
+```
 
 
 Set your API key as an environment variable:
@@ -153,7 +162,7 @@ Set your API key as an environment variable:
 Build Optimum-Intel from source to get the latest support:
 
 ```
-pip install "optimum-intel[openvino] @ git+https://github.com/huggingface/optimum-intel"
+uv pip install "optimum-intel[openvino] @ git+https://github.com/huggingface/optimum-intel"
 ```
 
 </details>
@@ -161,16 +170,14 @@ pip install "optimum-intel[openvino] @ git+https://github.com/huggingface/optimu
 <details>
   <summary>Windows</summary>
 
-1. Install Miniconda from [here](https://www.anaconda.com/docs/getting-started/miniconda/install#windows-installation)
+1. Install uv from [here](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)
 
-2. Create the conda environment:
+2. Clone OpenArc, enter the directory and run:
   ```
-  conda env create -f environment.yaml
+  uv sync
   ```
 
 3. Navigate to the directory containing the environment.yaml file and run
-
-	conda env create -f environment.yaml
 
 Set your API key as an environment variable:
 ```
@@ -179,7 +186,7 @@ setx OPENARC_API_KEY openarc-api-key
 Build Optimum-Intel from source to get the latest support:
 
 ```
-pip install optimum[openvino]+https://github.com/huggingface/optimum-intel
+uv pip install "optimum-intel[openvino] @ git+https://github.com/huggingface/optimum-intel"
 ```
 
 > [!Tips]

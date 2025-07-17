@@ -1,5 +1,4 @@
 import time
-
 from openvino_genai import (
     GenerationConfig, 
     ContinuousBatchingPipeline, 
