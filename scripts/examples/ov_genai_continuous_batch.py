@@ -8,7 +8,7 @@ from openvino_genai import (
 # import openvino.properties.hint as ov_config
 
 
-model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/Phi/Phi-lthy4-OpenVINO/Phi-lthy4-int4_sym-awq-ov"
+model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/Llama/Llama-3.2-3B-Instruct-abliterated-OpenVINO/Llama-3.2-3B-Instruct-abliterated-int4_asym-ov"
 #model_dir = "/mnt/Ironwolf-4TB/Models/Pytorch/Mistral/MS3.2-24B-Magnum-Diamond-int4_asym-ov"
 
 genai_tokenizer = Tokenizer(str(model_dir))
@@ -24,7 +24,7 @@ scheduler_config.enable_prefix_caching = True  # Enable KV-block caching
 # Initialize the continuous batching pipeline
 pipeline = ContinuousBatchingPipeline(
     model_dir, 
-    device="GPU.0", 
+    device="GPU.1", 
     scheduler_config=scheduler_config,
     tokenizer=genai_tokenizer,
     #properties={}

@@ -20,7 +20,7 @@ import json
 import os
 import sys
 
-from src.engine.optimum.optimum_base_config import (
+from engine.optimum.optimum_base_config import (
     OV_LoadModelConfig,
     OV_Config,
     OV_GenerationConfig,

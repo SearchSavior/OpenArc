@@ -31,7 +31,7 @@ def start_server(host: str = "0.0.0.0", openarc_port: int = 8001, reload: bool =
     
     # Start the server
     uvicorn.run(
-        "src.api.optimum_api:app",
+        "api.optimum_api:app",
         host=host,
         port=openarc_port,
         log_level="info"
