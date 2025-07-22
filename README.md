@@ -9,7 +9,7 @@
 > OpenArc is under active development. Expect breaking changes.
 
 
-**OpenArc** is an inference engine which makes using Intel devices as accelerators easier.
+**OpenArc** is an inference engine which makes using Intel devices as accelerators easier for on device.
 
 Powered by Optimum-Intel to leverage hardware acceleration on Intel CPUs, GPUs and NPUs through OpenVINO runtime, OpenArc integrates closely with Huggingface Transformers making the inference-work our codebase performs easy to understand.    
 
@@ -30,7 +30,9 @@ Support for speculative decoding, generating embeddings, speech tasks, image gen
     - Qwen2.5-VL 
     - Gemma 3
 
-### Command Line Application!
+- Other [multimodal architectures](https://github.com/huggingface/optimum-intel/blob/dd622144bf49333fda5cbce670c841288a46bf16/optimum/intel/openvino/modeling_visual_language.py#L4352) which might work
+
+### Command Line Application
   - Built with click and rich-click
   - OpenArc's server has been thoroughly documented there. Much cleaner!
   - Coupled with officual documentation this makes learning OpenVINO easier. 
@@ -44,15 +46,12 @@ Support for speculative decoding, generating embeddings, speech tasks, image gen
  	  
 ## Command Line Application
 
-OpenArc now has a command line application for interfacing with the server! 
-
-Gradio has been put to pasture and has been replaced with a brand new UX flow meant to make using and learning OpenVINO easier. GitHub, Reddit and forums everywhere are full of people who learned OpenVINO
-
+OpenArc has a command line application for interfacing with the server! 
 
 To get started run
 
 ```
-python openarc_cli.py --help
+openarc --help
 ```
 
 Which gives:
@@ -66,13 +65,13 @@ Which gives:
 To launch the server:
 
 ```
-python openarc_cli.py serve start
+openarc serve start
 ```
 
 For a more granular networking setup:
 
 ```
-python openarc_cli.py serve start --start --openarc-port (your-port)
+openarc serve start --start --openarc-port (your-port)
 ```
 
 ![CLI serve Screen](assets/cli_serve_start.png)
@@ -88,7 +87,7 @@ The CLI always sends commands to the server wherever you start it from laying gr
 To load a model open another temrinal:
 
 ```
-python openarc_cli.py load --help
+openarc load --help
 ```
 This menu gives a breakdown of how the many different optimzation parameters work and broadly how they can be used together. 
 
@@ -100,12 +99,12 @@ Here are some example commands with Qwen3 and Qwen2.5-VL on GPU
 
 To load a Qwen3 model:
 ```
-python openarc_cli.py load --model path/to/model --model-type TEXT --device GPU.0
+openarc load --model path/to/model --model-type TEXT --device GPU.0
 ```
 
 To load a Qwen-2.5-VL model:
 ```
-python openarc_cli.py load --model path/to/model --model-type VISION --device GPU.0
+openarc load --model path/to/model --model-type VISION --device GPU.0
 ```
 
 The CLI application will surface C++ errors from the OpenVINO runtime as you tinker; in practice this is sort of like print debugging your LLM optimizations directly from the engine, often leading you directly into the source code to understand things from the inside.
@@ -128,7 +127,7 @@ Keep reading to see more about what models can be used with OpenArc and learn ab
 After setting up the environment run
 
 ```
-python openarc_cli.py tool device-detect
+openarc tool device-detect
 ```
 as a sanity test
 
@@ -177,7 +176,6 @@ uv pip install "optimum-intel[openvino] @ git+https://github.com/huggingface/opt
   uv sync
   ```
 
-3. Navigate to the directory containing the environment.yaml file and run
 
 Set your API key as an environment variable:
 ```
@@ -190,8 +188,9 @@ uv pip install "optimum-intel[openvino] @ git+https://github.com/huggingface/opt
 ```
 
 > [!Tips]
-- Avoid setting up the environment from IDE extensions. 
-- Try not to use the environment for other ML projects. Soon we will have uv.
+- uv has a [pip interface](https://docs.astral.sh/uv/pip/) as an alternative to the uv interface.
+- This project's pyproject.toml is pretty basic. They can get quite complicated, so if you are learning uv OpenArc is a good place to start.
+
 </details>
 
 ## OpenWebUI
@@ -213,7 +212,7 @@ Serverside logs should report:
 
 ### Other Frontends
 
-OpenArc _mostly_ conforms to the openai API specification. In practice this means other frontends, python classes and community tooling will be compatible. 
+OpenArc _mostly_ conforms to the openai API specification. In practice other frontends, libraries and community tooling will be compatible. 
 
 Tested:
 
@@ -221,7 +220,7 @@ Tested:
 
 ### Usage:
 
-- Load the model you want to use from openarc_cli
+- Load the model you want to use from openarc cli
 - Select the connection you just created and use the refresh button to update the list of models
 - if you use API keys and have a list of models these might be towards the bottom
 
@@ -243,7 +242,6 @@ There are a few sources of models which can be used with OpenArc;
 - Easily those craft conversion commands using my HF Space, [Optimum-CLI-Tool_tool](https://huggingface.co/spaces/Echo9Zulu/Optimum-CLI-Tool_tool), a Gradio application which helps you GUI-ify an often research intensive process.
 
 - If you use the CLI tool and get an error about an unsupported architecture or "missing export config" follow the link, [open an issue](https://github.com/huggingface/optimum-intel/issues) reference the model card and the maintainers will get back to you.  
-
 
 Here are some models to get started:
 
