@@ -4,10 +4,8 @@
 [![Hugging Face](https://img.shields.io/badge/🤗%20Hugging%20Face-Echo9Zulu-yellow)](https://huggingface.co/Echo9Zulu)
 
 
-
 > [!NOTE]
 > OpenArc is under active development. Expect breaking changes.
-
 
 **OpenArc** is an inference engine which makes using Intel devices as accelerators easier for on device.
 
@@ -334,15 +332,19 @@ If you are interested in implementing support for another task join our Discord 
 ---
 Learn more about how to leverage your Intel devices for Machine Learning:
 
-[vllm with IPEX](https://docs.vllm.ai/en/v0.5.1/getting_started/xpu-installation.html)
-
 [openvino_notebooks](https://github.com/openvinotoolkit/openvino_notebooks)
+
+
 
 [Inference with Optimum-Intel](https://github.com/huggingface/optimum-intel/blob/main/notebooks/openvino/optimum_openvino_inference.ipynb)
 
 [Optimum-Intel Transformers](https://huggingface.co/docs/optimum/main/en/intel/index)
 
 [NPU Devices](https://docs.openvino.ai/2025/openvino-workflow/running-inference/inference-devices-and-modes/npu-device.html)
+
+[vllm with IPEX](https://docs.vllm.ai/en/v0.5.1/getting_started/xpu-installation.html)
+
+[Mutli GPU Pipeline Paralell with OpenVINO Model Server](https://docs.openvino.ai/2025/model-server/ovms_demos_continuous_batching_scaling.html#multi-gpu-configuration-loading-models-exceeding-a-single-card-vram)
 
 ## Acknowledgments
 
