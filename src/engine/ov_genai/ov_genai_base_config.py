@@ -5,10 +5,6 @@ from pydantic import BaseModel, Field
 from typing import Optional
 
 
-
-# I'm stilling working through how to build an API from this. Many other classes inherit from this 
-# so pydantic models must be carefully designed to make API useful for other types of models.
-
 class OVGenAI_Hints(BaseModel):
     execution_mode: Optional[str] = Field(
         None,
@@ -26,6 +22,7 @@ class OVGenAI_Hints(BaseModel):
 
 class OVGenAI_GenerationConfig(BaseModel):
     
+
 
     do_sample: bool = Field(True, description="Whether to use sampling for generation")
     frequency_penalty: float = Field(0.0, description="Frequency penalty for token repetition")
