@@ -1,8 +1,31 @@
-import openvino_genai as ov_genai
+import gc
+import time
+import traceback
+import logging
+from threading import Thread
+from typing import Any, AsyncIterator, Dict, Optional
+
 import openvino as ov
+from openvino_genai import (
+    VLMPipeline,
+    DecodedResults,
+    EncodedResults,
+    GenerationConfig,
+    GenerationResult,
+    GenerationStatus,
+)
+
+class OVGenAI_Image2TextCore:
+    pass
 
 
-# TODO: Implement VLMPipeline
-
-
-
+    #def util_unload_model(self):
+    #    """Unload model and free memory"""
+    #    del self.model
+    #    self.model = None
+        
+    #    del self.tokenizer
+    #    self.tokenizer = None
+        
+    #    gc.collect()
+    #    print("Model unloaded and memory cleaned up")
