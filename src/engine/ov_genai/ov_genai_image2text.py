@@ -3,7 +3,6 @@ import openvino as ov
 
 
 # TODO: Implement VLMPipeline
-# Inherit from generator_config.py pydanitc models 
 
 
 

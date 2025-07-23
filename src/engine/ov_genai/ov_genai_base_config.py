@@ -1,4 +1,5 @@
 
+import openvino.properties.hint as ov_hints
 
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -7,6 +8,20 @@ from typing import Optional
 
 # I'm stilling working through how to build an API from this. Many other classes inherit from this 
 # so pydantic models must be carefully designed to make API useful for other types of models.
+
+class OV_GenAI_Hints(BaseModel):
+    execution_mode: Optional[str] = Field(
+        None,
+        description="Execution mode for inference. One of: 'PERFORMANCE', 'ACCURACY'."
+    )
+    model_distribution_policy: Optional[str] = Field(
+        None,
+        description="Model distribution policy. One of: 'TENSOR_PARALLEL', 'PIPELINE_PARALLEL'."
+    )
+    performance_mode: Optional[str] = Field(
+        None,
+        description="Performance mode. One of: 'LATENCY', 'THROUGHPUT', 'CUMULATIVE_THROUGHPUT'."
+    )
 
 
 class OV_GenAI_GenerationConfig(BaseModel):
