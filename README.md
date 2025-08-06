@@ -7,20 +7,23 @@
 > [!NOTE]
 > OpenArc is under active development. Expect breaking changes.
 
-**OpenArc** is an inference engine which makes using Intel devices as accelerators easier for on device.
+**OpenArc** is an inference engine which makes using Intel devices as accelerators easier for AI inference.
 
-Powered by Optimum-Intel to leverage hardware acceleration on Intel CPUs, GPUs and NPUs through OpenVINO runtime, OpenArc integrates closely with Huggingface Transformers making the inference-work our codebase performs easy to understand.    
+Powered by Optimum-Intel to leverage hardware acceleration on Intel CPUs, GPUs and NPUs through OpenVINO runtime, OpenArc integrates closely with Huggingface Transformers making the inference-work our codebase performs easy to understand.   
 
 Under the hood OpenArc implements a FastAPI layer over a growing collection of classes from Optimum-Intel which cover on a wide range of tasks and model architectures.
 
 OpenArc currently supports **text generation** and **text generation with vision** over OpenAI API endpoints. 
 
-Support for speculative decoding, generating embeddings, speech tasks, image generation, PaddleOCR, and others are planned.
+Support for speculative decoding, generating embeddings, speech tasks, image generation, PaddleOCR, and others are planned. PRs for these features are welcome, and the model loading API has been designed for extension deeper into Transformers without to much OpenVINO. 
+
+> [!NOTE]
+> Interested in contributing? Please open an issue before submitting a PR!
 
 ## Features
 
 - OpenAI compatible endpoints
-- Validated OpenWebUI support, but it should work elsewhere
+- OpenWebUI support
 - Load multiple vision/text models concurrently on multiple devices for hotswap/multi agent workflows
 - **Most** HuggingFace text generation models
 - Growing set of vision capable LLMs:
@@ -80,8 +83,6 @@ The CLI always sends commands to the server wherever you start it from laying gr
 
 ### Load a Model 
 
-
-
 To load a model open another temrinal:
 
 ```
@@ -105,24 +106,22 @@ To load a Qwen-2.5-VL model:
 openarc load --model path/to/model --model-type VISION --device GPU.0
 ```
 
-The CLI application will surface C++ errors from the OpenVINO runtime as you tinker; in practice this is sort of like print debugging your LLM optimizations directly from the engine, often leading you directly into the source code to understand things from the inside.
+The CLI application will surface C++ errors from the OpenVINO runtime as you tinker; in practice this is works like print debugging your LLM optimizations directly from the engine, often leading you into the source code to understand things from the inside. 
 
-In practice this helps get through the sometimes vague documentation, especially for edge cases.
-
-Keep reading to see more about what models can be used with OpenArc and learn about model conversion. 
+Working this way can help you make sense of the sometimes vague documentation, especially for edge cases.
 
 ## System Requirments 
 
 - OpenArc has been built on top of the OpenVINO runtime; as a result OpenArc    supports the same range of hardware **but requires device specifc drivers** this document will not cover in-depth.
  
-- See [OpenVINO System Requirments](https://docs.openvino.ai/2025/about-openvino/ release-notes-openvino/system-requirements.html#cpu) to get the most updated information.
+- See [OpenVINO System Requirments](https://docs.openvino.ai/2025/about-openvino/release-notes-openvino/system-requirements.html#cpu) to get the most updated information.
 
 - If you need help installing drivers:
 	- [Join our Discord](https://discord.gg/Bzz9hax9Jq)
 	- [Linux Driver Issues](https://github.com/SearchSavior/OpenArc/discussions/11)
 	- [Windows Drivers Issues](https://github.com/SearchSavior/OpenArc/discussions/12)
 
-After setting up the environment run
+Use
 
 ```
 openarc tool device-detect
@@ -222,9 +221,11 @@ Tested:
 - Select the connection you just created and use the refresh button to update the list of models
 - if you use API keys and have a list of models these might be towards the bottom
 
-## Convert to [OpenVINO IR](https://docs.openvino.ai/2025/documentation/openvino-ir-format.html)
+## Convert to OpenVINO IR 
 
-There are a few sources of models which can be used with OpenArc;
+[OpenVINO IR](https://docs.openvino.ai/2025/documentation/openvino-ir-format.html) is an intermediate representation of a model from a variety of source frameworks. For now GGUF does not work, though Intel has been cooking up compatability elsewhere in the ecosystem 
+
+There are a few sources of preconverted models which can be used with OpenArc;
 
 - [OpenVINO LLM Collection on HuggingFace](https://huggingface.co/collections/OpenVINO/llm-6687aaa2abca3bbcec71a9bd)
 
@@ -326,7 +327,7 @@ These dictate what types models, architectures and tasks are well supported by O
 
 [OVModelForVisualCausalLM](https://github.com/huggingface/optimum-intel/blob/main/optimum/intel/openvino/modeling_visual_language.py#L309)
 
-If you are interested in implementing support for another task join our Discord and let me know; we can discuss.
+If you are interested in implementing support for another task please open an issue!
 
 ### Resources
 ---
