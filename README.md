@@ -1,30 +1,29 @@
 ![CLI Help Screen](assets/openarc_DOOM.png)
 
-[![Discord](https://img.shields.io/discord/1341627368581628004?logo=Discord&logoColor=%23ffffff&label=Discord&link=https%3A%2F%2Fdiscord.gg%2FmaMY7QjG)](https://discord.gg/maMY7QjG)
+[![Discord](https://img.shields.io/discord/1341627368581628004?logo=Discord&logoColor=%23ffffff&label=Discord&link=https%3A%2F%2Fdiscord.gg%2FmaMY7QjG)](https://discord.gg/Bzz9hax9Jq)
 [![Hugging Face](https://img.shields.io/badge/🤗%20Hugging%20Face-Echo9Zulu-yellow)](https://huggingface.co/Echo9Zulu)
-
 
 
 > [!NOTE]
 > OpenArc is under active development. Expect breaking changes.
 
+**OpenArc** is an inference engine which makes using Intel devices as accelerators easier for AI inference.
 
-**OpenArc** is an inference engine which makes using Intel devices as accelerators easier.
-
-
-
-Powered by Optimum-Intel to leverage hardware acceleration on Intel CPUs, GPUs and NPUs through OpenVINO runtime, OpenArc integrates closely with Huggingface Transformers making the inference-work our codebase performs easy to understand.    
+Powered by Optimum-Intel to leverage hardware acceleration on Intel CPUs, GPUs and NPUs through OpenVINO runtime, OpenArc integrates closely with Huggingface Transformers making the inference-work our codebase performs easy to understand.   
 
 Under the hood OpenArc implements a FastAPI layer over a growing collection of classes from Optimum-Intel which cover on a wide range of tasks and model architectures.
 
 OpenArc currently supports **text generation** and **text generation with vision** over OpenAI API endpoints. 
 
-Support for speculative decoding, generating embeddings, speech tasks, image generation, PaddleOCR, and others are planned.
+Support for speculative decoding, generating embeddings, speech tasks, image generation, PaddleOCR, and others are planned. PRs for these features are welcome, and the model loading API has been designed for extension deeper into Transformers without to much OpenVINO. 
+
+> [!NOTE]
+> Interested in contributing? Please open an issue before submitting a PR!
 
 ## Features
 
 - OpenAI compatible endpoints
-- Validated OpenWebUI support, but it should work elsewhere
+- OpenWebUI support
 - Load multiple vision/text models concurrently on multiple devices for hotswap/multi agent workflows
 - **Most** HuggingFace text generation models
 - Growing set of vision capable LLMs:
@@ -32,7 +31,9 @@ Support for speculative decoding, generating embeddings, speech tasks, image gen
     - Qwen2.5-VL 
     - Gemma 3
 
-### NEW Command Line Application!
+- Other [multimodal architectures](https://github.com/huggingface/optimum-intel/blob/dd622144bf49333fda5cbce670c841288a46bf16/optimum/intel/openvino/modeling_visual_language.py#L4352) which might work
+
+### Command Line Application
   - Built with click and rich-click
   - OpenArc's server has been thoroughly documented there. Much cleaner!
   - Coupled with officual documentation this makes learning OpenVINO easier. 
@@ -46,15 +47,12 @@ Support for speculative decoding, generating embeddings, speech tasks, image gen
  	  
 ## Command Line Application
 
-OpenArc now has a command line application for interfacing with the server! 
-
-Gradio has been put to pasture and has been replaced with a brand new UX flow meant to make using and learning OpenVINO easier. GitHub, Reddit and forums everywhere are full of people who learned OpenVINO
-
+OpenArc has a command line application for interfacing with the server! 
 
 To get started run
 
 ```
-python openarc_cli.py --help
+openarc --help
 ```
 
 Which gives:
@@ -68,13 +66,13 @@ Which gives:
 To launch the server:
 
 ```
-python openarc_cli.py serve start
+openarc serve start
 ```
 
 For a more granular networking setup:
 
 ```
-python openarc_cli.py serve start --start --openarc-port (your-port)
+openarc serve start --start --openarc-port (your-port)
 ```
 
 ![CLI serve Screen](assets/cli_serve_start.png)
@@ -85,12 +83,10 @@ The CLI always sends commands to the server wherever you start it from laying gr
 
 ### Load a Model 
 
-
-
 To load a model open another temrinal:
 
 ```
-python openarc_cli.py load --help
+openarc load --help
 ```
 This menu gives a breakdown of how the many different optimzation parameters work and broadly how they can be used together. 
 
@@ -102,35 +98,33 @@ Here are some example commands with Qwen3 and Qwen2.5-VL on GPU
 
 To load a Qwen3 model:
 ```
-python openarc_cli.py load --model path/to/model --model-type TEXT --device GPU.0
+openarc load --model path/to/model --model-type TEXT --device GPU.0
 ```
 
 To load a Qwen-2.5-VL model:
 ```
-python openarc_cli.py load --model path/to/model --model-type VISION --device GPU.0
+openarc load --model path/to/model --model-type VISION --device GPU.0
 ```
 
-The CLI application will surface C++ errors from the OpenVINO runtime as you tinker; in practice this is sort of like print debugging your LLM optimizations directly from the engine, often leading you directly into the source code to understand things from the inside.
+The CLI application will surface C++ errors from the OpenVINO runtime as you tinker; in practice this is works like print debugging your LLM optimizations directly from the engine, often leading you into the source code to understand things from the inside. 
 
-In practice this helps get through the sometimes vague documentation, especially for edge cases.
-
-Keep reading to see more about what models can be used with OpenArc and learn about model conversion. 
+Working this way can help you make sense of the sometimes vague documentation, especially for edge cases.
 
 ## System Requirments 
 
 - OpenArc has been built on top of the OpenVINO runtime; as a result OpenArc    supports the same range of hardware **but requires device specifc drivers** this document will not cover in-depth.
  
-- See [OpenVINO System Requirments](https://docs.openvino.ai/2025/about-openvino/ release-notes-openvino/system-requirements.html#cpu) to get the most updated information.
+- See [OpenVINO System Requirments](https://docs.openvino.ai/2025/about-openvino/release-notes-openvino/system-requirements.html#cpu) to get the most updated information.
 
 - If you need help installing drivers:
 	- [Join our Discord](https://discord.gg/Bzz9hax9Jq)
 	- [Linux Driver Issues](https://github.com/SearchSavior/OpenArc/discussions/11)
 	- [Windows Drivers Issues](https://github.com/SearchSavior/OpenArc/discussions/12)
 
-After setting up the environment run
+Use
 
 ```
-python openarc_cli.py tool device-detect
+openarc tool device-detect
 ```
 as a sanity test
 
@@ -142,10 +136,19 @@ as a sanity test
 <details>
   <summary>Ubuntu</summary>
 
+Install uv from [here](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)
 
-Create the conda environment:
+After cloning use:
 
-	conda env create -f environment.yaml
+```
+uv sync
+```
+
+Activate your environment with:
+
+```
+source .venv/bin/activate
+```
 
 
 Set your API key as an environment variable:
@@ -155,7 +158,7 @@ Set your API key as an environment variable:
 Build Optimum-Intel from source to get the latest support:
 
 ```
-pip install "optimum-intel[openvino] @ git+https://github.com/huggingface/optimum-intel"
+uv pip install "optimum-intel[openvino] @ git+https://github.com/huggingface/optimum-intel"
 ```
 
 </details>
@@ -163,16 +166,13 @@ pip install "optimum-intel[openvino] @ git+https://github.com/huggingface/optimu
 <details>
   <summary>Windows</summary>
 
-1. Install Miniconda from [here](https://www.anaconda.com/docs/getting-started/miniconda/install#windows-installation)
+1. Install uv from [here](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)
 
-2. Create the conda environment:
+2. Clone OpenArc, enter the directory and run:
   ```
-  conda env create -f environment.yaml
+  uv sync
   ```
 
-3. Navigate to the directory containing the environment.yaml file and run
-
-	conda env create -f environment.yaml
 
 Set your API key as an environment variable:
 ```
@@ -181,12 +181,13 @@ setx OPENARC_API_KEY openarc-api-key
 Build Optimum-Intel from source to get the latest support:
 
 ```
-pip install optimum[openvino]+https://github.com/huggingface/optimum-intel
+uv pip install "optimum-intel[openvino] @ git+https://github.com/huggingface/optimum-intel"
 ```
 
 > [!Tips]
-- Avoid setting up the environment from IDE extensions. 
-- Try not to use the environment for other ML projects. Soon we will have uv.
+- uv has a [pip interface](https://docs.astral.sh/uv/pip/) as an alternative to the uv interface.
+- This project's pyproject.toml is pretty basic. They can get quite complicated, so if you are learning uv OpenArc is a good place to start.
+
 </details>
 
 ## OpenWebUI
@@ -208,7 +209,7 @@ Serverside logs should report:
 
 ### Other Frontends
 
-OpenArc _mostly_ conforms to the openai API specification. In practice this means other frontends, python classes and community tooling will be compatible. 
+OpenArc _mostly_ conforms to the openai API specification. In practice other frontends, libraries and community tooling will be compatible. 
 
 Tested:
 
@@ -216,13 +217,15 @@ Tested:
 
 ### Usage:
 
-- Load the model you want to use from openarc_cli
+- Load the model you want to use from openarc cli
 - Select the connection you just created and use the refresh button to update the list of models
 - if you use API keys and have a list of models these might be towards the bottom
 
-## Convert to [OpenVINO IR](https://docs.openvino.ai/2025/documentation/openvino-ir-format.html)
+## Convert to OpenVINO IR 
 
-There are a few sources of models which can be used with OpenArc;
+[OpenVINO IR](https://docs.openvino.ai/2025/documentation/openvino-ir-format.html) is an intermediate representation of a model from a variety of source frameworks. For now GGUF does not work, though Intel has been cooking up compatability elsewhere in the ecosystem 
+
+There are a few sources of preconverted models which can be used with OpenArc;
 
 - [OpenVINO LLM Collection on HuggingFace](https://huggingface.co/collections/OpenVINO/llm-6687aaa2abca3bbcec71a9bd)
 
@@ -238,7 +241,6 @@ There are a few sources of models which can be used with OpenArc;
 - Easily those craft conversion commands using my HF Space, [Optimum-CLI-Tool_tool](https://huggingface.co/spaces/Echo9Zulu/Optimum-CLI-Tool_tool), a Gradio application which helps you GUI-ify an often research intensive process.
 
 - If you use the CLI tool and get an error about an unsupported architecture or "missing export config" follow the link, [open an issue](https://github.com/huggingface/optimum-intel/issues) reference the model card and the maintainers will get back to you.  
-
 
 Here are some models to get started:
 
@@ -290,6 +292,7 @@ Kernel: 6.9.4-060904-generic
 
 Prompt: "We don't even have a chat template so strap in and let it ride!"
 max_new_tokens= 128
+
 ---
 
 ### GPU Performance: 1x Arc A770
@@ -324,7 +327,7 @@ These dictate what types models, architectures and tasks are well supported by O
 
 [OVModelForVisualCausalLM](https://github.com/huggingface/optimum-intel/blob/main/optimum/intel/openvino/modeling_visual_language.py#L309)
 
-If you are interested in implementing support for another task join our Discord and let me know; we can discuss.
+If you are interested in implementing support for another task please open an issue!
 
 ### Resources
 ---
@@ -332,11 +335,17 @@ Learn more about how to leverage your Intel devices for Machine Learning:
 
 [openvino_notebooks](https://github.com/openvinotoolkit/openvino_notebooks)
 
+
+
 [Inference with Optimum-Intel](https://github.com/huggingface/optimum-intel/blob/main/notebooks/openvino/optimum_openvino_inference.ipynb)
 
 [Optimum-Intel Transformers](https://huggingface.co/docs/optimum/main/en/intel/index)
 
 [NPU Devices](https://docs.openvino.ai/2025/openvino-workflow/running-inference/inference-devices-and-modes/npu-device.html)
+
+[vllm with IPEX](https://docs.vllm.ai/en/v0.5.1/getting_started/xpu-installation.html)
+
+[Mutli GPU Pipeline Paralell with OpenVINO Model Server](https://docs.openvino.ai/2025/model-server/ovms_demos_continuous_batching_scaling.html#multi-gpu-configuration-loading-models-exceeding-a-single-card-vram)
 
 ## Acknowledgments
 
@@ -356,7 +365,7 @@ OpenArc stands on the shoulders of several other projects:
 
 [rich-click](https://github.com/ewels/rich-click)
 
-Thank for yoru work!!
+Thank for your work!!
 
 
 

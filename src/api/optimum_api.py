@@ -6,7 +6,8 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
-from typing import Optional, List, Any
+
+from typing import Optional, List, Any, Dict
 from pydantic import BaseModel
 from datetime import datetime
 from pathlib import Path
@@ -19,7 +20,7 @@ import json
 import os
 import sys
 
-from src.engine.optimum.optimum_base_config import (
+from engine.optimum.optimum_base_config import (
     OV_LoadModelConfig,
     OV_Config,
     OV_GenerationConfig,
@@ -58,6 +59,20 @@ for module in ["optimum", "openvino"]:
     
     module_logger.propagate = True
 
+# OV_ModelPool class for managing model instances 
+class OV_ModelPool:
+    def __init__(self):
+        self._models: Dict[str, Any] = {}
+        self.logger = logging.getLogger(__name__)
+    
+    def load_to_pool(self, model_id: str, model_instance) -> None:
+        """Load a model to the pool"""
+        self._models[model_id] = model_instance
+        self.logger.info(f"Model {model_id} loaded to pool")
+
+# Create global model pool instance
+model_pool = OV_ModelPool()
+
 app = FastAPI(title="OpenArc API")
 
 # Configure CORS
@@ -69,8 +84,6 @@ app.add_middleware(
     allow_headers=["*"],  
 )
 
-# Global state to store multiple model instances
-model_instances = {}
 
 # API key authentication
 API_KEY = os.getenv("OPENARC_API_KEY")
@@ -104,6 +117,7 @@ async def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(sec
             detail="Invalid API key",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
     return credentials.credentials
 
 def get_final_model_id(model_id: str) -> str:
@@ -113,7 +127,6 @@ def get_final_model_id(model_id: str) -> str:
 @app.post("/optimum/model/load", dependencies=[Depends(verify_api_key)])
 async def load_model(load_config: OV_LoadModelConfig, ov_config: OV_Config):
     """Load a model with the specified configuration"""
-    global model_instances
     logger.info("POST /optimum/model/load called with load_config: %s, ov_config: %s", load_config, ov_config)
     try:
         # Initialize new model using the factory function
@@ -127,7 +140,7 @@ async def load_model(load_config: OV_LoadModelConfig, ov_config: OV_Config):
         
         # Store the model instance with its ID as the key
         model_id = get_final_model_id(load_config.id_model)
-        model_instances[model_id] = new_model
+        model_pool.load_to_pool(model_id, new_model)
         
         return {"status": "success", "message": f"Model {model_id} loaded successfully"}
     except Exception as e:
@@ -136,21 +149,19 @@ async def load_model(load_config: OV_LoadModelConfig, ov_config: OV_Config):
 @app.delete("/optimum/model/unload", dependencies=[Depends(verify_api_key)])
 async def unload_model(model_id: str):
     """Unload the current model"""
-    global model_instances
     logger.info(f"DELETE /optimum/model/unload called for model {model_id}")
-    if model_id in model_instances:
-        model_instances[model_id].util_unload_model()
-        del model_instances[model_id]
+    if model_id in model_pool._models:
+        model_pool._models[model_id].util_unload_model()
+        del model_pool._models[model_id]
         return {"status": "success", "message": "Model unloaded successfully"}
     return {"status": "success", "message": f"Model {model_id} was not loaded"}
 
 @app.get("/optimum/status", dependencies=[Depends(verify_api_key)])
 async def get_status():
     """Get current model status and performance metrics"""
-    global model_instances
     logger.info("GET /optimum/status called")
     loaded_models = {}
-    for model_id, model in model_instances.items():
+    for model_id, model in model_pool._models.items():
         loaded_models[model_id] = {
             "status": "loaded",
             "device": model.load_model_config.device,
@@ -159,7 +170,7 @@ async def get_status():
     
     return {
         "loaded_models": loaded_models,
-        "total_models_loaded": len(model_instances)
+        "total_models_loaded": len(model_pool._models)
     }
 
 
@@ -192,15 +203,13 @@ class CompletionRequest(BaseModel):
     do_sample: Optional[bool] = None
     num_return_sequences: Optional[int] = None  
 
-
 @app.get("/v1/models", dependencies=[Depends(verify_api_key)])
 async def get_models():
     """Get list of available models in openai format"""
-    global model_instances
     logger.info("GET /v1/models called")
     data = []
 
-    for model_id, model in model_instances.items():
+    for model_id, model in model_pool._models.items():
         model_data = {
             "id": model_id,
             "object": "model",
@@ -216,14 +225,13 @@ async def get_models():
 
 @app.post("/v1/chat/completions", dependencies=[Depends(verify_api_key)])
 async def openai_chat_completions(request: ChatCompletionRequest):
-    global model_instances
     model_id = get_final_model_id(request.model)
     
-    if model_id not in model_instances:
+    if model_id not in model_pool._models:
         logger.error("POST /v1/chat/completions failed: No model loaded")
         raise HTTPException(status_code=503, detail=f"Model {model_id} not loaded")
         
-    model_instance = model_instances[model_id]
+    model_instance = model_pool._models[model_id]
     logger.info("POST /v1/chat/completions called with messages: %s", request.messages)
 
     try:
@@ -335,14 +343,13 @@ async def openai_chat_completions(request: ChatCompletionRequest):
 
 @app.post("/v1/completions", dependencies=[Depends(verify_api_key)])
 async def openai_completions(request: CompletionRequest):
-    global model_instances
     model_id = get_final_model_id(request.model)
     
-    if model_id not in model_instances:
+    if model_id not in model_pool._models:
         logger.error("POST /v1/completions failed: No model loaded")
         raise HTTPException(status_code=503, detail=f"Model {model_id} not loaded")
         
-    model_instance = model_instances[model_id]
+    model_instance = model_pool._models[model_id]
     logger.info("POST /v1/completions called with prompt: %s", request.prompt)
 
     # Convert prompt into conversation format (single user message)

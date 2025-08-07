@@ -1,16 +1,19 @@
-import openvino_genai as ov_genai
+from openvino_genai import LLMPipeline, GenerationConfig
+import openvino.properties.hint as ov_config
 
 
+model_dir = "/mnt/Ironwolf-4TB/Models/Pytorch/Mistral/MS3.2-24B-Magnum-Diamond-int4_asym-ov"
 
-model_dir = "/mnt/Ironwolf-4TB/Models/Pytorch/Hermes-3-Llama-3.2-3B-int4_sym-awq-se-ov"
-
-pipe = ov_genai.LLMPipeline(
-    model_dir,       # Path to the model directory
-    device="GPU.2",    # Define the device to use
+pipe = LLMPipeline(
+    model_dir,       # Path to the model directory. Remember this will not pull from hub like in transformers
+   #device="GPU.0",
+   #device="HETERO:GPU.0,CPU",    
+   device="HETERO:GPU.0,GPU.1",
+   config={ov_config.model_distribution_policy: "PIPELINE_PARALLEL"}
 )
 
-generation_config = ov_genai.GenerationConfig(
-    max_new_tokens=128
+generation_config = GenerationConfig(
+    max_new_tokens=1024
 )
 
 prompt = "You're the fastest Llama this side of the equator"
