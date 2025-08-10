@@ -14,11 +14,3 @@ __all__ = [
     "Optimum_Text2TextCore",
     "Optimum_Image2TextCore"
 ]
-
-from engine.ov_genai.ov_genai_text2text import OVGenAI_Text2TextCore
-from engine.ov_genai.ov_genai_text2image import OVGenAI_Image2TextCore
-
-__all__ = [
-    "OVGenAI_Text2TextCore",
-    "OVGenAI_Image2TextCore"
-]
