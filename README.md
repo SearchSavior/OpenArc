@@ -150,10 +150,11 @@ Activate your environment with:
 source .venv/bin/activate
 ```
 
-
 Set your API key as an environment variable:
 
 	export OPENARC_API_KEY=<you-know-for-search>
+
+Restart shell.
 
 Build Optimum-Intel from source to get the latest support:
 
@@ -166,13 +167,17 @@ uv pip install "optimum-intel[openvino] @ git+https://github.com/huggingface/opt
 <details>
   <summary>Windows</summary>
 
-1. Install uv from [here](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)
+Install uv from [here](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)
 
-2. Clone OpenArc, enter the directory and run:
+Clone OpenArc, enter the directory and run:
   ```
   uv sync
   ```
+3. Activate your environment with:
 
+```
+.venv\Scripts\activate.bat
+```
 
 Set your API key as an environment variable:
 ```
@@ -183,6 +188,8 @@ Build Optimum-Intel from source to get the latest support:
 ```
 uv pip install "optimum-intel[openvino] @ git+https://github.com/huggingface/optimum-intel"
 ```
+
+
 
 > [!Tips]
 - uv has a [pip interface](https://docs.astral.sh/uv/pip/) as an alternative to the uv interface.
