@@ -16,3 +16,4 @@ openarc_api.log
 .mypy_cache/
 .venv/
 .vscode/
+.builds/
