@@ -236,7 +236,9 @@ There are a few sources of preconverted models which can be used with OpenArc;
   - **These get updated regularly so check back often!**
   - If you read this here, *mention it on Discord* and I can quant a model you want to try. 
 
-- Use the [Optimum-CLI Conversion documentation](https://huggingface.co/docs/optimum/main/en/intel/openvino/export) to learn how you can convert models to OpenVINO IR. 
+- [Optimum-CLI Conversion documentation](https://huggingface.co/docs/optimum/main/en/intel/openvino/export) to learn how you can convert models to OpenVINO IR from other formats.
+
+- [Supported Architectures](https://huggingface.co/docs/optimum/main/en/intel/openvino/models)List of models which can be converted to OpenVINO IR
 
 - Easily those craft conversion commands using my HF Space, [Optimum-CLI-Tool_tool](https://huggingface.co/spaces/Echo9Zulu/Optimum-CLI-Tool_tool), a Gradio application which helps you GUI-ify an often research intensive process.
 

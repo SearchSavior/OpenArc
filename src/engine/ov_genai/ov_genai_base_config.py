@@ -6,6 +6,10 @@ from typing import Optional
 
 
 class OVGenAI_Hints(BaseModel):
+    device: Optional[str] = Field(
+        None,
+        description="Device to use for inference. One of: 'GPU', 'CPU'."
+    )
     execution_mode: Optional[str] = Field(
         None,
         description="Execution mode for inference. One of: 'PERFORMANCE', 'ACCURACY'."
@@ -19,14 +23,10 @@ class OVGenAI_Hints(BaseModel):
         description="Performance mode. One of: 'LATENCY', 'THROUGHPUT', 'CUMULATIVE_THROUGHPUT'."
     )
 
-
 class OVGenAI_GenerationConfig(BaseModel):
-    
-
-
-    do_sample: bool = Field(True, description="Whether to use sampling for generation")
-    frequency_penalty: float = Field(0.0, description="Frequency penalty for token repetition")
-    max_length: int = Field(..., description="Maximum length of generated tokens")
-    temperature: float = Field(1.0, description="Sampling temperature")
-    top_k: int = Field(50, description="Top-k sampling parameter")
-    top_p: float = Field(1.0, description="Top-p sampling parameter")
+    max_new_tokens: Optional[int] = Field(None, description="Maximum length of generated tokens")
+    temperature: Optional[float] = Field(None, description="Sampling temperature")
+    top_k: Optional[int] = Field(None, description="Top-k sampling parameter")
+    top_p: Optional[float] = Field(None, description="Top-p sampling parameter")
+    frequency_penalty: Optional[float] = Field(None, description="Frequency penalty for token repetition")
+    do_sample: Optional[bool] = Field(None, description="Whether to use sampling for generation")

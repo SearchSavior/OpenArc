@@ -1,7 +1,7 @@
 import openvino_genai as ov_genai
 
 # Model configuration
-model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Qwen3-1.7B-int8_asym-ov"
+model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/Mistral/Impish_Nemo_12B-int4_asym-awq-ov"
 
 # Initialize tokenizer and pipeline
 tokenizer = ov_genai.Tokenizer(model_dir)

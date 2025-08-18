@@ -2,13 +2,14 @@ from openvino_genai import LLMPipeline, GenerationConfig
 import openvino.properties.hint as ov_config
 
 
-model_dir = "/mnt/Ironwolf-4TB/Models/Pytorch/Mistral/MS3.2-24B-Magnum-Diamond-int4_asym-ov"
+model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Qwen3-30B-A3B-int8_asym-ov"
 
 pipe = LLMPipeline(
     model_dir,       # Path to the model directory. Remember this will not pull from hub like in transformers
-   #device="GPU.0",
+   device="HETERO:GPU.0,GPU.2",
+   #properties="PIPELINE_PARALELL"
    #device="HETERO:GPU.0,CPU",    
-   device="HETERO:GPU.0,GPU.1",
+   #device="HETERO:GPU.0,GPU.1",
    config={ov_config.model_distribution_policy: "PIPELINE_PARALLEL"}
 )
 
