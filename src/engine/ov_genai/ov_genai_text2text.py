@@ -1,3 +1,4 @@
+import gc
 import json
 import queue
 from pathlib import Path
@@ -71,10 +72,10 @@ class ChunkStreamer(StreamerBase):
     - tokens_len  > 1 → emit after every N tokens.
     Uses cumulative decode + delta slicing to avoid subword boundary artifacts.
     """
-    def __init__(self, tokenizer, config: OVGenAI_TextGenConfig):
+    def __init__(self, tokenizer, gen_config: OVGenAI_TextGenConfig):
         super().__init__()
         self.tokenizer = tokenizer
-        self.tokens_len = (config.stream_chunk_tokens)  # enforce at least 1
+        self.tokens_len = (gen_config.stream_chunk_tokens)  # enforce at least 1
         self.tokens_cache: List[int] = []          # cumulative token buffer
         self.since_last_emit: int = 0              # tokens collected since last emit
         self.last_print_len: int = 0               # length of decoded text we've already emitted
@@ -140,56 +141,58 @@ class OVGenAI_Text2Text:
             **(config.properties or {})
         )
 
-    def generate_text(self, config: OVGenAI_TextGenConfig) -> str:
+    def generate_text(self, gen_config: OVGenAI_TextGenConfig) -> str:
         """
         Non-streaming text generation.
         """
         # If streaming is requested, delegate to the streaming method
-        if config.stream:
-            return self.generate_stream(config)
+        if gen_config.stream:
+            return self.generate_stream(gen_config)
         
 
-        generation_config = GenerationConfig(
-            max_new_tokens=config.max_new_tokens,
-            temperature=config.temperature,
-            top_k=config.top_k,
-            top_p=config.top_p,
-            repetition_penalty=config.repetition_penalty,
+        generation_gen_config = GenerationConfig(
+            max_new_tokens=gen_config.max_new_tokens,
+            temperature=gen_config.temperature,
+            top_k=gen_config.top_k,
+            top_p=gen_config.top_p,
+            repetition_penalty=gen_config.repetition_penalty,
         )
 
-        result = self.model.generate([config.conversation], generation_config)
+        result = self.model.generate([gen_config.conversation], generation_gen_config)
         perf_metrics = result.perf_metrics
 
         metrics_dict = {
+            'num_generated_tokens': perf_metrics.get_num_generated_tokens(),
+            'stream' : gen_config.stream,
             'load_time (s)': round(perf_metrics.get_load_time() / 1000, 2),
             'ttft (s)': round(perf_metrics.get_ttft().mean / 1000, 2),
             'tpot (ms)': round(perf_metrics.get_tpot().mean, 2),
             'throughput (tokens/s)': round(perf_metrics.get_throughput().mean, 2),
             'generate_duration (s)': round(perf_metrics.get_generate_duration().mean / 1000, 2),
-            'input_tokens': len(config.conversation),
+            'input_tokens': len(gen_config.conversation),
             'new_tokens': len(result.texts[0]),
-            'total_tokens': len(config.conversation) + len(result.texts[0]),
+            'total_tokens': len(gen_config.conversation) + len(result.texts[0]),
         }
         return metrics_dict, result.texts[0]
 
-    def generate_stream(self, config: OVGenAI_TextGenConfig):
+    def generate_stream(self, gen_config: OVGenAI_TextGenConfig):
         """
         Streaming text generation with profiling.
         """
         # If streaming is not requested, fall back to non-streaming generation
-        if not config.stream:
-            return self.generate_stream(config)
+        if not gen_config.stream:
+            return self.generate_text(gen_config)
 
-        generation_config = GenerationConfig(
-            max_new_tokens=config.max_new_tokens,
-            temperature=config.temperature,
-            top_k=config.top_k,
-            top_p=config.top_p,
-            repetition_penalty=config.repetition_penalty
+        generation_gen_config = GenerationConfig(
+            max_new_tokens=gen_config.max_new_tokens,
+            temperature=gen_config.temperature,
+            top_k=gen_config.top_k,
+            top_p=gen_config.top_p,
+            repetition_penalty=gen_config.repetition_penalty
         )
 
         tokenizer = self.model.get_tokenizer()
-        streamer = ChunkStreamer(tokenizer, config)
+        streamer = ChunkStreamer(tokenizer, gen_config)
         
         collected_chunks: List[str] = []
 
@@ -201,14 +204,14 @@ class OVGenAI_Text2Text:
         printer_thread = Thread(target=token_collector, daemon=True)
         printer_thread.start()  
 
-        result = self.model.generate([config.conversation], generation_config, streamer)
+        result = self.model.generate([gen_config.conversation], generation_gen_config, streamer)
         printer_thread.join()
 
         perf_metrics = result.perf_metrics
 
         metrics_dict = {
             'num_generated_tokens': perf_metrics.get_num_generated_tokens(),
-            'stream' : config.stream,
+            'stream' : gen_config.stream,
             'load_time (s)': round(perf_metrics.get_load_time() / 1000, 2),
             'ttft (s)': round(perf_metrics.get_ttft().mean / 1000, 2),
             'tpot (ms)': round(perf_metrics.get_tpot().mean, 2),
@@ -223,6 +226,16 @@ class OVGenAI_Text2Text:
         return metrics_dict, final_text
 
 
+    def util_unload_model(self):
+        """Unload model and free memory"""
+        del self.model
+        self.model = None
+        
+        del self.tokenizer
+        self.tokenizer = None
+        
+        gc.collect()
+        print("Model unloaded and memory cleaned up")
 # ---------------------------
 # Example Usage
 # ---------------------------
@@ -240,7 +253,7 @@ if __name__ == "__main__":
     ]
     conversation_json = json.dumps(conversation_messages, indent=2)
 
-    textgeneration_config = OVGenAI_TextGenConfig(
+    textgeneration_gen_config = OVGenAI_TextGenConfig(
         conversation=conversation_json,
         max_new_tokens=128,
         temperature=0.7,
@@ -248,13 +261,13 @@ if __name__ == "__main__":
         top_p=0.9,
         repetition_penalty=1.1,
         stream_chunk_tokens=3,
-        stream=True
+        stream=False
     )
 
     text_gen = OVGenAI_Text2Text()
     text_gen.load_model(load_cfg)
 
-    metrics, output = text_gen.generate_text(textgeneration_config)
+    metrics, output = text_gen.generate_text(textgeneration_gen_config)
     print("\n\nOutput")
     print("-"*100)
     print(output)
