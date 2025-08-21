@@ -210,19 +210,19 @@ class OVGenAI_Text2Text:
             **(config.properties or {})
         )
 
-    def generate_text(self, config: OVGenAI_TextGenConfig) -> str:
+    def generate_text(self, gen_config: OVGenAI_TextGenConfig) -> str:
         """
         Non-streaming text generation.
         """
         generation_config = GenerationConfig(
-            max_new_tokens=config.max_new_tokens,
-            temperature=config.temperature,
-            top_k=config.top_k,
-            top_p=config.top_p,
-            repetition_penalty=config.repetition_penalty
+            max_new_tokens=gen_config.max_new_tokens,
+            temperature=gen_config.temperature,
+            top_k=gen_config.top_k,
+            top_p=gen_config.top_p,
+            repetition_penalty=gen_config.repetition_penalty
         )
 
-        result = self.model.generate([config.conversation], generation_config)
+        result = self.model.generate([gen_config.conversation], generation_config)
         perf_metrics = result.perf_metrics
 
         metrics_dict = {
@@ -234,21 +234,21 @@ class OVGenAI_Text2Text:
         }
         return metrics_dict, result.texts[0]
 
-    def generate_stream(self, config: OVGenAI_TextGenConfig):
+    def generate_stream(self, gen_config: OVGenAI_TextGenConfig):
         """
         Streaming text generation with profiling.
         """
         generation_config = GenerationConfig(
-            max_new_tokens=config.max_new_tokens,
-            temperature=config.temperature,
-            top_k=config.top_k,
-            top_p=config.top_p,
-            repetition_penalty=config.repetition_penalty
+            max_new_tokens=gen_config.max_new_tokens,
+            temperature=gen_config.temperature,
+            top_k=gen_config.top_k,
+            top_p=gen_config.top_p,
+            repetition_penalty=gen_config.repetition_penalty
         )
 
         tokenizer = self.model.get_tokenizer()
         # Use chunked streaming if configured (>1), otherwise default token-by-token streaming.
-        stream_tokens = getattr(config, "stream_chunk_tokens", None)
+        stream_tokens = getattr(gen_config, "stream_chunk_tokens", None)
         streamer = (
             ChunkStreamer(tokenizer, stream_tokens) if stream_tokens and stream_tokens > 1 else IterableStreamer(tokenizer)
         )
@@ -262,7 +262,7 @@ class OVGenAI_Text2Text:
         printer_thread = Thread(target=token_collector, daemon=True)
         printer_thread.start()
 
-        result = self.model.generate([config.conversation], generation_config, streamer)
+        result = self.model.generate([gen_config.conversation], generation_config, streamer)
         printer_thread.join()
 
         perf_metrics = result.perf_metrics
@@ -309,13 +309,14 @@ if __name__ == "__main__":
         top_k=40,
         top_p=0.9,
         repetition_penalty=1.1,
-        stream_chunk_tokens=3
+        stream_chunk_tokens=3,
+        stream=False
     )
 
     text_gen = OVGenAI_Text2Text()
     text_gen.load_model(load_cfg)
 
-    metrics, output = text_gen.generate_stream(textgeneration_config)
+    metrics, output = text_gen.run_generate(textgeneration_config)
     print("\n\n=== Streaming Metrics ===")
     print(json.dumps(metrics, indent=2))
     print("\n=== Output ===\n", output)

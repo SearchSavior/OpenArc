@@ -13,11 +13,15 @@ from pydantic import BaseModel, Field
 # ---------------------------
 # Pydantic Config Models
 # ---------------------------
+
+
+
 class OVGenAI_LoadConfig(BaseModel):
     """
     Configuration for loading an OpenVINO GenAI model.
     """
-    model_path: str = Field(..., description="Path to the model directory (top-level).")
+    
+    id_model: str = Field(..., description="Path to the model directory (top-level).")
     device: str = Field(default="CPU", description="Target device for inference.")
     properties: Optional[Dict[str, Any]] = Field(
         default=None,
@@ -124,32 +128,44 @@ class ChunkStreamer(StreamerBase):
 
 
 class OVGenAI_Text2Text:
-    def __init__(self):
+    def __init__(self, load_model_config: OVGenAI_LoadConfig):
         self.model = None
+        self.load_model_config = load_model_config
+        self.model_metadata = {
+            "id_model": load_model_config.id_model
+        }
 
-    def load_model(self, config: OVGenAI_LoadConfig):
+    def load_model(self):
         """
         Loads an OpenVINO GenAI text-to-text model.
         """
-        id_model = Path(config.model_path)
-        if not id_model.exists():
-            raise FileNotFoundError(f"Model path does not exist: {id_model}")
-
         self.model = LLMPipeline(
-            id_model,
-            config.device,
-            **(config.properties or {})
+            self.load_model_config.id_model,
+            self.load_model_config.device,
+            **(self.load_model_config.properties or {})
         )
-
+        print("Model loaded successfully.")
+    
+    def generate_response(self, gen_config: OVGenAI_TextGenConfig):
+        """
+        Unified text generation method that routes to streaming or non-streaming 
+        based on the stream flag in gen_config.
+        
+        Args:
+            gen_config: Configuration containing the stream flag and other parameters
+            
+        Returns:
+            Tuple of (metrics_dict, generated_text)
+        """
+        if gen_config.stream:
+            return self.generate_stream(gen_config)
+        else:
+            return self.generate_text(gen_config)
+    
     def generate_text(self, gen_config: OVGenAI_TextGenConfig) -> str:
         """
         Non-streaming text generation.
         """
-        # If streaming is requested, delegate to the streaming method
-        if gen_config.stream:
-            return self.generate_stream(gen_config)
-        
-
         generation_gen_config = GenerationConfig(
             max_new_tokens=gen_config.max_new_tokens,
             temperature=gen_config.temperature,
@@ -162,7 +178,6 @@ class OVGenAI_Text2Text:
         perf_metrics = result.perf_metrics
 
         metrics_dict = {
-            'num_generated_tokens': perf_metrics.get_num_generated_tokens(),
             'stream' : gen_config.stream,
             'load_time (s)': round(perf_metrics.get_load_time() / 1000, 2),
             'ttft (s)': round(perf_metrics.get_ttft().mean / 1000, 2),
@@ -170,8 +185,8 @@ class OVGenAI_Text2Text:
             'throughput (tokens/s)': round(perf_metrics.get_throughput().mean, 2),
             'generate_duration (s)': round(perf_metrics.get_generate_duration().mean / 1000, 2),
             'input_tokens': len(gen_config.conversation),
-            'new_tokens': len(result.texts[0]),
-            'total_tokens': len(gen_config.conversation) + len(result.texts[0]),
+            'new_tokens': perf_metrics.get_num_generated_tokens(),
+            'total_tokens': perf_metrics.get_num_input_tokens() + perf_metrics.get_num_generated_tokens(),
         }
         return metrics_dict, result.texts[0]
 
@@ -179,16 +194,13 @@ class OVGenAI_Text2Text:
         """
         Streaming text generation with profiling.
         """
-        # If streaming is not requested, fall back to non-streaming generation
-        if not gen_config.stream:
-            return self.generate_text(gen_config)
 
         generation_gen_config = GenerationConfig(
             max_new_tokens=gen_config.max_new_tokens,
             temperature=gen_config.temperature,
             top_k=gen_config.top_k,
             top_p=gen_config.top_p,
-            repetition_penalty=gen_config.repetition_penalty
+            repetition_penalty=gen_config.repetition_penalty,
         )
 
         tokenizer = self.model.get_tokenizer()
@@ -210,7 +222,6 @@ class OVGenAI_Text2Text:
         perf_metrics = result.perf_metrics
 
         metrics_dict = {
-            'num_generated_tokens': perf_metrics.get_num_generated_tokens(),
             'stream' : gen_config.stream,
             'load_time (s)': round(perf_metrics.get_load_time() / 1000, 2),
             'ttft (s)': round(perf_metrics.get_ttft().mean / 1000, 2),
@@ -228,11 +239,9 @@ class OVGenAI_Text2Text:
 
     def util_unload_model(self):
         """Unload model and free memory"""
-        del self.model
-        self.model = None
-        
-        del self.tokenizer
-        self.tokenizer = None
+        if hasattr(self, 'model') and self.model is not None:
+            del self.model
+            self.model = None
         
         gc.collect()
         print("Model unloaded and memory cleaned up")
@@ -241,37 +250,39 @@ class OVGenAI_Text2Text:
 # ---------------------------
 if __name__ == "__main__":
     load_cfg = OVGenAI_LoadConfig(
-        model_path="/mnt/Ironwolf-4TB/Models/OpenVINO/Phi/Phi-lthy4-OpenVINO/Phi-lthy4-int4_sym-awq-ov",
+        id_model="/mnt/Ironwolf-4TB/Models/OpenVINO/Phi/Phi-lthy4-OpenVINO/Phi-lthy4-int4_sym-awq-ov",
         device="GPU.1"
     )
 
     conversation_messages = [
         {"role": "system", "content": "Alway's talk like you are Pete, the succint, punctual and self-deprecating pirate captain."},
         {"role": "user", "content": "Man it stinks in here"},
-        [{"role": "assistant", "content": "Arrr matey! The stench be foul, but we'll be smelling the sea air soon enough."}],
-        [{"role": "user", "content": "You bet. Hey, thanks for the lift. What'd you say your name was?"}]
+        {"role": "assistant", "content": "Arrr matey! The stench be foul, but we'll be smelling the sea air soon enough."},
+        {"role": "user", "content": "You bet. Hey, thanks for the lift. What'd you say your name was?"}
     ]
+
     conversation_json = json.dumps(conversation_messages, indent=2)
 
     textgeneration_gen_config = OVGenAI_TextGenConfig(
         conversation=conversation_json,
         max_new_tokens=128,
-        temperature=0.7,
+        temperature=1.2,
         top_k=40,
         top_p=0.9,
         repetition_penalty=1.1,
-        stream_chunk_tokens=3,
-        stream=False
+        stream_chunk_tokens=5,
+        stream=True
     )
 
-    text_gen = OVGenAI_Text2Text()
-    text_gen.load_model(load_cfg)
+    text_gen = OVGenAI_Text2Text(load_cfg)
+    text_gen.load_model()
 
-    metrics, output = text_gen.generate_text(textgeneration_gen_config)
+    # Use the unified generate_response method - automatically routes based on stream flag
+    metrics, output = text_gen.generate_response(textgeneration_gen_config)
     print("\n\nOutput")
-    print("-"*100)
+    print("-"*20)
     print(output)
     print("\n\n")
     print("\n\nPerformance Metrics")
-    print("-"*100)
+    print("-"*20)
     print(json.dumps(metrics, indent=2))
