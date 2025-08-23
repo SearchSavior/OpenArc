@@ -1,0 +1,55 @@
+from pydantic import BaseModel, Field
+from typing import Any, Dict, Optional
+
+
+
+class OVGenAI_LoadConfig(BaseModel):
+    """
+    Configuration for loading an OpenVINO GenAI model.
+    """
+    
+    id_model: str = Field(..., description="Path to the model directory (top-level).")
+    device: str = Field(default="CPU", description="Target device for inference.")
+    properties: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Optional OpenVINO runtime properties."
+    )
+
+class OVGenAI_TextGenConfig(BaseModel):
+    """
+    Configuration for text generation with an OpenVINO GenAI pipeline.
+    """
+    conversation: str = Field(
+        ...,
+        description="Formatted conversation string ready for the model."
+    )
+    max_new_tokens: int = Field(
+        default=512,
+        description="Maximum number of tokens to generate."
+    )
+    temperature: float = Field(
+        default=1.0,
+        description="Sampling temperature; higher values increase randomness."
+    )
+    top_k: int = Field(
+        default=50,
+        description="Top-k sampling cutoff."
+    )
+    top_p: float = Field(
+        default=1.0,
+        description="Nucleus sampling probability cutoff."
+    )
+    repetition_penalty: float = Field(
+        default=1.0,
+        description="Penalty for repeating tokens."
+    )
+    
+    stream: bool = Field(
+        default=False,
+        description="Stream output in chunks of tokens."
+    )
+
+    stream_chunk_tokens: int = Field(
+        default=1,
+        description="Stream chunk size in tokens. Must be greater than 0. If set > 1, stream output in chunks of this many tokens using ChunkStreamer."
+    )
