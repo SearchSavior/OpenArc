@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 
 
@@ -19,9 +19,9 @@ class OVGenAI_TextGenConfig(BaseModel):
     """
     Configuration for text generation with an OpenVINO GenAI pipeline.
     """
-    conversation: str = Field(
+    conversation: List[Dict[str, str]] = Field(
         ...,
-        description="Formatted conversation string ready for the model."
+        description="List of conversation messages ready for the model."
     )
     max_new_tokens: int = Field(
         default=512,

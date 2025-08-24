@@ -3,7 +3,7 @@ import openvino_genai
 import queue
 
 from openvino_genai import StreamerBase
-from engine.ov_genai.base_config import OVGenAI_TextGenConfig
+from src2.api.base_config import OVGenAI_TextGenConfig
 
 
 class ChunkStreamer(StreamerBase):
