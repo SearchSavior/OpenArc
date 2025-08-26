@@ -21,6 +21,19 @@ from src2.engine.streamers import ChunkStreamer
 
 @dataclass
 class GenerationResult:
+    """
+    Results of a text generation.
+
+    Args:
+        text: Final decoded text. 
+            - Used when stream is False.
+        
+        chunks: Collected stream chunks.
+            - Used when stream is True.
+        
+        metrics: Performance metrics.
+            
+    """
     text: Optional[str] = None                       # Final decoded text
     chunks: List[str] = field(default_factory=list)  # Collected stream chunks
     metrics: Optional[Dict[str, Any]] = None         # Perf metrics
@@ -31,16 +44,6 @@ class OVGenAI_Text2Text:
         self.loader_config = loader_config
         self.last_result: Optional[GenerationResult] = None
 
-    def load_model(self):
-        """
-        Loads an OpenVINO GenAI text-to-text model.
-        """
-        self.model = LLMPipeline(
-            self.loader_config.id_model,
-            self.loader_config.device,
-            **(self.loader_config.properties or {})
-        )
-        print("Model loaded successfully.")
     
     def prepare_inputs(self, conversation: List[Dict[str, str]]) -> TokenizedInputs:
         """
@@ -59,7 +62,7 @@ class OVGenAI_Text2Text:
             )
         return inputs
     
-    def generate_response(self, gen_config: OVGenAI_TextGenConfig):
+    def gen_type(self, gen_config: OVGenAI_TextGenConfig):
         """
         Unified text generation method that routes to streaming or non-streaming 
         based on the stream flag in gen_config.
@@ -72,11 +75,11 @@ class OVGenAI_Text2Text:
             - Streaming: Async iterator of string chunks
         """
         if gen_config.stream:
-            return self.generate_stream(gen_config)
+            return self.gen_stream(gen_config)
         else:
-            return self.generate_text(gen_config)
+            return self.gen_text(gen_config)
     
-    def generate_text(self, gen_config: OVGenAI_TextGenConfig) -> GenerationResult:
+    def gen_text(self, gen_config: OVGenAI_TextGenConfig) -> GenerationResult:
         """
         Non-streaming text generation.
         """
@@ -110,7 +113,7 @@ class OVGenAI_Text2Text:
         self.last_result = result_obj
         return result_obj
 
-    async def generate_stream(self, gen_config: OVGenAI_TextGenConfig) -> AsyncIterator[str]:
+    async def gen_stream(self, gen_config: OVGenAI_TextGenConfig) -> AsyncIterator[str]:
         """
         Async streaming text generation that yields text chunks suitable for FastAPI streaming.
         After streaming completes, `self.last_result` contains final text and metrics.
@@ -165,6 +168,17 @@ class OVGenAI_Text2Text:
             if self.last_result is not None:
                 self.last_result.text = (tokenizer.decode(result.tokens)[0] if getattr(result, "tokens", None) else None)
                 self.last_result.metrics = metrics_dict
+    
+    def load_model(self):
+        """
+        Loads an OpenVINO GenAI text-to-text model.
+        """
+        self.model = LLMPipeline(
+            self.loader_config.id_model,
+            self.loader_config.device,
+            **(self.loader_config.properties or {})
+        )
+        print("Model loaded successfully.")
 
     def unload_model(self):
         """Unload model and free memory"""
@@ -205,7 +219,7 @@ if __name__ == "__main__":
         text_gen = OVGenAI_Text2Text(load_cfg)
         text_gen.load_model()
 
-        async for chunk in text_gen.generate_stream(textgeneration_gen_config):
+        async for chunk in text_gen.gen_stream(textgeneration_gen_config):
             print(chunk, end="", flush=True)
 
         print("\n\nPerformance Metrics")

@@ -20,6 +20,13 @@ dependencies = [
     "uvicorn>=0.35.0",
 ]
 
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["src2"]
+
 [project.scripts]
 openarc = "cli.openarc_cli:cli"
 
