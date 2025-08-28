@@ -194,8 +194,8 @@ class OVGenAI_Text2Text:
 if __name__ == "__main__":
     async def _demo():
         load_cfg = OVGenAI_LoadConfig(
-            id_model="/mnt/Ironwolf-4TB/Models/OpenVINO/Mistral/Impish_Nemo_12B-int4_asym-awq-ov",
-            device="GPU.2"
+            id_model="/mnt/Ironwolf-4TB/Models/OpenVINO/Llama/Hermes-4-70B-int4_asym-ov",
+            device="CPU"
         )
 
         conversation_messages = [
