@@ -1,5 +1,14 @@
 import asyncio
+from dataclasses import dataclass
+from typing import Optional
 from openvino_genai import LLMPipeline, GenerationConfig
+
+
+@dataclass
+class WorkerPacket:
+    request_id: str
+    prompt: str
+    response: Optional[str] = None
 
 
 class OV_Pipeline:
@@ -21,29 +30,30 @@ class OV_Pipeline:
 
 # ----------------- Async Orchestration -----------------
 
-async def generator_worker(prompt: str, ov_pipeline: OV_Pipeline) -> str:
+async def generator_worker(packet: WorkerPacket, ov_pipeline: OV_Pipeline) -> WorkerPacket:
     """
-    Generate text for a single prompt using the OV pipeline.
+    Generate text for a single packet using the OV pipeline.
     """
-    result = await asyncio.to_thread(ov_pipeline.generate_text, prompt)
-    return result
+    result = await asyncio.to_thread(ov_pipeline.generate_text, packet.prompt)
+    packet.response = result
+    return packet
 
 
 async def queue_worker(message_queue: asyncio.Queue, ov_pipeline: OV_Pipeline):
     """
-    Consume prompts from queue and delegate generation to generator_worker.
+    Consume packets from queue and delegate generation to generator_worker.
     """
-    print("[Worker] Started, waiting for prompts...")
+    print("[Worker] Started, waiting for packets...")
 
     while True:
-        prompt = await message_queue.get()
-        if prompt is None:  # shutdown signal
+        packet = await message_queue.get()
+        if packet is None:  # shutdown signal
             print("[Worker] Shutdown signal received.")
             break
 
         # Delegate to generator worker
-        result = await generator_worker(prompt, ov_pipeline)
-        print(f"[Worker] Prompt: {prompt!r} -> {result!r}")
+        completed_packet = await generator_worker(packet, ov_pipeline)
+        print(f"[Worker] Request {completed_packet.request_id}: {completed_packet.prompt!r} -> {completed_packet.response!r}")
 
         message_queue.task_done()
 
@@ -58,24 +68,25 @@ async def main():
     worker_task = asyncio.create_task(queue_worker(message_queue, ov_pipeline))
     print("[Main] Worker started, model loaded into memory.")
 
-    # Queue prompts
+    # Queue prompts as packets
     prompts = [
         "Hello world",
         "Explain quantum entanglement simply",
         "What is the capital of France?"
     ]
-    for p in prompts:
-        await message_queue.put(p)
-        print(f"[Main] Queued prompt: {p!r}")
+    for i, p in enumerate(prompts):
+        packet = WorkerPacket(request_id=f"req_{i+1:03d}", prompt=p)
+        await message_queue.put(packet)
+        print(f"[Main] Queued packet: {packet.request_id} - {p!r}")
 
-    # Wait for all prompts to be processed
+    # Wait for all packets to be processed
     await message_queue.join()
 
     # Clean shutdown
     await message_queue.put(None)
     await worker_task
 
-    print("[Main] All prompts processed, shutdown complete.")
+    print("[Main] All packets processed, shutdown complete.")
 
 
 if __name__ == "__main__":
