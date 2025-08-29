@@ -19,7 +19,6 @@ class OV_Pipeline:
         # Initialize synchronous pipeline
         self.pipeline = LLMPipeline(model_path, device=device)
         self.id_model = id_model
-        # Default generation config (can be tuned)
         self.gen_config = GenerationConfig(max_new_tokens=128)
 
     def generate_text(self, prompt: str) -> str:
