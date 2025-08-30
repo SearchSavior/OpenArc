@@ -40,7 +40,7 @@ async def generator_worker(packet: WorkerPacket, ov_pipeline: OV_Pipeline) -> Wo
     return packet
 
 
-async def model_worker(id_model: str, model_queue: asyncio.Queue, ov_pipeline: OV_Pipeline):
+async def inference_worker(id_model: str, model_queue: asyncio.Queue, ov_pipeline: OV_Pipeline):
     """
     Consume packets from a model-specific queue and delegate generation.
     """
@@ -113,7 +113,7 @@ async def main():
         
         # Start worker for this model
         worker_task = asyncio.create_task(
-            model_worker(id_model, model_queue, pipeline)
+            inference_worker(id_model, model_queue, pipeline)
         )
         worker_tasks.append(worker_task)
         print(f"[Main] {id_model} worker started")

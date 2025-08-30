@@ -79,7 +79,7 @@ class OVGenAI_Text2Text:
         else:
             return self.generate_text(gen_config)
     
-    async def generate_text(self, gen_config: OVGenAI_TextGenConfig) -> GenerationResult:
+    async def _generate_text(self, gen_config: OVGenAI_TextGenConfig) -> GenerationResult:
         """
         Async non-streaming text generation.
         """
@@ -115,7 +115,7 @@ class OVGenAI_Text2Text:
         self.current_generation = result_obj
         return result_obj
 
-    async def generate_stream(self, gen_config: OVGenAI_TextGenConfig) -> AsyncIterator[str]:
+    async def _generate_stream(self, gen_config: OVGenAI_TextGenConfig) -> AsyncIterator[str]:
         """
         Async streaming text generation that yields text chunks suitable for FastAPI streaming.
         After streaming completes, `self.current_generation` contains final text and metrics.
