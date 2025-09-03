@@ -7,10 +7,11 @@ from threading import Thread
 from typing import Any, Dict, List, Optional, Union, AsyncIterator
 from dataclasses import dataclass, field
 
+from transformers import AutoTokenizer
+import openvino as ov
 from openvino_genai import (
     GenerationConfig, 
     LLMPipeline,
-    TokenizedInputs
     )
 
 from src2.api.base_config import (
@@ -39,28 +40,23 @@ class GenerationResult:
     metrics: Optional[Dict[str, Any]] = None         # Perf metrics
 
 class OVGenAI_Text2Text:
-    def __init__(self, loader_config: OVGenAI_LoadConfig):
+    def __init__(self, load_config: OVGenAI_LoadConfig):
         self.id_model = None
-        self.loader_config = loader_config
+        self.load_config = load_config
         self.current_generation: Optional[GenerationResult] = None
 
-    def prepare_inputs(self, conversation: List[Dict[str, str]]) -> TokenizedInputs:
+    def prepare_inputs(self, messages: List[Dict[str, str]]) -> ov.Tensor:
         """
-        Convert a conversation (list of {role, content}) into TokenizedInputs using the tokenizer
+        Convert a messages (list of {role, content}) into ov.Tensor using the AutoTokenizer
         and its chat template.
         """
-        tokenizer = self.id_model.get_tokenizer()
-        prompt = tokenizer.apply_chat_template(
-            conversation, 
+        tokenizer = AutoTokenizer.from_pretrained(self.load_config.id_model)
+        prompt_token_ids = tokenizer.apply_chat_template(
+            messages, 
             add_generation_prompt=True,
-            
+            return_tensors="np"
             )
-        inputs: TokenizedInputs = tokenizer.encode(
-            prompt, 
-            add_special_tokens=True, 
-            pad_to_max_length=False, 
-            )
-        return inputs
+        return ov.Tensor(prompt_token_ids)
     
     def generate_type(self, gen_config: OVGenAI_TextGenConfig):
         """
@@ -79,7 +75,7 @@ class OVGenAI_Text2Text:
         else:
             return self.generate_text(gen_config)
     
-    async def _generate_text(self, gen_config: OVGenAI_TextGenConfig) -> GenerationResult:
+    async def generate_text(self, gen_config: OVGenAI_TextGenConfig) -> GenerationResult:
         """
         Async non-streaming text generation.
         """
@@ -91,9 +87,9 @@ class OVGenAI_Text2Text:
             repetition_penalty=gen_config.repetition_penalty,
         )
 
-        inputs = self.prepare_inputs(gen_config.conversation)
+        prompt_token_ids = self.prepare_inputs(gen_config.messages)
         # Run the blocking id_model.generate call in a thread pool
-        result = await asyncio.to_thread(self.id_model.generate, inputs, ov_gen_cfg)
+        result = await asyncio.to_thread(self.id_model.generate, prompt_token_ids, ov_gen_cfg)
         
         perf_metrics = result.perf_metrics
         # Decode first sequence
@@ -115,7 +111,7 @@ class OVGenAI_Text2Text:
         self.current_generation = result_obj
         return result_obj
 
-    async def _generate_stream(self, gen_config: OVGenAI_TextGenConfig) -> AsyncIterator[str]:
+    async def generate_stream(self, gen_config: OVGenAI_TextGenConfig) -> AsyncIterator[str]:
         """
         Async streaming text generation that yields text chunks suitable for FastAPI streaming.
         After streaming completes, `self.current_generation` contains final text and metrics.
@@ -130,13 +126,13 @@ class OVGenAI_Text2Text:
 
         tokenizer = self.id_model.get_tokenizer()
         streamer = ChunkStreamer(tokenizer, gen_config)
-        inputs = self.prepare_inputs(gen_config.conversation)
+        prompt_token_ids = self.prepare_inputs(gen_config.messages)
         self.current_generation = GenerationResult()
 
         async def _run_generation():
             return await asyncio.to_thread(
                 self.id_model.generate,
-                inputs,
+                prompt_token_ids,
                 generation_kwargs,
                 streamer
             )
@@ -176,9 +172,9 @@ class OVGenAI_Text2Text:
         Loads an OpenVINO GenAI text-to-text model.
         """
         self.id_model = LLMPipeline(
-            self.loader_config.id_model,
-            self.loader_config.device,
-            **(self.loader_config.properties or {})
+            self.load_config.id_model,
+            self.load_config.device,
+            **(self.load_config.properties or {})
         )
         print("Model loaded successfully.")
 
@@ -200,7 +196,7 @@ if __name__ == "__main__":
             device="GPU.2"
         )
 
-        conversation_messages = [
+        messages_messages = [
             {"role": "system", "content": "Alway's talk like you are Pete, the succint, punctual and self-deprecating pirate captain."},
             {"role": "user", "content": "Man it stinks in here"},
             {"role": "assistant", "content": "Arrr matey! The stench be foul, but we'll be smelling the sea air soon enough."},
@@ -208,7 +204,7 @@ if __name__ == "__main__":
         ]
 
         textgeneration_gen_config = OVGenAI_TextGenConfig(
-            conversation=conversation_messages,
+            messages=messages_messages,
             max_new_tokens=128,
             temperature=1.2,
             top_k=40,

@@ -19,7 +19,7 @@ class OVGenAI_TextGenConfig(BaseModel):
     """
     Configuration for text generation with an OpenVINO GenAI pipeline.
     """
-    conversation: List[Dict[str, str]] = Field(
+    messages: List[Dict[str, str]] = Field(
         ...,
         description="List of conversation messages ready for the model."
     )
