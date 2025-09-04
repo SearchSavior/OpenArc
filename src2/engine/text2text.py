@@ -22,8 +22,7 @@ from src2.engine.streamers import ChunkStreamer
 
 @dataclass
 class GenerationResult:
-    """
-    Results of a text generation.
+    """Results of a text generation.
 
     Args:
         text: Final decoded text. 
@@ -115,11 +114,9 @@ class OVGenAI_Text2Text:
         )
 
         prompt_token_ids = self.prepare_inputs(gen_config.messages)
-        # Run the blocking id_model.generate call in a thread pool
         result = await asyncio.to_thread(self.id_model.generate, prompt_token_ids, generation_kwargs)
         
         perf_metrics = result.perf_metrics
-        # Decode first sequence
         decoder_tokenizer = self.id_model.get_tokenizer()
         text = decoder_tokenizer.decode(result.tokens)[0] if getattr(result, "tokens", None) else ""
 
@@ -166,13 +163,11 @@ class OVGenAI_Text2Text:
             result = await gen_task
             perf_metrics = result.perf_metrics
             metrics = self.collect_metrics(gen_config, perf_metrics)
-            # Decode final sequence into text and store metrics
             self.generation_result.text = decoder_tokenizer.decode(result.tokens)[0]
             self.generation_result.metrics = metrics
     
     def load_model(self):
-        """
-        Loads an OpenVINO GenAI text-to-text model.
+        """Loads an OpenVINO GenAI text-to-text model.
         """
         self.id_model = LLMPipeline(
             self.load_config.id_model,
