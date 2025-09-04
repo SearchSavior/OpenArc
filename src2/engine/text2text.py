@@ -43,7 +43,7 @@ class OVGenAI_Text2Text:
     def __init__(self, load_config: OVGenAI_LoadConfig):
         self.id_model = None
         self.load_config = load_config
-        self.current_generation: Optional[GenerationResult] = None
+        self.generation_result: Optional[GenerationResult] = None
 
     def prepare_inputs(self, messages: List[Dict[str, str]]) -> ov.Tensor:
         """
@@ -106,7 +106,7 @@ class OVGenAI_Text2Text:
         """
         Async non-streaming text generation.
         """
-        ov_gen_cfg = GenerationConfig(
+        generation_kwargs = GenerationConfig(
             max_new_tokens=gen_config.max_new_tokens,
             temperature=gen_config.temperature,
             top_k=gen_config.top_k,
@@ -116,7 +116,7 @@ class OVGenAI_Text2Text:
 
         prompt_token_ids = self.prepare_inputs(gen_config.messages)
         # Run the blocking id_model.generate call in a thread pool
-        result = await asyncio.to_thread(self.id_model.generate, prompt_token_ids, ov_gen_cfg)
+        result = await asyncio.to_thread(self.id_model.generate, prompt_token_ids, generation_kwargs)
         
         perf_metrics = result.perf_metrics
         # Decode first sequence
@@ -125,13 +125,12 @@ class OVGenAI_Text2Text:
 
         metrics_dict = self.collect_metrics(gen_config, perf_metrics)
         result_obj = GenerationResult(text=text, metrics=metrics_dict)
-        self.current_generation = result_obj
+        self.generation_result = result_obj
         return result_obj
 
     async def generate_stream(self, gen_config: OVGenAI_TextGenConfig) -> AsyncIterator[str]:
         """
-        Async streaming text generation that yields text chunks suitable for FastAPI streaming.
-        After streaming completes, `self.current_generation` contains final text and metrics.
+        
         """
         generation_kwargs = GenerationConfig(
             max_new_tokens=gen_config.max_new_tokens,
@@ -144,7 +143,7 @@ class OVGenAI_Text2Text:
         decoder_tokenizer = self.id_model.get_tokenizer()
         streamer = ChunkStreamer(decoder_tokenizer, gen_config)
         prompt_token_ids = self.prepare_inputs(gen_config.messages)
-        self.current_generation = GenerationResult()
+        self.generation_result = GenerationResult()
 
         async def _run_generation():
             return await asyncio.to_thread(
@@ -161,17 +160,15 @@ class OVGenAI_Text2Text:
                 chunk = await asyncio.to_thread(streamer.text_queue.get)
                 if chunk is None:
                     break
-                if self.current_generation is not None:
-                    self.current_generation.chunks.append(chunk)
+                self.generation_result.chunks.append(chunk)
                 yield chunk
         finally:
             result = await gen_task
             perf_metrics = result.perf_metrics
-            metrics_dict = self.collect_metrics(gen_config, perf_metrics)
+            metrics = self.collect_metrics(gen_config, perf_metrics)
             # Decode final sequence into text and store metrics
-            if self.current_generation is not None:
-                self.current_generation.text = (decoder_tokenizer.decode(result.tokens)[0] if getattr(result, "tokens", None) else None)
-                self.current_generation.metrics = metrics_dict
+            self.generation_result.text = decoder_tokenizer.decode(result.tokens)[0]
+            self.generation_result.metrics = metrics
     
     def load_model(self):
         """
@@ -199,10 +196,10 @@ if __name__ == "__main__":
     async def _demo():
         load_cfg = OVGenAI_LoadConfig(
             id_model="/mnt/Ironwolf-4TB/Models/OpenVINO/Llama/Llama-3.2-3B-Instruct-abliterated-OpenVINO/Llama-3.2-3B-Instruct-abliterated-int4_asym-ov",
-            device="CPU"
+            device="GPU.2"
         )
 
-        messages_messages = [
+        messages = [
             {"role": "system", "content": "Alway's talk like you are Pete, the succint, punctual and self-deprecating pirate captain."},
             {"role": "user", "content": "Man it stinks in here"},
             {"role": "assistant", "content": "Arrr matey! The stench be foul, but we'll be smelling the sea air soon enough."},
@@ -212,7 +209,7 @@ if __name__ == "__main__":
         ]
 
         textgeneration_gen_config = OVGenAI_TextGenConfig(
-            messages=messages_messages,
+            messages=messages,
             max_new_tokens=128,
             temperature=1.2,
             top_k=40,
@@ -230,8 +227,8 @@ if __name__ == "__main__":
 
         print("\n\nPerformance Metrics")
         print("-"*20)
-        if text_gen.current_generation:
-            print(json.dumps(text_gen.current_generation.metrics or {}, indent=2))
+        if text_gen.generation_result:
+            print(json.dumps(text_gen.generation_result.metrics or {}, indent=2))
 
 
     asyncio.run(_demo())
