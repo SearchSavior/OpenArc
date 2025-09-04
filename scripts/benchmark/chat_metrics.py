@@ -1,15 +1,22 @@
-import openvino_genai
-import openvino.properties.hint as ov_config
 import time
 
-model_path = "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Qwen3-32B-Instruct-int4_sym-awq-ov"
+import openvino as ov
+import openvino.properties.hint as ov_config
+import openvino_genai
+
+from transformers import AutoTokenizer
+
+model_path = "/mnt/Ironwolf-4TB/Models/OpenVINO/Phi/Phi-4-mini-instruct-int4_asym-awq-se-ov"
 device = "HETERO:GPU.0,GPU.2"
 
 # Use NPU+GPU if available
 pipe = openvino_genai.LLMPipeline(model_path, device=device, config={ov_config.model_distribution_policy: "PIPELINE_PARALLEL"})
 
+# Initialize tokenizer
+tokenizer = AutoTokenizer.from_pretrained(model_path)
+
 config = openvino_genai.GenerationConfig()
-config.max_new_tokens = 8192
+config.max_new_tokens = 16384
 
 print("Chatbot ready! Type 'exit' to quit.\n")
 
@@ -27,8 +34,12 @@ while True:
         print(token_text, end="", flush=True)  # live typing
         time.sleep(0.02)  # optional delay for human-like typing effect
 
+    # Create proper chat template using AutoTokenizer
+    messages = [{"role": "user", "content": user_input}]
+    prompt_token_ids = tokenizer.apply_chat_template(messages, add_generation_prompt=True, return_tensors="np")
+    
     # Generate with streaming and capture result to access perf_metrics
-    result = pipe.generate([user_input], config, stream_callback)
+    result = pipe.generate(ov.Tensor(prompt_token_ids), config, stream_callback)
 
     performance_report = result.perf_metrics
 

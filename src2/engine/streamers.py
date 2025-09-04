@@ -13,9 +13,9 @@ class ChunkStreamer(StreamerBase):
     - tokens_len  > 1 → emit after every N tokens.
     Uses cumulative decode + delta slicing to avoid subword boundary artifacts.
     """
-    def __init__(self, tokenizer, gen_config: OVGenAI_TextGenConfig):
+    def __init__(self, decoder_tokenizer, gen_config: OVGenAI_TextGenConfig):
         super().__init__()
-        self.tokenizer = tokenizer
+        self.decoder_tokenizer = decoder_tokenizer
         self.tokens_len = (gen_config.stream_chunk_tokens)  # enforce at least 1
         self.tokens_cache: List[int] = []          # cumulative token buffer
         self.since_last_emit: int = 0              # tokens collected since last emit
@@ -42,7 +42,7 @@ class ChunkStreamer(StreamerBase):
 
         # Only emit when we've reached the chunk boundary
         if self.since_last_emit >= self.tokens_len:
-            text = self.tokenizer.decode(self.tokens_cache)
+            text = self.decoder_tokenizer.decode(self.tokens_cache)
             # Emit only the newly materialized portion
             if len(text) > self.last_print_len:
                 chunk = text[self.last_print_len:]
@@ -55,7 +55,7 @@ class ChunkStreamer(StreamerBase):
 
     def end(self) -> None:
         # Flush any remaining tokens at the end
-        text = self.tokenizer.decode(self.tokens_cache)
+        text = self.decoder_tokenizer.decode(self.tokens_cache)
         if len(text) > self.last_print_len:
             chunk = text[self.last_print_len:]
             if chunk:
