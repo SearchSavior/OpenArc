@@ -1,0 +1,1 @@
+from src2.api.base_config import OVGenAI_LoadConfig

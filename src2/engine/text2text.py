@@ -27,7 +27,7 @@ logger.setLevel(logging.INFO)
 class OVGenAI_Text2Text:
     def __init__(self, load_config: OVGenAI_LoadConfig):
         self.id_model = None
-        self.encoder_tokenizer = None  # Add cached tokenizer
+        self.encoder_tokenizer = None
         self.load_config = load_config
 
     def prepare_inputs(self, messages: List[Dict[str, str]]) -> ov.Tensor:
@@ -59,33 +59,6 @@ class OVGenAI_Text2Text:
             return self.generate_stream(gen_config)
         else:
             return self.generate_text(gen_config)
-    
-    def collect_metrics(self, gen_config: OVGenAI_TextGenConfig, perf_metrics) -> Dict[str, Any]:
-        """
-        Collect and format performance metrics into a dictionary.
-        """
-        # Compute prefill throughput = input tokens / ttft (in seconds)
-        ttft_seconds = perf_metrics.get_ttft().mean / 1000
-        input_tokens = perf_metrics.get_num_input_tokens()
-        prefill_throughput = round(input_tokens / ttft_seconds, 2) if ttft_seconds > 0 else 0
-
-        metrics: Dict[str, Any] = {
-            'load_time (s)': round(perf_metrics.get_load_time() / 1000, 2),
-            'ttft (s)': round(perf_metrics.get_ttft().mean / 1000, 2),
-            'tpot (ms)': round(perf_metrics.get_tpot().mean, 5),
-            'prefill_throughput (tokens/s)': prefill_throughput,
-            'decode_throughput (tokens/s)': round(perf_metrics.get_throughput().mean, 5),
-            'decode_duration (s)': round(perf_metrics.get_generate_duration().mean / 1000, 5),
-            'input_token': input_tokens,
-            'new_token': perf_metrics.get_num_generated_tokens(),
-            'total_token': input_tokens + perf_metrics.get_num_generated_tokens(),
-            'stream': gen_config.stream,
-        }
-        # Include streaming-specific fields
-        if gen_config.stream and hasattr(gen_config, "stream_chunk_tokens"):
-            metrics['stream_chunk_tokens'] = gen_config.stream_chunk_tokens
-        
-        return metrics
     
     async def generate_text(self, gen_config: OVGenAI_TextGenConfig) -> AsyncIterator[Union[Dict[str, Any], str]]:
         """
@@ -144,14 +117,41 @@ class OVGenAI_Text2Text:
                 if chunk is None:
                     break
                 yield chunk
+
         finally:
             result = await gen_task
             perf_metrics = result.perf_metrics
             metrics = self.collect_metrics(gen_config, perf_metrics)
-            #final_text = decoder_tokenizer.decode(result.tokens)[0]
+            
             yield metrics
-            #yield final_text
     
+    def collect_metrics(self, gen_config: OVGenAI_TextGenConfig, perf_metrics) -> Dict[str, Any]:
+        """
+        Collect and format performance metrics into a dictionary.
+        """
+        # Compute prefill throughput = input tokens / ttft (in seconds)
+        ttft_seconds = perf_metrics.get_ttft().mean / 1000
+        input_tokens = perf_metrics.get_num_input_tokens()
+        prefill_throughput = round(input_tokens / ttft_seconds, 2) if ttft_seconds > 0 else 0
+
+        metrics: Dict[str, Any] = {
+            'load_time (s)': round(perf_metrics.get_load_time() / 1000, 2),
+            'ttft (s)': round(perf_metrics.get_ttft().mean / 1000, 2),
+            'tpot (ms)': round(perf_metrics.get_tpot().mean, 5),
+            'prefill_throughput (tokens/s)': prefill_throughput,
+            'decode_throughput (tokens/s)': round(perf_metrics.get_throughput().mean, 5),
+            'decode_duration (s)': round(perf_metrics.get_generate_duration().mean / 1000, 5),
+            'input_token': input_tokens,
+            'new_token': perf_metrics.get_num_generated_tokens(),
+            'total_token': input_tokens + perf_metrics.get_num_generated_tokens(),
+            'stream': gen_config.stream,
+        }
+        # Include streaming-specific fields
+        if gen_config.stream and hasattr(gen_config, "stream_chunk_tokens"):
+            metrics['stream_chunk_tokens'] = gen_config.stream_chunk_tokens
+        
+        return metrics
+
     def load_model(self):
         """Loads an OpenVINO GenAI text-to-text model and caches the tokenizer.
         """
@@ -176,6 +176,8 @@ class OVGenAI_Text2Text:
         
         gc.collect()
         print("Model unloaded and memory cleaned up")
+
+
 # ---------------------------
 # Example Usage
 # ---------------------------

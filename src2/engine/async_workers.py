@@ -1,46 +1,52 @@
 import asyncio
 from dataclasses import dataclass
-from typing import Optional, Dict
-from openvino_genai import LLMPipeline, GenerationConfig
+from typing import Optional, Dict, Any
+from src2.engine.text2text import OVGenAI_Text2Text
+from src2.api.base_config import OVGenAI_LoadConfig, OVGenAI_TextGenConfig
+
+
+
 
 
 @dataclass
 class WorkerPacket:
     request_id: str
     id_model: str  # New field to identify which model to use
-    prompt: str
+    gen_config: OVGenAI_TextGenConfig  # Full generation configuration
     response: Optional[str] = None
-
-
-class OV_Pipeline:
-    """Thin wrapper around OpenVINO LLMPipeline for CPU inference."""
-
-    def __init__(self, model_path: str, device: str = "CPU", id_model: str = "default"):
-        # Initialize synchronous pipeline
-        self.pipeline = LLMPipeline(model_path, device=device)
-        self.id_model = id_model
-        self.gen_config = GenerationConfig(max_new_tokens=128)
-
-    def generate_text(self, prompt: str) -> str:
-        chunks = []
-        for token in self.pipeline.generate(prompt, self.gen_config):
-            chunks.append(token)
-        return "".join(chunks)
-
+    metrics: Optional[Dict[str, Any]] = None
 
 
 # ----------------- Async Orchestration -----------------
 
-async def generator_worker(packet: WorkerPacket, ov_pipeline: OV_Pipeline) -> WorkerPacket:
+async def generator_worker(packet: WorkerPacket, text_generator: OVGenAI_Text2Text) -> WorkerPacket:
     """
-    Generate text for a single packet using the OV pipeline.
+    Generate text for a single packet using the OVGenAI_Text2Text pipeline.
+    Supports both streaming and non-streaming generation.
     """
-    result = await asyncio.to_thread(ov_pipeline.generate_text, packet.prompt)
-    packet.response = result
+    metrics = None
+    final_text = ""
+    
+    # Use the generate_type method which routes to streaming or non-streaming
+    async for item in text_generator.generate_type(packet.gen_config):
+        if isinstance(item, dict):
+            # This is metrics
+            metrics = item
+        else:
+            # This is text (either final text for non-streaming or chunk for streaming)
+            if packet.gen_config.stream:
+                # For streaming, we accumulate chunks into final text
+                final_text += item
+            else:
+                # For non-streaming, this is the final text
+                final_text = item
+    
+    packet.response = final_text
+    packet.metrics = metrics
     return packet
 
 
-async def inference_worker(id_model: str, model_queue: asyncio.Queue, ov_pipeline: OV_Pipeline):
+async def inference_worker(id_model: str, model_queue: asyncio.Queue, text_generator: OVGenAI_Text2Text):
     """
     Consume packets from a model-specific queue and delegate generation.
     """
@@ -53,8 +59,13 @@ async def inference_worker(id_model: str, model_queue: asyncio.Queue, ov_pipelin
             break
 
         # Delegate to generator worker
-        completed_packet = await generator_worker(packet, ov_pipeline)
-        print(f"[{id_model} Worker] Request {completed_packet.request_id}: {completed_packet.prompt!r} -> {completed_packet.response!r}")
+        completed_packet = await generator_worker(packet, text_generator)
+        
+        # Extract prompt from messages for logging
+        user_message = next((msg["content"] for msg in packet.gen_config.messages if msg["role"] == "user"), "")
+        print(f"[{id_model} Worker] Request {completed_packet.request_id}: {user_message!r} -> {completed_packet.response!r}")
+        if completed_packet.metrics:
+            print(f"[{id_model} Worker] Metrics: {completed_packet.metrics}")
 
         model_queue.task_done()
 
@@ -97,15 +108,20 @@ async def main():
         }
     }
 
-    # Create pipelines and queues for each model
-    pipelines = {}
+    # Create text generators and queues for each model
+    text_generators = {}
     model_queues = {}
     worker_tasks = []
 
     for id_model, config in model_configs.items():
-        # Create pipeline
-        pipeline = OV_Pipeline(config["path"], config["device"], id_model)
-        pipelines[id_model] = pipeline
+        # Create load config and text generator
+        load_config = OVGenAI_LoadConfig(
+            id_model=config["path"],
+            device=config["device"]
+        )
+        text_generator = OVGenAI_Text2Text(load_config)
+        text_generator.load_model()
+        text_generators[id_model] = text_generator
         
         # Create model-specific queue
         model_queue = asyncio.Queue()
@@ -113,7 +129,7 @@ async def main():
         
         # Start worker for this model
         worker_task = asyncio.create_task(
-            inference_worker(id_model, model_queue, pipeline)
+            inference_worker(id_model, model_queue, text_generator)
         )
         worker_tasks.append(worker_task)
         print(f"[Main] {id_model} worker started")
@@ -123,19 +139,71 @@ async def main():
     router_task = asyncio.create_task(packet_router(input_queue, model_queues))
     print("[Main] Router started")
 
-    # Queue test packets for both models
+    # Queue test packets for both models with proper message format
     test_packets = [
-        WorkerPacket(request_id="req_001", id_model="llama3", prompt="Hello world"),
-        WorkerPacket(request_id="req_002", id_model="llama70b", prompt="Explain quantum entanglement simply"),
-        WorkerPacket(request_id="req_003", id_model="llama3", prompt="What is the capital of France?"),
-        WorkerPacket(request_id="req_004", id_model="llama3", prompt="What is the capital of France?"),
-        WorkerPacket(request_id="req_005", id_model="llama3", prompt="You suck doney balls"),
-        WorkerPacket(request_id="req_006", id_model="llama3", prompt="Respect my authoritah"),
-        WorkerPacket(request_id="req_007", id_model="llama3", prompt="What is the capital of France?"),
-        WorkerPacket(request_id="req_008", id_model="llama3", prompt="What is the capital of France?"),
-        WorkerPacket(request_id="req_009", id_model="llama3", prompt="What is the capital of France?"),
-        WorkerPacket(request_id="req_010", id_model="llama3", prompt="What is the capital of France?"),
-        WorkerPacket(request_id="req_011", id_model="llama70b", prompt="Write a haiku about coding"),
+        WorkerPacket(
+            request_id="req_001",
+            id_model="llama3",
+            gen_config=OVGenAI_TextGenConfig(
+                messages=[{"role": "user", "content": "Hello world"}],
+                max_new_tokens=64,
+                temperature=0.7,
+                stream=False
+            )
+        ),
+        WorkerPacket(
+            request_id="req_002",
+            id_model="llama70b",
+            gen_config=OVGenAI_TextGenConfig(
+                messages=[{"role": "user", "content": "Explain quantum entanglement simply"}],
+                max_new_tokens=128,
+                temperature=0.5,
+                stream=True  # Test streaming
+            )
+        ),
+        WorkerPacket(
+            request_id="req_003",
+            id_model="llama3",
+            gen_config=OVGenAI_TextGenConfig(
+                messages=[{"role": "user", "content": "What is the capital of France?"}],
+                max_new_tokens=32,
+                temperature=0.3,
+                stream=False
+            )
+        ),
+        WorkerPacket(
+            request_id="req_004",
+            id_model="llama3",
+            gen_config=OVGenAI_TextGenConfig(
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": "Tell me a short joke"}
+                ],
+                max_new_tokens=64,
+                temperature=0.8,
+                stream=True  # Test streaming
+            )
+        ),
+        WorkerPacket(
+            request_id="req_005",
+            id_model="llama3",
+            gen_config=OVGenAI_TextGenConfig(
+                messages=[{"role": "user", "content": "Write a one-line summary of machine learning"}],
+                max_new_tokens=48,
+                temperature=0.4,
+                stream=False
+            )
+        ),
+        WorkerPacket(
+            request_id="req_006",
+            id_model="llama70b",
+            gen_config=OVGenAI_TextGenConfig(
+                messages=[{"role": "user", "content": "Write a haiku about coding"}],
+                max_new_tokens=64,
+                temperature=0.6,
+                stream=True  # Test streaming
+            )
+        ),
     ]
     
     for packet in test_packets:
