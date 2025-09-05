@@ -5,8 +5,8 @@ import queue
 from pathlib import Path
 from threading import Thread
 from typing import Any, Dict, List, Optional, Union, AsyncIterator
-from dataclasses import dataclass, field
 
+import logging
 from transformers import AutoTokenizer
 import openvino as ov
 from openvino_genai import (
@@ -20,54 +20,40 @@ from src2.api.base_config import (
     )
 from src2.engine.streamers import ChunkStreamer
 
-@dataclass
-class GenerationResult:
-    """Results of a text generation.
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
-    Args:
-        text: Final decoded text. 
-            - Used when stream is False.
-        
-        chunks: Collected stream chunks.
-            - Used when stream is True.
-        
-        metrics: Performance metrics.
-            
-    """
-    text: Optional[str] = None                       # Final decoded text
-    chunks: List[str] = field(default_factory=list)  # Collected stream chunks
-    metrics: Optional[Dict[str, Any]] = None         # Perf metrics
 
 class OVGenAI_Text2Text:
     def __init__(self, load_config: OVGenAI_LoadConfig):
         self.id_model = None
+        self.encoder_tokenizer = None  # Add cached tokenizer
         self.load_config = load_config
-        self.generation_result: Optional[GenerationResult] = None
 
     def prepare_inputs(self, messages: List[Dict[str, str]]) -> ov.Tensor:
         """
-        Convert a messages (list of {role, content}) into ov.Tensor using the AutoTokenizer
+        Convert a messages (list of {role, content}) into ov.Tensor using the cached AutoTokenizer
         and its chat template.
         """
-        encoder_tokenizer = AutoTokenizer.from_pretrained(self.load_config.id_model)
-        prompt_token_ids = encoder_tokenizer.apply_chat_template(
+        prompt_token_ids = self.encoder_tokenizer.apply_chat_template(
             messages, 
             add_generation_prompt=True,
+            skip_special_tokens=True,
             return_tensors="np"
             )
         return ov.Tensor(prompt_token_ids)
     
     def generate_type(self, gen_config: OVGenAI_TextGenConfig):
         """
-        Unified text generation method that routes to streaming or non-streaming 
-        based on the stream flag in gen_config.
+        Unified text generation method that routes to streaming or non-streaming
+        based on the stream flag in gen_config. Both paths return an async iterator.
         
         Args:
             gen_config: Configuration containing the stream flag and other parameters
             
         Returns:
-            - Non-streaming: GenerationResult
-            - Streaming: Async iterator of string chunks
+            - Non-streaming: async iterator yielding [metrics: dict, new_text: str]
+            - Streaming: async iterator yielding token chunks (str)... then [metrics: dict, new_text: str]
         """
         if gen_config.stream:
             return self.generate_stream(gen_config)
@@ -81,15 +67,15 @@ class OVGenAI_Text2Text:
         # Compute prefill throughput = input tokens / ttft (in seconds)
         ttft_seconds = perf_metrics.get_ttft().mean / 1000
         input_tokens = perf_metrics.get_num_input_tokens()
-        prefill_throughput = round((input_tokens / ttft_seconds), 2) if ttft_seconds > 0 else 0
+        prefill_throughput = round(input_tokens / ttft_seconds, 2) if ttft_seconds > 0 else 0
 
         metrics: Dict[str, Any] = {
             'load_time (s)': round(perf_metrics.get_load_time() / 1000, 2),
             'ttft (s)': round(perf_metrics.get_ttft().mean / 1000, 2),
-            'tpot (ms)': round(perf_metrics.get_tpot().mean, 2),
+            'tpot (ms)': round(perf_metrics.get_tpot().mean, 5),
             'prefill_throughput (tokens/s)': prefill_throughput,
-            'decode_throughput (tokens/s)': round(perf_metrics.get_throughput().mean, 2),
-            'decode_duration (s)': round(perf_metrics.get_generate_duration().mean / 1000, 2),
+            'decode_throughput (tokens/s)': round(perf_metrics.get_throughput().mean, 5),
+            'decode_duration (s)': round(perf_metrics.get_generate_duration().mean / 1000, 5),
             'input_token': input_tokens,
             'new_token': perf_metrics.get_num_generated_tokens(),
             'total_token': input_tokens + perf_metrics.get_num_generated_tokens(),
@@ -101,9 +87,10 @@ class OVGenAI_Text2Text:
         
         return metrics
     
-    async def generate_text(self, gen_config: OVGenAI_TextGenConfig) -> GenerationResult:
+    async def generate_text(self, gen_config: OVGenAI_TextGenConfig) -> AsyncIterator[Union[Dict[str, Any], str]]:
         """
         Async non-streaming text generation.
+        Yields in order: metrics (dict), new_text (str).
         """
         generation_kwargs = GenerationConfig(
             max_new_tokens=gen_config.max_new_tokens,
@@ -121,13 +108,13 @@ class OVGenAI_Text2Text:
         text = decoder_tokenizer.decode(result.tokens)[0] if getattr(result, "tokens", None) else ""
 
         metrics_dict = self.collect_metrics(gen_config, perf_metrics)
-        result_obj = GenerationResult(text=text, metrics=metrics_dict)
-        self.generation_result = result_obj
-        return result_obj
+        yield metrics_dict
+        yield text
 
-    async def generate_stream(self, gen_config: OVGenAI_TextGenConfig) -> AsyncIterator[str]:
+    async def generate_stream(self, gen_config: OVGenAI_TextGenConfig) -> AsyncIterator[Union[str, Dict[str, Any]]]:
         """
-        
+        Async streaming text generation.
+        Yields token chunks (str) as they arrive, then metrics (dict), then final new_text (str).
         """
         generation_kwargs = GenerationConfig(
             max_new_tokens=gen_config.max_new_tokens,
@@ -140,7 +127,6 @@ class OVGenAI_Text2Text:
         decoder_tokenizer = self.id_model.get_tokenizer()
         streamer = ChunkStreamer(decoder_tokenizer, gen_config)
         prompt_token_ids = self.prepare_inputs(gen_config.messages)
-        self.generation_result = GenerationResult()
 
         async def _run_generation():
             return await asyncio.to_thread(
@@ -157,23 +143,25 @@ class OVGenAI_Text2Text:
                 chunk = await asyncio.to_thread(streamer.text_queue.get)
                 if chunk is None:
                     break
-                self.generation_result.chunks.append(chunk)
                 yield chunk
         finally:
             result = await gen_task
             perf_metrics = result.perf_metrics
             metrics = self.collect_metrics(gen_config, perf_metrics)
-            self.generation_result.text = decoder_tokenizer.decode(result.tokens)[0]
-            self.generation_result.metrics = metrics
+            #final_text = decoder_tokenizer.decode(result.tokens)[0]
+            yield metrics
+            #yield final_text
     
     def load_model(self):
-        """Loads an OpenVINO GenAI text-to-text model.
+        """Loads an OpenVINO GenAI text-to-text model and caches the tokenizer.
         """
         self.id_model = LLMPipeline(
             self.load_config.id_model,
             self.load_config.device,
             **(self.load_config.properties or {})
         )
+
+        self.encoder_tokenizer = AutoTokenizer.from_pretrained(self.load_config.id_model)
         print("Model loaded successfully.")
 
     def unload_model(self):
@@ -181,6 +169,10 @@ class OVGenAI_Text2Text:
         if hasattr(self, 'id_model') and self.id_model is not None:
             del self.id_model
             self.id_model = None
+        
+        if hasattr(self, 'encoder_tokenizer') and self.encoder_tokenizer is not None:
+            del self.encoder_tokenizer
+            self.encoder_tokenizer = None
         
         gc.collect()
         print("Model unloaded and memory cleaned up")
@@ -198,15 +190,13 @@ if __name__ == "__main__":
             {"role": "system", "content": "Alway's talk like you are Pete, the succint, punctual and self-deprecating pirate captain."},
             {"role": "user", "content": "Man it stinks in here"},
             {"role": "assistant", "content": "Arrr matey! The stench be foul, but we'll be smelling the sea air soon enough."},
-            {"role": "user", "content": "You bet. Hey, thanks for the lift. What'd you say your name was?"},
-            {"role": "assistant", "content": "Arrr matey! The stench be foul, but we'll be smelling the sea air soon enough."},
             {"role": "user", "content": "You bet. Hey, thanks for the lift. What'd you say your name was?"}
         ]
 
         textgeneration_gen_config = OVGenAI_TextGenConfig(
             messages=messages,
             max_new_tokens=128,
-            temperature=1.2,
+            temperature=0.5,
             top_k=40,
             top_p=0.9,
             repetition_penalty=1.1,
@@ -217,13 +207,25 @@ if __name__ == "__main__":
         text_gen = OVGenAI_Text2Text(load_cfg)
         text_gen.load_model()
 
-        async for chunk in text_gen.generate_stream(textgeneration_gen_config):
-            print(chunk, end="", flush=True)
+        received_metrics = False
+        metrics = None
+        final_text = None
+        async for item in text_gen.generate_stream(textgeneration_gen_config):
+            if isinstance(item, dict):
+                metrics = item
+                received_metrics = True
+            else:
+                if received_metrics:
+                    final_text = item  # final consolidated text
+                else:
+                    print(item, end="", flush=True)  # stream chunks as they come
 
-        print("\n\nPerformance Metrics")
-        print("-"*20)
-        if text_gen.generation_result:
-            print(json.dumps(text_gen.generation_result.metrics or {}, indent=2))
+        if metrics is not None:
+            print("\n\nPerformance Metrics")
+            print("-"*20)
+            print(json.dumps(metrics, indent=2))
+        if final_text is not None:
+            pass  # available if needed: final_text
 
 
     asyncio.run(_demo())
