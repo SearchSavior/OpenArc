@@ -8,7 +8,7 @@ class OVGenAI_LoadConfig(BaseModel):
     Configuration for loading an OpenVINO GenAI model.
     """
     
-    id_model: str = Field(..., description="Path to the model directory (top-level).")
+    model_path: str = Field(..., description="Path to the model directory (top-level).")
     device: str = Field(default="CPU", description="Target device for inference.")
     properties: Optional[Dict[str, Any]] = Field(
         default=None,
@@ -48,7 +48,6 @@ class OVGenAI_TextGenConfig(BaseModel):
         default=False,
         description="Stream output in chunks of tokens."
     )
-
     stream_chunk_tokens: int = Field(
         default=1,
         description="Stream chunk size in tokens. Must be greater than 0. If set > 1, stream output in chunks of this many tokens using ChunkStreamer."

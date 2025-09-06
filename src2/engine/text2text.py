@@ -26,7 +26,7 @@ logger.setLevel(logging.INFO)
 
 class OVGenAI_Text2Text:
     def __init__(self, load_config: OVGenAI_LoadConfig):
-        self.id_model = None
+        self.model_path = None
         self.encoder_tokenizer = None
         self.load_config = load_config
 
@@ -74,10 +74,10 @@ class OVGenAI_Text2Text:
         )
 
         prompt_token_ids = self.prepare_inputs(gen_config.messages)
-        result = await asyncio.to_thread(self.id_model.generate, prompt_token_ids, generation_kwargs)
+        result = await asyncio.to_thread(self.model_path.generate, prompt_token_ids, generation_kwargs)
         
         perf_metrics = result.perf_metrics
-        decoder_tokenizer = self.id_model.get_tokenizer()
+        decoder_tokenizer = self.model_path.get_tokenizer()
         text = decoder_tokenizer.decode(result.tokens)[0] if getattr(result, "tokens", None) else ""
 
         metrics_dict = self.collect_metrics(gen_config, perf_metrics)
@@ -97,13 +97,13 @@ class OVGenAI_Text2Text:
             repetition_penalty=gen_config.repetition_penalty
         )
 
-        decoder_tokenizer = self.id_model.get_tokenizer()
+        decoder_tokenizer = self.model_path.get_tokenizer()
         streamer = ChunkStreamer(decoder_tokenizer, gen_config)
         prompt_token_ids = self.prepare_inputs(gen_config.messages)
 
         async def _run_generation():
             return await asyncio.to_thread(
-                self.id_model.generate,
+                self.model_path.generate,
                 prompt_token_ids,
                 generation_kwargs,
                 streamer
@@ -155,20 +155,20 @@ class OVGenAI_Text2Text:
     def load_model(self):
         """Loads an OpenVINO GenAI text-to-text model and caches the tokenizer.
         """
-        self.id_model = LLMPipeline(
-            self.load_config.id_model,
+        self.model_path = LLMPipeline(
+            self.load_config.model_path,
             self.load_config.device,
             **(self.load_config.properties or {})
         )
 
-        self.encoder_tokenizer = AutoTokenizer.from_pretrained(self.load_config.id_model)
+        self.encoder_tokenizer = AutoTokenizer.from_pretrained(self.load_config.model_path)
         print("Model loaded successfully.")
 
     def unload_model(self):
         """Unload model and free memory"""
-        if hasattr(self, 'id_model') and self.id_model is not None:
-            del self.id_model
-            self.id_model = None
+        if hasattr(self, 'model_path') and self.model_path is not None:
+            del self.model_path
+            self.model_path = None
         
         if hasattr(self, 'encoder_tokenizer') and self.encoder_tokenizer is not None:
             del self.encoder_tokenizer
@@ -184,7 +184,7 @@ class OVGenAI_Text2Text:
 if __name__ == "__main__":
     async def _demo():
         load_cfg = OVGenAI_LoadConfig(
-            id_model="/mnt/Ironwolf-4TB/Models/OpenVINO/Llama/Llama-3.2-3B-Instruct-abliterated-OpenVINO/Llama-3.2-3B-Instruct-abliterated-int4_asym-ov",
+            model_path="/mnt/Ironwolf-4TB/Models/OpenVINO/Llama/Llama-3.2-3B-Instruct-abliterated-OpenVINO/Llama-3.2-3B-Instruct-abliterated-int4_asym-ov",
             device="GPU.2"
         )
 

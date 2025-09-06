@@ -7,7 +7,7 @@ import openvino_genai
 from transformers import AutoTokenizer
 
 model_path = "/mnt/Ironwolf-4TB/Models/OpenVINO/Phi/Phi-4-mini-instruct-int4_asym-awq-se-ov"
-device = "HETERO:GPU.0,GPU.2"
+device = "HETERO:GPU.0,GPU.1,GPU.2"
 
 # Use NPU+GPU if available
 pipe = openvino_genai.LLMPipeline(model_path, device=device, config={ov_config.model_distribution_policy: "PIPELINE_PARALLEL"})
