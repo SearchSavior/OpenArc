@@ -9,24 +9,21 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field
 
+class ModelUnloadConfig(BaseModel):
+    model_name: str = Field(..., description="Name of the model to unload")
 
-async def create_model_instance(load_config: ModelLoadConfig) -> Any:
-    """Factory function to create the appropriate model instance based on engine type."""
-    if load_config.engine == EngineType.OV_GENAI:
-        if load_config.model_type == ModelType.TEXT_TO_TEXT:
-            # Import here to avoid circular imports
-            from src2.engine.ov_genai.text2text import OVGenAI_Text2Text
-            model_instance = OVGenAI_Text2Text(load_config)
-            # Run the blocking model loading in a thread pool
-            await asyncio.to_thread(model_instance.load_model, load_config)
-            return model_instance
-        else:
-            raise ValueError(f"Model type '{load_config.model_type}' not supported with engine '{load_config.engine}'")
-    elif load_config.engine == EngineType.OV_OPTIMUM:
-        raise ValueError(f"Engine '{load_config.engine}' not yet implemented")
-    else:
-        raise ValueError(f"Unknown engine type: '{load_config.engine}'")
 
+class ModelStatus(str, Enum):
+    """Model loading status.
+    
+    Options:
+    - LOADING: Model is currently being loaded in the background
+    - LOADED: Model has been successfully loaded and is ready for inference
+    - FAILED: Model loading failed
+    """
+    LOADING = "loading"
+    LOADED = "loaded"
+    FAILED = "failed"
 
 class ModelType(str, Enum):
     """Internal routing to the correct inference pipeline.
@@ -48,19 +45,12 @@ class EngineType(str, Enum):
     OV_OPTIMUM = "optimum"
     OV_GENAI = "ovgenai"
 
-class ModelStatus(str, Enum):
-    """Status of model loading process."""
-    LOADING = "loading"
-    LOADED = "loaded"
-    FAILED = "failed"
-
 class ModelLoadConfig(BaseModel):
     model_path: str = Field(
         description="""
         Top level path to directory containing OpenVINO IR converted model.
         
-        OpenArc does not support runtime conversion and cannot pull from HF.
-        """
+        OpenArc does not support runtime conversion and cannot pull from HF."""
     )
     model_name: str = Field(
         ...,
@@ -80,8 +70,7 @@ class ModelLoadConfig(BaseModel):
         )
     runtime_config: Dict[str, Any] = Field(
         default_factory=dict,
-        description="Optional OpenVINO runtime properties."
-    )
+        description="Optional OpenVINO runtime properties.")
 
 @dataclass(frozen=False, slots=True)
 class ModelRecord:
@@ -89,8 +78,9 @@ class ModelRecord:
     model_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     time_loaded: datetime = field(default_factory=datetime.utcnow)
     model_instance: Optional[Any] = field(default=None)  # Actual loaded model instance
+    loading_task: Optional[asyncio.Task] = field(default=None)  # Background loading task
     status: ModelStatus = field(default=ModelStatus.LOADING)
-    error_message: Optional[str] = field(default=None)
+    error_message: Optional[str] = field(default=None)  # Error message if loading failed
 
     # Public fields
     model_path: str = ""
@@ -109,13 +99,13 @@ class ModelRecord:
             "engine": self.engine,
             "device": self.device,
             "runtime_config": self.runtime_config,
-            "status": self.status,
+            "status": self.status.value,
+            "time_loaded": self.time_loaded.isoformat(),
         }
         if self.error_message:
             result["error_message"] = self.error_message
         return result
     
-
 class ModelRegistry:
     """Tracks loaded models by private model_id. Async-safe."""
 
@@ -123,15 +113,37 @@ class ModelRegistry:
         self._models: Dict[str, ModelRecord] = {}
         self._lock = asyncio.Lock()
 
+    async def _load_task(self, model_id: str, load_config: ModelLoadConfig) -> None:
+        """Background task to load a model and update its status."""
+        try:
+            # Load the model instance
+            model_instance = await create_model_instance(load_config)
+            
+            # Update the record with successful loading
+            async with self._lock:
+                if model_id in self._models:
+                    record = self._models[model_id]
+                    record.model_instance = model_instance
+                    record.status = ModelStatus.LOADED
+                    record.loading_task = None
+                    
+        except Exception as e:
+            # Update the record with failure status
+            async with self._lock:
+                if model_id in self._models:
+                    record = self._models[model_id]
+                    record.status = ModelStatus.FAILED
+                    record.error_message = str(e)
+                    record.loading_task = None
+
     async def register_load(self, loader: ModelLoadConfig) -> str:
-        """Register a model for loading and start the loading process in the background."""
-        # Check if model name already exists
+        # Check if model name already exists before loading
         async with self._lock:
             for existing_record in self._models.values():
                 if existing_record.model_name == loader.model_name:
                     raise ValueError(f"Model name '{loader.model_name}' already registered")
         
-        # Create a record in LOADING state immediately
+        # Create a model record with LOADING status
         record = ModelRecord(
             model_path=loader.model_path,
             model_name=loader.model_name,
@@ -142,61 +154,61 @@ class ModelRegistry:
             status=ModelStatus.LOADING,
         )
         
-        # Register the loading model immediately
+        # Register the model record immediately
         async with self._lock:
             self._models[record.model_id] = record
         
-        # Start loading in background task
-        asyncio.create_task(self._load_model_background(record.model_id, loader))
+        # Start background loading task
+        loading_task = asyncio.create_task(self._load_task(record.model_id, loader))
+        
+        # Update the record with the task reference
+        async with self._lock:
+            if record.model_id in self._models:
+                self._models[record.model_id].loading_task = loading_task
         
         return record.model_id
 
-    async def _load_model_background(self, model_id: str, loader: ModelLoadConfig):
-        """Background task to load a model and update its status."""
+    async def _unload_task(self, model_id: str) -> None:
+        """Background task to unload a model and clean up resources."""
         try:
-            # Load the model
-            model_instance = await create_model_instance(loader)
+            async with self._lock:
+                if model_id not in self._models:
+                    return
+                record = self._models[model_id]
+                model_instance = record.model_instance
             
-            # Update the record with the loaded model
+            # Call the model's unload_model method if it exists and model is loaded
+            if model_instance and hasattr(model_instance, 'unload_model'):
+                await model_instance.unload_model(self, model_id)
+            
+            # Remove from registry
             async with self._lock:
                 if model_id in self._models:
                     record = self._models[model_id]
-                    record.model_instance = model_instance
-                    record.status = ModelStatus.LOADED
-                    record.error_message = None
+                    # Cancel loading task if still running
+                    if record.loading_task and not record.loading_task.done():
+                        record.loading_task.cancel()
+                    del self._models[model_id]
                     
         except Exception as e:
-            # Update the record with error status
-            async with self._lock:
-                if model_id in self._models:
-                    record = self._models[model_id]
-                    record.status = ModelStatus.FAILED
-                    record.error_message = str(e)
-                    record.model_instance = None
+            print(f"Error during model unload: {e}")
 
-    async def register_unload(self, model_id: str) -> bool:
-        """Unregister/unload a model by model_id. Returns True if found and removed."""
+    async def register_unload(self, model_name: str) -> bool:
+        """Unregister/unload a model by model_name. Returns True if found and unload task started."""
         async with self._lock:
-            if model_id in self._models:
-                del self._models[model_id]
-                return True
-            return False
-
-    async def get_model_instance(self, model_name: str) -> Optional[Any]:
-        """Get loaded model instance by model name. Only returns if status is LOADED."""
-        async with self._lock:
-            for record in self._models.values():
-                if record.model_name == model_name and record.status == ModelStatus.LOADED:
-                    return record.model_instance
-            return None
-
-    async def get_model_record_by_name(self, model_name: str) -> Optional["ModelRecord"]:
-        """Get model record by model name."""
-        async with self._lock:
-            for record in self._models.values():
+            # Find model_id by model_name
+            model_id = None
+            for mid, record in self._models.items():
                 if record.model_name == model_name:
-                    return record
-            return None
+                    model_id = mid
+                    break
+            
+            if model_id is None:
+                return False
+            
+            # Start background unload task
+            asyncio.create_task(self._unload_task(model_id))
+            return True
 
     async def status(self) -> dict:
         """Return registry status: total count and list of loaded models (public view)."""
@@ -206,3 +218,21 @@ class ModelRegistry:
                 "total_loaded_models": len(models_public),
                 "models": models_public,
             }
+
+async def create_model_instance(load_config: ModelLoadConfig) -> Any:
+    """Factory function to create the appropriate model instance based on engine type."""
+    if load_config.engine == EngineType.OV_GENAI:
+        if load_config.model_type == ModelType.TEXT_TO_TEXT:
+            # Import here to avoid circular imports
+            from src2.engine.ov_genai.text2text import OVGenAI_Text2Text
+            model_instance = OVGenAI_Text2Text(load_config)
+            # Run the blocking model loading in a thread pool
+            await asyncio.to_thread(model_instance.load_model, load_config)
+            return model_instance
+        else:
+            raise ValueError(f"Model type '{load_config.model_type}' not supported with engine '{load_config.engine}'")
+    elif load_config.engine == EngineType.OV_OPTIMUM:
+        raise ValueError(f"Engine '{load_config.engine}' not yet implemented")
+    else:
+        raise ValueError(f"Unknown engine type: '{load_config.engine}'")
+            
