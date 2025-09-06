@@ -1,8 +1,9 @@
 import asyncio
 from dataclasses import dataclass
 from typing import Optional, Dict, Any
-from src2.engine.text2text import OVGenAI_Text2Text
+from src2.engine.ov_genai.text2text import OVGenAI_Text2Text
 from src2.api.base_config import OVGenAI_LoadConfig, OVGenAI_TextGenConfig
+from src2.api.model_registry import ModelLoadConfig, EngineType, ModelType
 
 
 
@@ -114,13 +115,21 @@ async def main():
     worker_tasks = []
 
     for id_model, config in model_configs.items():
-        # Create load config and text generator
+        # Build loader and text generator
         load_config = OVGenAI_LoadConfig(
-            id_model=config["path"],
+            model_path=config["path"],
             device=config["device"]
         )
+        loader = ModelLoadConfig(
+            model_path=config["path"],
+            model_name=id_model,
+            model_type=ModelType.TEXT_TO_TEXT,
+            engine=EngineType.OV_GENAI,
+            device=config["device"],
+            runtime_config={}
+        )
         text_generator = OVGenAI_Text2Text(load_config)
-        text_generator.load_model()
+        text_generator.load_model(loader)
         text_generators[id_model] = text_generator
         
         # Create model-specific queue

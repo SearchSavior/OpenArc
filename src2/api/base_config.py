@@ -1,19 +1,7 @@
+from typing import Dict, List
 from pydantic import BaseModel, Field
-from typing import Any, Dict, Optional, List
 
 
-
-class OVGenAI_LoadConfig(BaseModel):
-    """
-    Configuration for loading an OpenVINO GenAI model.
-    """
-    
-    model_path: str = Field(..., description="Path to the model directory (top-level).")
-    device: str = Field(default="CPU", description="Target device for inference.")
-    properties: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Optional OpenVINO runtime properties."
-    )
 
 class OVGenAI_TextGenConfig(BaseModel):
     """

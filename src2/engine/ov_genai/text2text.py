@@ -14,20 +14,17 @@ from openvino_genai import (
     LLMPipeline,
     )
 
-from src2.api.base_config import (
-    OVGenAI_LoadConfig, 
-    OVGenAI_TextGenConfig
-    )
+from src2.api.base_config import OVGenAI_TextGenConfig
 
-from src2.api.model_registry import ModelLoader
-from src2.engine.streamers import ChunkStreamer
+from src2.api.model_registry import ModelLoadConfig, ModelRegistry, EngineType, ModelType
+from src2.engine.ov_genai.streamers import ChunkStreamer
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
 class OVGenAI_Text2Text:
-    def __init__(self, load_config: OVGenAI_LoadConfig):
+    def __init__(self, load_config: ModelLoadConfig):
         self.model_path = None
         self.encoder_tokenizer = None
         self.load_config = load_config
@@ -154,20 +151,38 @@ class OVGenAI_Text2Text:
         
         return metrics
 
-    def load_model(self):
-        """Loads an OpenVINO GenAI text-to-text model and caches the tokenizer.
+    def load_model(self, loader: ModelLoadConfig):
+        """Load model using a ModelLoadConfig configuration and cache the tokenizer.
+
+        Args:
+            loader: ModelLoadConfig containing model_path, device, engine, and runtime_config.
         """
+        if loader.engine != EngineType.OV_GENAI:
+            raise ValueError(
+                f"Engine '{loader.engine}' is not supported by OVGenAI_Text2Text. Use '{EngineType.OV_GENAI}'."
+            )
+
         self.model_path = LLMPipeline(
-            self.load_config.model_path,
-            self.load_config.device,
-            **(self.load_config.properties or {})
+            loader.model_path,
+            loader.device,
+            **(loader.runtime_config or {})
         )
 
-        self.encoder_tokenizer = AutoTokenizer.from_pretrained(self.load_config.model_path)
-        print("Model loaded successfully.")
+        self.encoder_tokenizer = AutoTokenizer.from_pretrained(loader.model_path)
+        print(f"Model loaded successfully: {loader.model_name}")
 
-    def unload_model(self):
-        """Unload model and free memory"""
+    async def unload_model(self, registry: ModelRegistry, model_id: str) -> bool:
+        """Unregister model from registry and free memory resources.
+
+        Args:
+            registry: ModelRegistry to unregister from
+            model_id: Private model identifier returned by register_load
+
+        Returns:
+            True if the model was found and unregistered, else False.
+        """
+        removed = await registry.register_unload(model_id)
+
         if hasattr(self, 'model_path') and self.model_path is not None:
             del self.model_path
             self.model_path = None
@@ -178,6 +193,7 @@ class OVGenAI_Text2Text:
         
         gc.collect()
         print("Model unloaded and memory cleaned up")
+        return removed
 
 
 # ---------------------------
@@ -185,9 +201,13 @@ class OVGenAI_Text2Text:
 # ---------------------------
 if __name__ == "__main__":
     async def _demo():
-        load_cfg = OVGenAI_LoadConfig(
+        loader = ModelLoadConfig(
             model_path="/mnt/Ironwolf-4TB/Models/OpenVINO/Llama/Llama-3.2-3B-Instruct-abliterated-OpenVINO/Llama-3.2-3B-Instruct-abliterated-int4_asym-ov",
-            device="GPU.2"
+            model_name="Llama-3.2-3B-Instruct-ov-int4",
+            model_type=ModelType.TEXT_TO_TEXT,
+            engine=EngineType.OV_GENAI,
+            device="GPU.2",
+            runtime_config={}
         )
 
         messages = [
@@ -208,8 +228,8 @@ if __name__ == "__main__":
             stream=True
         )
 
-        text_gen = OVGenAI_Text2Text(load_cfg)
-        text_gen.load_model()
+        text_gen = OVGenAI_Text2Text(ModelLoadConfig(model_path=loader.model_path, device=loader.device))
+        text_gen.load_model(loader)
 
         received_metrics = False
         metrics = None
