@@ -18,6 +18,8 @@ from src2.api.base_config import (
     OVGenAI_LoadConfig, 
     OVGenAI_TextGenConfig
     )
+
+from src2.api.model_registry import ModelLoader
 from src2.engine.streamers import ChunkStreamer
 
 logger = logging.getLogger(__name__)
