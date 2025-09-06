@@ -12,7 +12,6 @@ from pydantic import BaseModel, Field
 class ModelUnloadConfig(BaseModel):
     model_name: str = Field(..., description="Name of the model to unload")
 
-
 class ModelStatus(str, Enum):
     """Model loading status.
     
@@ -72,6 +71,7 @@ class ModelLoadConfig(BaseModel):
         default_factory=dict,
         description="Optional OpenVINO runtime properties.")
 
+
 @dataclass(frozen=False, slots=True)
 class ModelRecord:
     # Private fields
@@ -113,29 +113,6 @@ class ModelRegistry:
         self._models: Dict[str, ModelRecord] = {}
         self._lock = asyncio.Lock()
 
-    async def _load_task(self, model_id: str, load_config: ModelLoadConfig) -> None:
-        """Background task to load a model and update its status."""
-        try:
-            # Load the model instance
-            model_instance = await create_model_instance(load_config)
-            
-            # Update the record with successful loading
-            async with self._lock:
-                if model_id in self._models:
-                    record = self._models[model_id]
-                    record.model_instance = model_instance
-                    record.status = ModelStatus.LOADED
-                    record.loading_task = None
-                    
-        except Exception as e:
-            # Update the record with failure status
-            async with self._lock:
-                if model_id in self._models:
-                    record = self._models[model_id]
-                    record.status = ModelStatus.FAILED
-                    record.error_message = str(e)
-                    record.loading_task = None
-
     async def register_load(self, loader: ModelLoadConfig) -> str:
         # Check if model name already exists before loading
         async with self._lock:
@@ -168,6 +145,46 @@ class ModelRegistry:
         
         return record.model_id
 
+    async def register_unload(self, model_name: str) -> bool:
+        """Unregister/unload a model by model_name. Returns True if found and unload task started."""
+        async with self._lock:
+            # Find model_id by model_name
+            model_id = None
+            for mid, record in self._models.items():
+                if record.model_name == model_name:
+                    model_id = mid
+                    break
+            
+            if model_id is None:
+                return False
+            
+            # Start background unload task
+            asyncio.create_task(self._unload_task(model_id))
+            return True
+    
+    async def _load_task(self, model_id: str, load_config: ModelLoadConfig) -> None:
+        """Background task to load a model and update its status."""
+        try:
+            # Load the model instance
+            model_instance = await create_model_instance(load_config)
+            
+            # Update the record with successful loading
+            async with self._lock:
+                if model_id in self._models:
+                    record = self._models[model_id]
+                    record.model_instance = model_instance
+                    record.status = ModelStatus.LOADED
+                    record.loading_task = None
+                    
+        except Exception as e:
+            # Update the record with failure status
+            async with self._lock:
+                if model_id in self._models:
+                    record = self._models[model_id]
+                    record.status = ModelStatus.FAILED
+                    record.error_message = str(e)
+                    record.loading_task = None
+     
     async def _unload_task(self, model_id: str) -> None:
         """Background task to unload a model and clean up resources."""
         try:
@@ -192,23 +209,6 @@ class ModelRegistry:
                     
         except Exception as e:
             print(f"Error during model unload: {e}")
-
-    async def register_unload(self, model_name: str) -> bool:
-        """Unregister/unload a model by model_name. Returns True if found and unload task started."""
-        async with self._lock:
-            # Find model_id by model_name
-            model_id = None
-            for mid, record in self._models.items():
-                if record.model_name == model_name:
-                    model_id = mid
-                    break
-            
-            if model_id is None:
-                return False
-            
-            # Start background unload task
-            asyncio.create_task(self._unload_task(model_id))
-            return True
 
     async def status(self) -> dict:
         """Return registry status: total count and list of loaded models (public view)."""

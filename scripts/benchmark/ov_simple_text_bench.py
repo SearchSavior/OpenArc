@@ -1,5 +1,5 @@
 from openvino_genai import LLMPipeline, GenerationConfig
-import openvino.properties.hint as ov_config
+#import openvino.properties.hint as ov_config
 from transformers import AutoTokenizer
 import openvino as ov
 
@@ -14,9 +14,10 @@ pipe = LLMPipeline(
    #device="HETERO:GPU.0,GPU.2",
    #properties="PIPELINE_PARALELL"
    #device="HETERO:GPU.0,CPU",    
-   device="HETERO:GPU.0,GPU.2",
+   device="HETERO:GPU.1,GPU.2",
    
-   config={ov_config.model_distribution_policy: "PIPELINE_PARALLEL"}
+   **{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}
+
 )
 
 tokenizer = AutoTokenizer.from_pretrained(model_dir)
