@@ -5,7 +5,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Callable, Awaitable, List
 
 from pydantic import BaseModel, Field
 
@@ -112,6 +112,15 @@ class ModelRegistry:
     def __init__(self):
         self._models: Dict[str, ModelRecord] = {}
         self._lock = asyncio.Lock()
+        # Event subscribers
+        self._on_loaded: List[Callable[[ModelRecord], Awaitable[None]]] = []
+        self._on_unloaded: List[Callable[[ModelRecord], Awaitable[None]]] = []
+
+    def add_on_loaded(self, callback: Callable[[ModelRecord], Awaitable[None]]) -> None:
+        self._on_loaded.append(callback)
+
+    def add_on_unloaded(self, callback: Callable[[ModelRecord], Awaitable[None]]) -> None:
+        self._on_unloaded.append(callback)
 
     async def register_load(self, loader: ModelLoadConfig) -> str:
         # Check if model name already exists before loading
@@ -175,6 +184,12 @@ class ModelRegistry:
                     record.model_instance = model_instance
                     record.status = ModelStatus.LOADED
                     record.loading_task = None
+                else:
+                    return
+
+            # Fire loaded event callbacks outside the lock
+            for cb in self._on_loaded:
+                asyncio.create_task(cb(record))
                     
         except Exception as e:
             # Update the record with failure status
@@ -200,12 +215,18 @@ class ModelRegistry:
             
             # Remove from registry
             async with self._lock:
+                removed_record = None
                 if model_id in self._models:
                     record = self._models[model_id]
                     # Cancel loading task if still running
                     if record.loading_task and not record.loading_task.done():
                         record.loading_task.cancel()
-                    del self._models[model_id]
+                    removed_record = self._models.pop(model_id)
+                else:
+                    removed_record = None
+            if removed_record is not None:
+                for cb in self._on_unloaded:
+                    asyncio.create_task(cb(removed_record))
                     
         except Exception as e:
             print(f"Error during model unload: {e}")
