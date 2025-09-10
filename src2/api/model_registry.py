@@ -250,6 +250,13 @@ async def create_model_instance(load_config: ModelLoadConfig) -> Any:
             # Run the blocking model loading in a thread pool
             await asyncio.to_thread(model_instance.load_model, load_config)
             return model_instance
+        elif load_config.model_type == ModelType.IMAGE_TO_TEXT:
+            # Import here to avoid circular imports
+            from src2.engine.ov_genai.image2text import OVGenAI_Image2Text
+            model_instance = OVGenAI_Image2Text(load_config)
+            # Run the blocking model loading in a thread pool
+            await asyncio.to_thread(model_instance.load_model, load_config)
+            return model_instance
         else:
             raise ValueError(f"Model type '{load_config.model_type}' not supported with engine '{load_config.engine}'")
     elif load_config.engine == EngineType.OV_OPTIMUM:

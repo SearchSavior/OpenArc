@@ -176,7 +176,7 @@ def stop_server(proc: subprocess.Popen) -> None:
 
 def main() -> None:
     # Update these paths for your environment if needed
-    model_path = "/mnt/Ironwolf-4TB/Models/OpenVINO/Mistral/Impish_Nemo_12B-int4_asym-awq-ov"
+    model_path = "/mnt/Ironwolf-4TB/Models/OpenVINO/Deepseek/DeepSeek-R1-0528-Qwen3-8B-OpenVINO/DeepSeek-R1-0528-Qwen3-8B-int4_asym-ov"
     model_a = {"name": "Impish_Nemo_GPU1", "device": "GPU.1"}
     model_b = {"name": "Impish_Nemo_GPU2", "device": "GPU.2"}
 

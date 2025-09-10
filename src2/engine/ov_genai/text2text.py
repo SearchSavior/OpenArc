@@ -1,9 +1,7 @@
 import gc
 import asyncio
 import json
-from pathlib import Path
-from threading import Thread
-from typing import Any, Dict, List, Optional, Union, AsyncIterator
+from typing import Any, Dict, List, Union, AsyncIterator
 
 import logging
 from transformers import AutoTokenizer
@@ -32,6 +30,15 @@ class OVGenAI_Text2Text:
         """
         Convert a messages (list of {role, content}) into ov.Tensor using the cached AutoTokenizer
         and its chat template.
+
+        apply_chat_template can be configured to return a numpy array, 
+        which we then convert to an ov.Tensor the runtime can accept
+
+        Args:
+            messages: List[Dict[str, str]]
+
+        returns:
+            prompt_token_ids: 
         """
         prompt_token_ids = self.encoder_tokenizer.apply_chat_template(
             messages, 
@@ -126,7 +133,14 @@ class OVGenAI_Text2Text:
     def collect_metrics(self, gen_config: OVGenAI_TextGenConfig, perf_metrics) -> Dict[str, Any]:
         """
         Collect and format performance metrics into a dictionary.
-        """
+        
+        Args:
+            gen_config: OVGenAI_TextGenConfig
+            perf_metrics: PerfMetrics
+
+        Returns:
+            metrics: Dict[str, Any]
+            """
         # Compute prefill throughput = input tokens / ttft (in seconds)
         ttft_seconds = perf_metrics.get_ttft().mean / 1000
         input_tokens = perf_metrics.get_num_input_tokens()
@@ -168,7 +182,7 @@ class OVGenAI_Text2Text:
         )
 
         self.encoder_tokenizer = AutoTokenizer.from_pretrained(loader.model_path)
-        print(f"Model loaded successfully: {loader.model_name}")
+        logging.info(f"Model loaded successfully: {loader.model_name}")
 
     async def unload_model(self, registry: ModelRegistry, model_id: str) -> bool:
         """Unregister model from registry and free memory resources.
@@ -191,7 +205,7 @@ class OVGenAI_Text2Text:
             self.encoder_tokenizer = None
         
         gc.collect()
-        print("Model unloaded and memory cleaned up")
+        logging.info(f"[{self.load_config.model_name}] unloaded and memory cleaned up")
         return removed
 
 
@@ -241,12 +255,12 @@ if __name__ == "__main__":
                 if received_metrics:
                     final_text = item  # final consolidated text
                 else:
-                    print(item, end="", flush=True)  # stream chunks as they come
+                    logging.info(item)  # stream chunks as they come
 
         if metrics is not None:
-            print("\n\nPerformance Metrics")
-            print("-"*20)
-            print(json.dumps(metrics, indent=2))
+            logging.info("\n\nPerformance Metrics")
+            logging.info("-"*20)
+            logging.info(json.dumps(metrics, indent=2))
         if final_text is not None:
             pass  # available if needed: final_text
 

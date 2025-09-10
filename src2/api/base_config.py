@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import Dict, List, Union, Any
 from pydantic import BaseModel, Field
 
 
@@ -6,10 +6,11 @@ from pydantic import BaseModel, Field
 class OVGenAI_TextGenConfig(BaseModel):
     """
     Configuration for text generation with an OpenVINO GenAI pipeline.
+    Supports both text-only and multimodal (text + image) messages.
     """
-    messages: List[Dict[str, str]] = Field(
+    messages: List[Dict[str, Union[str, List[Dict[str, Any]]]]] = Field(
         ...,
-        description="List of conversation messages ready for the model."
+        description="List of conversation messages. Content can be a string for text-only or a list of content items for multimodal messages."
     )
     max_new_tokens: int = Field(
         default=512,
