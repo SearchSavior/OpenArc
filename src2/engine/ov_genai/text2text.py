@@ -1,7 +1,6 @@
 import gc
 import asyncio
 import json
-import queue
 from pathlib import Path
 from threading import Thread
 from typing import Any, Dict, List, Optional, Union, AsyncIterator
@@ -112,7 +111,7 @@ class OVGenAI_Text2Text:
 
         try:
             while True:
-                chunk = await asyncio.to_thread(streamer.text_queue.get)
+                chunk = await streamer.text_queue.get()
                 if chunk is None:
                     break
                 yield chunk

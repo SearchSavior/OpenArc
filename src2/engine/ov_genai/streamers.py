@@ -1,6 +1,6 @@
 from typing import List, Optional, Union
 import openvino_genai
-import queue
+import asyncio
 
 from openvino_genai import StreamerBase
 from src2.api.base_config import OVGenAI_TextGenConfig
@@ -20,16 +20,7 @@ class ChunkStreamer(StreamerBase):
         self.tokens_cache: List[int] = []          # cumulative token buffer
         self.since_last_emit: int = 0              # tokens collected since last emit
         self.last_print_len: int = 0               # length of decoded text we've already emitted
-        self.text_queue: "queue.Queue[Optional[str]]" = queue.Queue()
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        value = self.text_queue.get()
-        if value is None:
-            raise StopIteration
-        return value
+        self.text_queue: "asyncio.Queue[Optional[str]]" = asyncio.Queue()
 
     def write(self, token: Union[int, List[int]]) -> openvino_genai.StreamingStatus:
         # Normalize input to a list of ints
@@ -47,7 +38,7 @@ class ChunkStreamer(StreamerBase):
             if len(text) > self.last_print_len:
                 chunk = text[self.last_print_len:]
                 if chunk:
-                    self.text_queue.put(chunk)
+                    self.text_queue.put_nowait(chunk)
                 self.last_print_len = len(text)
             self.since_last_emit = 0
 
@@ -59,6 +50,6 @@ class ChunkStreamer(StreamerBase):
         if len(text) > self.last_print_len:
             chunk = text[self.last_print_len:]
             if chunk:
-                self.text_queue.put(chunk)
+                self.text_queue.put_nowait(chunk)
         # Signal completion
-        self.text_queue.put(None)
+        self.text_queue.put_nowait(None)
