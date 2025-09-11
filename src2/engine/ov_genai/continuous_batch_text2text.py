@@ -9,6 +9,16 @@ from openvino_genai import (
     SchedulerConfig,
 )
 
+from pydantic import BaseModel, Field
+
+class ContinuousBatchConfig(BaseModel):
+    max_num_batched_tokens: int = Field(default=2048, description="Maximum number of tokens to batch together")
+    max_num_seqs: int = Field(default=48, description="Maximum number of sequences (batch size)")
+    cache_size: int = Field(default=6, description="KV cache size in GB")
+    dynamic_split_fuse: bool = Field(default=True, description="Split prompt/generate phases")
+    enable_prefix_caching: bool = Field(default=True, description="Enable KV-block caching")
+    use_cache_eviction: bool = Field(default=False, description="Use cache eviction")
+
 # -------------------------------------------------------------------
 # Model directory (OpenVINO-IR export of quantized Llama 3.2 model)
 # -------------------------------------------------------------------
@@ -50,12 +60,18 @@ def prepare_inputs(messages: List[Dict[str, str]]) -> ov.Tensor:
 # -------------------------------------------------------------------
 # Configure scheduler (controls batching & caching policy)
 # -------------------------------------------------------------------
+# Create ContinuousBatchConfig instance with default values
+batch_config = ContinuousBatchConfig()
+
+# Configure scheduler using the Pydantic model values
 scheduler_config = SchedulerConfig()
-scheduler_config.max_num_batched_tokens = 2048
-scheduler_config.max_num_seqs = 48
-scheduler_config.cache_size = 6  # KV cache size in GB
-scheduler_config.dynamic_split_fuse = True
-scheduler_config.enable_prefix_caching = True
+scheduler_config.max_num_batched_tokens = batch_config.max_num_batched_tokens
+scheduler_config.max_num_seqs = batch_config.max_num_seqs
+scheduler_config.cache_size = batch_config.cache_size
+scheduler_config.dynamic_split_fuse = batch_config.dynamic_split_fuse
+scheduler_config.enable_prefix_caching = batch_config.enable_prefix_caching
+scheduler_config.use_cache_eviction = batch_config.use_cache_eviction
+
 
 # -------------------------------------------------------------------
 # Continuous batching pipeline
@@ -90,57 +106,7 @@ prompts = [
     [{"role": "user", "content": "Write a short story about a robot"}],
     [{"role": "user", "content": "What is the capital of France?"}],
     [{"role": "user", "content": "Explain machine learning in simple terms"}],
-    [{"role": "user", "content": "Write a short story about a robot"}],
-    [{"role": "user", "content": "What is the capital of France?"}],
-    [{"role": "user", "content": "Explain machine learning in simple terms"}],
-    [{"role": "user", "content": "Write a short story about a robot"}],
-    [{"role": "user", "content": "What is the capital of France?"}],
-    [{"role": "user", "content": "Explain machine learning in simple terms"}],
-    [{"role": "user", "content": "Write a short story about a robot"}],
-    [{"role": "user", "content": "What is the capital of France?"}],
-    [{"role": "user", "content": "Explain machine learning in simple terms"}],
-    [{"role": "user", "content": "Write a short story about a robot"}],
-    [{"role": "user", "content": "What is the capital of France?"}],
-    [{"role": "user", "content": "Explain machine learning in simple terms"}],
-    [{"role": "user", "content": "Write a short story about a robot"}],
-    [{"role": "user", "content": "What is the capital of France?"}],
-    [{"role": "user", "content": "Explain machine learning in simple terms"}],
-    [{"role": "user", "content": "Write a short story about a robot"}],
-    [{"role": "user", "content": "What is the capital of France?"}],
-    [{"role": "user", "content": "Explain machine learning in simple terms"}],
-    [{"role": "user", "content": "Write a short story about a robot"}],
-    [{"role": "user", "content": "What is the capital of France?"}],
-    [{"role": "user", "content": "Explain machine learning in simple terms"}],
-    [{"role": "user", "content": "Write a short story about a robot"}],
-    [{"role": "user", "content": "What is the capital of France?"}],
-    [{"role": "user", "content": "Explain machine learning in simple terms"}],
-    [{"role": "user", "content": "Write a short story about a robot"}],
-    [{"role": "user", "content": "What is the capital of France?"}],
-    [{"role": "user", "content": "Explain machine learning in simple terms"}],
-    [{"role": "user", "content": "Write a short story about a robot"}],
-    [{"role": "user", "content": "What is the capital of France?"}],
-    [{"role": "user", "content": "Explain machine learning in simple terms"}],
-    [{"role": "user", "content": "Write a short story about a robot"}],
-    [{"role": "user", "content": "What is the capital of France?"}],
-    [{"role": "user", "content": "Explain machine learning in simple terms"}],
-    [{"role": "user", "content": "Write a short story about a robot"}],
-    [{"role": "user", "content": "What is the capital of France?"}],
-    [{"role": "user", "content": "Explain machine learning in simple terms"}],
-    [{"role": "user", "content": "Write a short story about a robot"}],
-    [{"role": "user", "content": "What is the capital of France?"}],
-    [{"role": "user", "content": "Explain machine learning in simple terms"}],
-    [{"role": "user", "content": "Write a short story about a robot"}],
-    [{"role": "user", "content": "What is the capital of France?"}],
-    [{"role": "user", "content": "Explain machine learning in simple terms"}],
-    [{"role": "user", "content": "Write a short story about a robot"}],
-    [{"role": "user", "content": "What is the capital of France?"}],
-    [{"role": "user", "content": "Explain machine learning in simple terms"}],
-    [{"role": "user", "content": "Write a short story about a robot"}],
-    [{"role": "user", "content": "What is the capital of France?"}],
-    [{"role": "user", "content": "Explain machine learning in simple terms"}],
-    [{"role": "user", "content": "Write a short story about a robot"}],
-    [{"role": "user", "content": "What is the capital of France?"}],
-]
+    [{"role": "user", "content": "Write a short story about a robot"}]]
 
 # Prepare tokenized inputs as ov.Tensors
 encoded_prompts = [prepare_inputs(m) for m in prompts]

@@ -6,17 +6,17 @@ import openvino as ov
 
 
 
-model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Qwen3-32B-Instruct-int4_sym-awq-ov"
+model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/Llama/Hermes-3-Llama-3.2-3B-int4_sym-awq-se-ov"
 
 pipe = LLMPipeline(
     model_dir,       # Path to the model directory. Remember this will not pull from hub like in transformers
-    #device="GPU.2"
+    device="CPU"
    #device="HETERO:GPU.0,GPU.2",
    #properties="PIPELINE_PARALELL"
    #device="HETERO:GPU.0,CPU",    
-   device="HETERO:GPU.1,GPU.2",
+   #device="HETERO:GPU.1,GPU.2",
    
-   **{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}
+   #**{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}
 
 )
 
@@ -40,13 +40,6 @@ print(f'TPOT: {perf_metrics.get_tpot().mean:.2f} ms/token')
 print(f'Throughput: {perf_metrics.get_throughput().mean:.2f} tokens/s')
 print(f'Generate duration: {perf_metrics.get_generate_duration().mean / 1000:.2f} seconds')
 
-metrics = pipe.get_metrics()
-print("\nPipeline System Metrics:")
-print("=" * 50)
-print(f"Requests processed: {metrics.requests}")
-print(f"Scheduled requests: {metrics.scheduled_requests}")
-print(f"Cache usage: {metrics.cache_usage:.2f}%")
-print(f"Max cache usage: {metrics.max_cache_usage:.2f}%")
-print(f"Average cache usage: {metrics.avg_cache_usage:.2f}%")
+
 decoded = tokenizer.batch_decode(result.tokens, skip_special_tokens=True)
 print(f"Result: {decoded[0]}")
