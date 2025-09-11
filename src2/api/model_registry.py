@@ -9,6 +9,31 @@ from typing import Any, Dict, Optional, Callable, Awaitable, List
 
 from pydantic import BaseModel, Field
 
+class ModelLoadConfig(BaseModel):
+    model_path: str = Field(
+        description="""
+        Top level path to directory containing OpenVINO IR converted model.
+        
+        OpenArc does not support runtime conversion and cannot pull from HF.""")
+    model_name: str = Field(
+        ...,
+        description="""
+        - Public facing name of the loaded model attached to a private model_id
+        - Calling /v1/models will report model names from this list
+        - model_name is decoupled from last segment of model_path, though in practice you should use that value.
+        """
+        )
+    model_type: ModelType = Field(...)
+    engine: EngineType = Field(...)
+    device: str = Field(
+        ...,
+        description="""
+        Device used to load the model.
+        """
+        )
+    runtime_config: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Optional OpenVINO runtime properties.")
 class ModelUnloadConfig(BaseModel):
     model_name: str = Field(..., description="Name of the model to unload")
 
@@ -44,32 +69,6 @@ class EngineType(str, Enum):
     OV_OPTIMUM = "optimum"
     OV_GENAI = "ovgenai"
 
-class ModelLoadConfig(BaseModel):
-    model_path: str = Field(
-        description="""
-        Top level path to directory containing OpenVINO IR converted model.
-        
-        OpenArc does not support runtime conversion and cannot pull from HF."""
-    )
-    model_name: str = Field(
-        ...,
-        description="""
-        - Public facing name of the loaded model attached to a private model_id
-        - Calling /v1/models will report model names from this list
-        - model_name is decoupled from last segment of model_path, though in practice you should use that value.
-        """
-        )
-    model_type: ModelType = Field(...)
-    engine: EngineType = Field(...)
-    device: str = Field(
-        ...,
-        description="""
-        Device used to load the model.
-        """
-        )
-    runtime_config: Dict[str, Any] = Field(
-        default_factory=dict,
-        description="Optional OpenVINO runtime properties.")
 
 
 @dataclass(frozen=False, slots=True)
