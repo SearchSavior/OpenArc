@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 import time
+import base64
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
@@ -60,7 +61,7 @@ def load_model(model_path: str, model_name: str, device: str) -> str:
     payload = {
         "model_path": model_path,
         "model_name": model_name,
-        "model_type": "text_to_text",
+        "model_type": "image_to_text",  # Changed for vision models
         "engine": "ovgenai",
         "device": device,
         "runtime_config": {}
@@ -85,8 +86,16 @@ def wait_until_loaded(model_name: str, timeout_s: int = 21600) -> None:
     raise RuntimeError(f"Model '{model_name}' did not reach loaded state within {timeout_s}s: {last_err}")
 
 
-def generate_once(model_name: str, prompt: str, request_id: int, max_new_tokens: int = 64) -> RequestTiming:
-    """Generate text and return timing information."""
+def load_image_as_base64(image_path: str) -> str:
+    """Load image file and encode as base64 data URL."""
+    with open(image_path, "rb") as img_file:
+        img_data = img_file.read()
+        img_base64 = base64.b64encode(img_data).decode('utf-8')
+        return f"data:image/png;base64,{img_base64}"
+
+
+def generate_once(model_name: str, prompt: str, image_data_url: str, request_id: int, max_new_tokens: int = 64) -> RequestTiming:
+    """Generate text from image and return timing information."""
     start_time = time.time()
     timing = RequestTiming(
         model_name=model_name,
@@ -101,9 +110,25 @@ def generate_once(model_name: str, prompt: str, request_id: int, max_new_tokens:
         payload = {
             "model_name": model_name,
             "gen_config": {
-                "messages": [{"role": "user", "content": prompt}],
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": image_data_url
+                                }
+                            },
+                            {
+                                "type": "text",
+                                "text": prompt
+                            }
+                        ]
+                    }
+                ],
                 "max_new_tokens": max_new_tokens,
-                "stream": False
+                "stream": True
             }
         }
         response = http_post("/openarc/generate", payload)
@@ -175,10 +200,21 @@ def stop_server(proc: subprocess.Popen) -> None:
 
 
 def main() -> None:
-    # Update these paths for your environment if needed
-    model_path = "/mnt/Ironwolf-4TB/Models/OpenVINO/Deepseek/DeepSeek-R1-0528-Qwen3-8B-OpenVINO/DeepSeek-R1-0528-Qwen3-8B-int4_asym-ov"
-    model_a = {"name": "Impish_Nemo_GPU1", "device": "GPU.1"}
-    model_b = {"name": "Impish_Nemo_GPU2", "device": "GPU.2"}
+    # Vision model configuration
+    model_path = "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Qwen2.5-VL-7B-Instruct-int4_sym-ov"
+    image_path = "/home/echo/Projects/OpenArc/src2/tests/dedication.png"
+    model_a = {"name": "Qwen2.5-VL-7B-Instruct-int4_sym-ov-GPU1", "device": "GPU.1"}
+    model_b = {"name": "Qwen2.5-VL-7B-Instruct-int4_sym-ov-GPU2", "device": "GPU.2"}
+
+    # Check if image exists
+    if not os.path.exists(image_path):
+        print(f"Error: Image path does not exist: {image_path}")
+        return
+
+    # Load image as base64
+    print(f"Loading image: {image_path}")
+    image_data_url = load_image_as_base64(image_path)
+    print("Image loaded and encoded as base64")
 
     server = start_server()
     try:
@@ -197,12 +233,12 @@ def main() -> None:
         wait_until_loaded(model_b["name"], load_timeout)
         print("Models loaded.")
 
-        # Simple test prompts
-        num_requests_per_model = int(os.getenv("OPENARC_TEST_REQUESTS_PER_MODEL", "20"))
-        prompt = "Write a Python function to calculate the factorial of a number with the following requirements: the function should be named factorial, the function should take an integer as an argument, the function should return the factorial of the integer, the function should be a recursive function."
+        # Vision test prompts
+        num_requests_per_model = int(os.getenv("OPENARC_TEST_REQUESTS_PER_MODEL", "10"))
+        prompt = "Describe what you see in this image in detail."
         max_tokens = 64
 
-        print(f"\nStarting concurrency test with {num_requests_per_model} requests per model...")
+        print(f"\nStarting vision concurrency test with {num_requests_per_model} requests per model...")
         
         test_start_time = time.time()
         with ThreadPoolExecutor(max_workers=20) as pool:
@@ -210,8 +246,8 @@ def main() -> None:
             
             # Submit requests for both models
             for i in range(num_requests_per_model):
-                futures.append(pool.submit(generate_once, model_a["name"], prompt, i, max_tokens))
-                futures.append(pool.submit(generate_once, model_b["name"], prompt, i + num_requests_per_model, max_tokens))
+                futures.append(pool.submit(generate_once, model_a["name"], prompt, image_data_url, i, max_tokens))
+                futures.append(pool.submit(generate_once, model_b["name"], prompt, image_data_url, i + num_requests_per_model, max_tokens))
 
             # Collect results
             timings: List[RequestTiming] = []
@@ -241,5 +277,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-

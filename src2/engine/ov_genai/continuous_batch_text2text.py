@@ -105,9 +105,7 @@ class OVGenAI_ContinuousBatchText:
         Returns:
             List of generation results
         """
-        if not self.pipeline:
-            raise RuntimeError("Model not loaded. Call load_model() first.")
-            
+
         # Prepare tokenized inputs as ov.Tensors
         encoded_prompts = [self.prepare_inputs(m) for m in prompts]
         

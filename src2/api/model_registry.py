@@ -69,8 +69,6 @@ class EngineType(str, Enum):
     OV_OPTIMUM = "optimum"
     OV_GENAI = "ovgenai"
 
-
-
 @dataclass(frozen=False, slots=True)
 class ModelRecord:
     # Private fields
