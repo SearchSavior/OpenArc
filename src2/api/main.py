@@ -1,19 +1,44 @@
+# The first implementation of the OpenAI-like API was contributed by @gapeleon.
+# They are one hero among many future heroes working to make OpenArc better. 
+
+import json
+from typing import AsyncIterator
+
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-import json
-from typing import AsyncIterator
-from src2.api.model_registry import ModelRegistry, ModelLoadConfig, ModelUnloadConfig
-from src2.api.worker_registry import WorkerRegistry
+
 from src2.api.base_config import OVGenAI_TextGenConfig
-
-
+from src2.api.model_registry import ModelLoadConfig, ModelRegistry, ModelUnloadConfig
+from src2.api.worker_registry import WorkerRegistry
 
 app = FastAPI()
 
 _registry = ModelRegistry()
 _workers = WorkerRegistry(_registry)
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#===============================================================#
+# OpenArc internal endpoints
+#===============================================================#
 
 @app.post("/openarc/load")
 async def load_model(load_config: ModelLoadConfig):
@@ -69,6 +94,34 @@ async def generate_text(req: GenerateRequest):
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(exc)}")
+
+
+#===============================================================#
+# OpenAI-compatible endpoints
+#===============================================================#
+
+@app.get("/v1/models")
+async def openai_list_models():
+    """OpenAI-compatible endpoint that lists available models."""
+    try:
+        registry_status = await _registry.status()
+        
+        # Transform to OpenAI format
+        models = []
+        for model_name in registry_status["openai_model_names"]:
+            models.append({
+                "id": model_name,
+                "object": "model",
+                "created": 0,  # OpenAI uses Unix timestamp, we don't track this
+                "owned_by": "OpenArc"
+            })
+        
+        return {
+            "object": "list",
+            "data": models
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to list models: {str(exc)}")
 
 
 if __name__ == "__main__":

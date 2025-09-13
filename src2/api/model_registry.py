@@ -235,6 +235,7 @@ class ModelRegistry:
             return {
                 "total_loaded_models": len(models_public),
                 "models": models_public,
+                "openai_model_names": [record.model_name for record in self._models.values()],
             }
 
 async def create_model_instance(load_config: ModelLoadConfig) -> Any:
