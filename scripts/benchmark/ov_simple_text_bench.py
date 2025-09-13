@@ -6,11 +6,11 @@ import openvino as ov
 
 
 
-model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/Llama/Hermes-3-Llama-3.2-3B-int4_sym-awq-se-ov"
+model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/Llama/MobileLLM-R1-950M-int4_asym-ov"
 
 pipe = LLMPipeline(
     model_dir,       # Path to the model directory. Remember this will not pull from hub like in transformers
-    device="CPU"
+    device="GPU.1"
    #device="HETERO:GPU.0,GPU.2",
    #properties="PIPELINE_PARALELL"
    #device="HETERO:GPU.0,CPU",    
@@ -23,7 +23,7 @@ pipe = LLMPipeline(
 tokenizer = AutoTokenizer.from_pretrained(model_dir)
 
 generation_config = GenerationConfig(
-    max_new_tokens=128
+    max_new_tokens=32000
 )
 
 prompt = "You're the fastest Llama this side of the equator. What's your favorite food?"
