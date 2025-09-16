@@ -4,9 +4,9 @@ from dataclasses import dataclass
 from typing import Optional, Dict, Any, AsyncIterator, Union
 
 from src2.api.base_config import OVGenAI_TextGenConfig
-from src2.api.model_registry import ModelRegistry, ModelRecord, ModelType
-from src2.engine.ov_genai.text2text import OVGenAI_Text2Text
-from src2.engine.ov_genai.image2text import OVGenAI_Image2Text
+from src2.api.model_registry import ModelRegistry, ModelRecord, TaskType
+from src2.engine.ov_genai.ov_genai_llm import OVGenAI_Text2Text
+from src2.engine.ov_genai.ov_genai_vlm import OVGenAI_Image2Text
 
 
 @dataclass
@@ -230,7 +230,7 @@ class WorkerRegistry:
     
     Key Features:
     - Automatic worker lifecycle management (spawn on load, cleanup on unload)
-    - Type-safe model handling with explicit ModelType routing
+    - Type-safe model handling with explicit TaskType routing
     - Concurrent processing via per-model asyncio queues
     - Support for both streaming and non-streaming generation
     - Graceful shutdown and resource cleanup
@@ -263,11 +263,11 @@ class WorkerRegistry:
         self._model_registry.add_on_loaded(self._on_model_loaded)
         self._model_registry.add_on_unloaded(self._on_model_unloaded)
 
-    def _normalize_model_type(self, mt) -> Optional[ModelType]:
-        if isinstance(mt, ModelType):
+    def _normalize_model_type(self, mt) -> Optional[TaskType]:
+        if isinstance(mt, TaskType):
             return mt
         try:
-            return ModelType(mt)
+            return TaskType(mt)
         except Exception:
             return None
 
@@ -280,14 +280,14 @@ class WorkerRegistry:
         instance = record.model_instance
 
         async with self._lock:
-            if mt == ModelType.TEXT_TO_TEXT and isinstance(instance, OVGenAI_Text2Text):
+            if mt == TaskType.TEXT_TO_TEXT and isinstance(instance, OVGenAI_Text2Text):
                 if record.model_name not in self._model_queues_text:
                     q: asyncio.Queue = asyncio.Queue()
                     self._model_queues_text[record.model_name] = q
                     task = asyncio.create_task(Worker_ModelManager.inference_worker_text(record.model_name, q, instance))
                     self._model_tasks_text[record.model_name] = task
 
-            elif mt == ModelType.IMAGE_TO_TEXT and isinstance(instance, OVGenAI_Image2Text):
+            elif mt == TaskType.IMAGE_TO_TEXT and isinstance(instance, OVGenAI_Image2Text):
                 if record.model_name not in self._model_queues_image:
                     q: asyncio.Queue = asyncio.Queue()
                     self._model_queues_image[record.model_name] = q

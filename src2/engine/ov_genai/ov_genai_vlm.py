@@ -16,7 +16,7 @@ from openvino_genai import (
 )
 
 from src2.api.base_config import OVGenAI_TextGenConfig
-from src2.api.model_registry import ModelLoadConfig, ModelRegistry, EngineType, ModelType
+from src2.api.model_registry import ModelLoadConfig, ModelRegistry, EngineType, TaskType
 from src2.engine.ov_genai.streamers import ChunkStreamer
 
 logger = logging.getLogger(__name__)
@@ -261,7 +261,7 @@ async def test_image2text():
     load_config = ModelLoadConfig(
         model_path=model_path,
         model_name="qwen2.5-vl-7b-instruct-test",
-        model_type=ModelType.IMAGE_TO_TEXT,
+        model_type=TaskType.IMAGE_TO_TEXT,
         engine=EngineType.OV_GENAI,
         device="CPU",
         runtime_config={}

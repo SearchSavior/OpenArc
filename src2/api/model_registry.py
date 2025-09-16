@@ -23,7 +23,7 @@ class ModelLoadConfig(BaseModel):
         - model_name is decoupled from last segment of model_path, though in practice you should use that value.
         """
         )
-    model_type: ModelType = Field(...)
+    model_type: TaskType = Field(...)
     engine: EngineType = Field(...)
     device: str = Field(
         ...,
@@ -34,6 +34,7 @@ class ModelLoadConfig(BaseModel):
     runtime_config: Dict[str, Any] = Field(
         default_factory=dict,
         description="Optional OpenVINO runtime properties.")
+
 class ModelUnloadConfig(BaseModel):
     model_name: str = Field(..., description="Name of the model to unload")
 
@@ -49,7 +50,7 @@ class ModelStatus(str, Enum):
     LOADED = "loaded"
     FAILED = "failed"
 
-class ModelType(str, Enum):
+class TaskType(str, Enum):
     """Internal routing to the correct inference pipeline.
 
     Options:
@@ -241,18 +242,18 @@ class ModelRegistry:
 async def create_model_instance(load_config: ModelLoadConfig) -> Any:
     """Factory function to create the appropriate model instance based on engine type."""
     if load_config.engine == EngineType.OV_GENAI:
-        if load_config.model_type == ModelType.TEXT_TO_TEXT:
+        if load_config.model_type == TaskType.TEXT_TO_TEXT:
             # Import here to avoid circular imports
-            from src2.engine.ov_genai.text2text import OVGenAI_Text2Text
+            from src2.engine.ov_genai.ov_genai_llm import OVGenAI_Text2Text
+            
             model_instance = OVGenAI_Text2Text(load_config)
-            # Run the blocking model loading in a thread pool
             await asyncio.to_thread(model_instance.load_model, load_config)
             return model_instance
-        elif load_config.model_type == ModelType.IMAGE_TO_TEXT:
+        elif load_config.model_type == TaskType.IMAGE_TO_TEXT:
             # Import here to avoid circular imports
-            from src2.engine.ov_genai.image2text import OVGenAI_Image2Text
+            from src2.engine.ov_genai.ov_genai_vlm import OVGenAI_Image2Text
+            
             model_instance = OVGenAI_Image2Text(load_config)
-            # Run the blocking model loading in a thread pool
             await asyncio.to_thread(model_instance.load_model, load_config)
             return model_instance
         else:

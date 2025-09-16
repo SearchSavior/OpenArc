@@ -13,12 +13,11 @@ from openvino_genai import (
 
 from src2.api.base_config import OVGenAI_TextGenConfig
 
-from src2.api.model_registry import ModelLoadConfig, ModelRegistry, EngineType, ModelType
+from src2.api.model_registry import ModelLoadConfig, ModelRegistry, EngineType, TaskType
 from src2.engine.ov_genai.streamers import ChunkStreamer
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
 
 class OVGenAI_Text2Text:
     def __init__(self, load_config: ModelLoadConfig):
@@ -217,7 +216,7 @@ if __name__ == "__main__":
         loader = ModelLoadConfig(
             model_path="/mnt/Ironwolf-4TB/Models/OpenVINO/Llama/Llama-3.2-3B-Instruct-abliterated-OpenVINO/Llama-3.2-3B-Instruct-abliterated-int4_asym-ov",
             model_name="Llama-3.2-3B-Instruct-ov-int4",
-            model_type=ModelType.TEXT_TO_TEXT,
+            model_type=TaskType.TEXT_TO_TEXT,
             engine=EngineType.OV_GENAI,
             device="GPU.2",
             runtime_config={}

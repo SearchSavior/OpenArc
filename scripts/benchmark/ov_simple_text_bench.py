@@ -6,7 +6,7 @@ import openvino as ov
 
 
 
-model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/Llama/MobileLLM-R1-950M-int4_asym-ov"
+model_dir = "/home/echo/Projects/OpenArc/smollm2_360m_compressed"
 
 pipe = LLMPipeline(
     model_dir,       # Path to the model directory. Remember this will not pull from hub like in transformers
@@ -26,7 +26,7 @@ generation_config = GenerationConfig(
     max_new_tokens=32000
 )
 
-prompt = "You're the fastest Llama this side of the equator. What's your favorite food?"
+prompt = "You're the fastest Llama this side of the equator. What's your favorite food? tell me now"
 
 messages = [{"role": "user", "content": prompt}]
 # Build proper chat prompt for Qwen-style instruct models and get prompt_token_ids directly

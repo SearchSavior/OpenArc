@@ -6,17 +6,17 @@ import openvino_genai
 
 from transformers import AutoTokenizer
 
-model_path = "/mnt/Ironwolf-4TB/Models/OpenVINO/Phi/Phi-4-mini-instruct-int4_asym-awq-se-ov"
+model_path = "/mnt/Ironwolf-4TB/Models/OpenVINO/Llama/Hermes-4-70B-int4_asym-ov"
 device = "HETERO:GPU.0,GPU.1,GPU.2"
 
 # Use NPU+GPU if available
-pipe = openvino_genai.LLMPipeline(model_path, device=device, config={ov_config.model_distribution_policy: "PIPELINE_PARALLEL"})
+pipe = openvino_genai.LLMPipeline(model_path, device=device, **{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"})
 
 # Initialize tokenizer
 tokenizer = AutoTokenizer.from_pretrained(model_path)
 
 config = openvino_genai.GenerationConfig()
-config.max_new_tokens = 16384
+config.max_new_tokens = 128
 
 print("Chatbot ready! Type 'exit' to quit.\n")
 
