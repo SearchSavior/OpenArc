@@ -11,9 +11,9 @@ from openvino_genai import (
     LLMPipeline,
     )
 
-from src2.api.base_config import OVGenAI_TextGenConfig
+from src2.api.base_config import OVGenAI_GenConfig
 
-from src2.api.model_registry import ModelLoadConfig, ModelRegistry, EngineType, TaskType
+from src2.api.model_registry import ModelLoadConfig, ModelRegistry, EngineType
 from src2.engine.ov_genai.streamers import ChunkStreamer
 
 logger = logging.getLogger(__name__)
@@ -47,7 +47,7 @@ class OVGenAI_Text2Text:
             )
         return ov.Tensor(prompt_token_ids)
     
-    def generate_type(self, gen_config: OVGenAI_TextGenConfig):
+    def generate_type(self, gen_config: OVGenAI_GenConfig):
         """
         Unified text generation method that routes to streaming or non-streaming
         based on the stream flag in gen_config. Both paths return an async iterator.
@@ -64,7 +64,7 @@ class OVGenAI_Text2Text:
         else:
             return self.generate_text(gen_config)
     
-    async def generate_text(self, gen_config: OVGenAI_TextGenConfig) -> AsyncIterator[Union[Dict[str, Any], str]]:
+    async def generate_text(self, gen_config: OVGenAI_GenConfig) -> AsyncIterator[Union[Dict[str, Any], str]]:
         """
         Async non-streaming text generation.
         Yields in order: metrics (dict), new_text (str).
@@ -88,7 +88,7 @@ class OVGenAI_Text2Text:
         yield metrics_dict
         yield text
 
-    async def generate_stream(self, gen_config: OVGenAI_TextGenConfig) -> AsyncIterator[Union[str, Dict[str, Any]]]:
+    async def generate_stream(self, gen_config: OVGenAI_GenConfig) -> AsyncIterator[Union[str, Dict[str, Any]]]:
         """
         Async streaming text generation.
         Yields token chunks (str) as they arrive, then metrics (dict), then final new_text (str).
@@ -129,12 +129,12 @@ class OVGenAI_Text2Text:
             
             yield metrics
     
-    def collect_metrics(self, gen_config: OVGenAI_TextGenConfig, perf_metrics) -> Dict[str, Any]:
+    def collect_metrics(self, gen_config: OVGenAI_GenConfig, perf_metrics) -> Dict[str, Any]:
         """
         Collect and format performance metrics into a dictionary.
         
         Args:
-            gen_config: OVGenAI_TextGenConfig
+            gen_config: OVGenAI_GenConfig
             perf_metrics: PerfMetrics
 
         Returns:
@@ -183,7 +183,7 @@ class OVGenAI_Text2Text:
         self.encoder_tokenizer = AutoTokenizer.from_pretrained(loader.model_path)
         logging.info(f"Model loaded successfully: {loader.model_name}")
 
-    async def unload_model(self, registry: ModelRegistry, model_id: str) -> bool:
+    async def unload_model(self, registry: ModelRegistry, model_name: str) -> bool:
         """Unregister model from registry and free memory resources.
 
         Args:
@@ -193,75 +193,18 @@ class OVGenAI_Text2Text:
         Returns:
             True if the model was found and unregistered, else False.
         """
-        removed = await registry.register_unload(model_id)
+        removed = await registry.register_unload(model_name)
 
-        if hasattr(self, 'model_path') and self.model_path is not None:
+        if self.model_path is not None:
             del self.model_path
             self.model_path = None
         
-        if hasattr(self, 'encoder_tokenizer') and self.encoder_tokenizer is not None:
+        if self.encoder_tokenizer is not None:
             del self.encoder_tokenizer
             self.encoder_tokenizer = None
         
         gc.collect()
-        logging.info(f"[{self.load_config.model_name}] unloaded and memory cleaned up")
+        logging.info(f"[{self.load_config.model_name}] weights and tokenizer unloaded and memory cleaned up")
         return removed
 
 
-# ---------------------------
-# Example Usage
-# ---------------------------
-if __name__ == "__main__":
-    async def _demo():
-        loader = ModelLoadConfig(
-            model_path="/mnt/Ironwolf-4TB/Models/OpenVINO/Llama/Llama-3.2-3B-Instruct-abliterated-OpenVINO/Llama-3.2-3B-Instruct-abliterated-int4_asym-ov",
-            model_name="Llama-3.2-3B-Instruct-ov-int4",
-            model_type=TaskType.TEXT_TO_TEXT,
-            engine=EngineType.OV_GENAI,
-            device="GPU.2",
-            runtime_config={}
-        )
-
-        messages = [
-            {"role": "system", "content": "Alway's talk like you are Pete, the succint, punctual and self-deprecating pirate captain."},
-            {"role": "user", "content": "Man it stinks in here"},
-            {"role": "assistant", "content": "Arrr matey! The stench be foul, but we'll be smelling the sea air soon enough."},
-            {"role": "user", "content": "You bet. Hey, thanks for the lift. What'd you say your name was?"}
-        ]
-
-        textgeneration_gen_config = OVGenAI_TextGenConfig(
-            messages=messages,
-            max_new_tokens=128,
-            temperature=0.5,
-            top_k=40,
-            top_p=0.9,
-            repetition_penalty=1.1,
-            stream_chunk_tokens=1,
-            stream=True
-        )
-
-        text_gen = OVGenAI_Text2Text(ModelLoadConfig(model_path=loader.model_path, device=loader.device))
-        text_gen.load_model(loader)
-
-        received_metrics = False
-        metrics = None
-        final_text = None
-        async for item in text_gen.generate_stream(textgeneration_gen_config):
-            if isinstance(item, dict):
-                metrics = item
-                received_metrics = True
-            else:
-                if received_metrics:
-                    final_text = item  # final consolidated text
-                else:
-                    logging.info(item)  # stream chunks as they come
-
-        if metrics is not None:
-            logging.info("\n\nPerformance Metrics")
-            logging.info("-"*20)
-            logging.info(json.dumps(metrics, indent=2))
-        if final_text is not None:
-            pass  # available if needed: final_text
-
-
-    asyncio.run(_demo())

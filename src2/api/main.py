@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
 
-from src2.api.base_config import OVGenAI_TextGenConfig
+from src2.api.base_config import OVGenAI_GenConfig
 from src2.api.model_registry import ModelLoadConfig, ModelRegistry, ModelUnloadConfig
 from src2.api.worker_registry import WorkerRegistry
 
@@ -120,7 +120,7 @@ async def get_status():
 
 class GenerateRequest(BaseModel):
     model_name: str
-    gen_config: OVGenAI_TextGenConfig
+    gen_config: OVGenAI_GenConfig
 
 
 @app.post("/openarc/generate", dependencies=[Depends(verify_api_key)])

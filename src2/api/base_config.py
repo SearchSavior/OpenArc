@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 
 
 
-class OVGenAI_TextGenConfig(BaseModel):
+class OVGenAI_GenConfig(BaseModel):
     """
     Configuration for text generation with an OpenVINO GenAI pipeline.
     Supports both text-only and multimodal (text + image) messages.

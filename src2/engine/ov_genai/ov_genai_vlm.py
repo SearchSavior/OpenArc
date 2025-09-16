@@ -15,7 +15,7 @@ from openvino_genai import (
     VLMPipeline,
 )
 
-from src2.api.base_config import OVGenAI_TextGenConfig
+from src2.api.base_config import OVGenAI_GenConfig
 from src2.api.model_registry import ModelLoadConfig, ModelRegistry, EngineType, TaskType
 from src2.engine.ov_genai.streamers import ChunkStreamer
 
@@ -84,7 +84,7 @@ class OVGenAI_Image2Text:
 
         return prompt, ov_images
 
-    def generate_type(self, gen_config: OVGenAI_TextGenConfig):
+    def generate_type(self, gen_config: OVGenAI_GenConfig):
         """
         Unified generation method that routes to streaming or non-streaming
         based on the stream flag in gen_config. Both paths return an async iterator.
@@ -94,7 +94,7 @@ class OVGenAI_Image2Text:
         else:
             return self.generate_text(gen_config)
 
-    async def generate_text(self, gen_config: OVGenAI_TextGenConfig) -> AsyncIterator[Union[Dict[str, Any], str]]:
+    async def generate_text(self, gen_config: OVGenAI_GenConfig) -> AsyncIterator[Union[Dict[str, Any], str]]:
         """
         Async non-streaming generation for VLM.
         Yields in order: metrics (dict), new_text (str).
@@ -121,7 +121,7 @@ class OVGenAI_Image2Text:
         yield metrics_dict
         yield text
 
-    async def generate_stream(self, gen_config: OVGenAI_TextGenConfig) -> AsyncIterator[Union[str, Dict[str, Any]]]:
+    async def generate_stream(self, gen_config: OVGenAI_GenConfig) -> AsyncIterator[Union[str, Dict[str, Any]]]:
         """
         Async streaming generation for VLM.
         Yields token chunks (str) as they arrive, then metrics (dict).
@@ -169,7 +169,7 @@ class OVGenAI_Image2Text:
             metrics = self.collect_metrics(gen_config, perf_metrics)
             yield metrics
 
-    def collect_metrics(self, gen_config: OVGenAI_TextGenConfig, perf_metrics) -> Dict[str, Any]:
+    def collect_metrics(self, gen_config: OVGenAI_GenConfig, perf_metrics) -> Dict[str, Any]:
         """
         Collect and format performance metrics into a dictionary.
         """
@@ -197,10 +197,6 @@ class OVGenAI_Image2Text:
         """
         Load model using a ModelLoadConfig configuration and cache the AutoProcessor.
         """
-        if loader.engine != EngineType.OV_GENAI:
-            raise ValueError(
-                f"Engine '{loader.engine}' is not supported by OVGenAI_Image2Text. Use '{EngineType.OV_GENAI}'."
-            )
 
         self.model_path = VLMPipeline(
             loader.model_path,
@@ -209,124 +205,24 @@ class OVGenAI_Image2Text:
         )
 
         self.processor = AutoProcessor.from_pretrained(loader.model_path)
-        print(f"Model loaded successfully: {getattr(loader, 'model_name', str(loader.model_path))}")
+        print(f"Model loaded successfully: {loader.model_name}")
 
-    async def unload_model(self, registry: ModelRegistry, model_id: str) -> bool:
+    async def unload_model(self, registry: ModelRegistry, model_name: str) -> bool:
         """
         Unregister model from registry and free memory resources.
         """
-        removed = await registry.register_unload(model_id)
+        removed = await registry.register_unload(model_name)
 
-        if hasattr(self, "model_path") and self.model_path is not None:
+        if self.model_path is not None:
             del self.model_path
             self.model_path = None
 
-        if hasattr(self, "processor") and self.processor is not None:
+        if self.processor is not None:
             del self.processor
             self.processor = None
 
         gc.collect()
-        print("Model unloaded and memory cleaned up")
+        print(f"[{self.load_config.model_name}] weights and tokenizer unloaded and memory cleaned up")
         return removed
 
 
-async def test_image2text():
-    """
-    Test entrypoint for the OVGenAI_Image2Text class.
-    Tests with Qwen2.5-VL-7B-Instruct model and a sample image.
-    """
-    import base64
-    import os
-    
-    # Model configuration
-    model_path = "/mnt/Ironwolf-4TB/Models/OpenVINO/Gemma/The-Omega-Abomination-Gemma3-12B-v1.0-int4_asym-ov"
-    image_path = "/home/echo/Projects/OpenArc/scripts/examples/dedication.png"
-    
-    # Check if files exist
-    if not os.path.exists(model_path):
-        print(f"Error: Model path does not exist: {model_path}")
-        return
-    
-    if not os.path.exists(image_path):
-        print(f"Error: Image path does not exist: {image_path}")
-        return
-    
-    # Load and encode image as base64
-    with open(image_path, "rb") as img_file:
-        img_data = img_file.read()
-        img_base64 = base64.b64encode(img_data).decode('utf-8')
-        data_url = f"data:image/png;base64,{img_base64}"
-    
-    # Create load configuration
-    load_config = ModelLoadConfig(
-        model_path=model_path,
-        model_name="qwen2.5-vl-7b-instruct-test",
-        model_type=TaskType.IMAGE_TO_TEXT,
-        engine=EngineType.OV_GENAI,
-        device="CPU",
-        runtime_config={}
-    )
-    
-    # Create model instance
-    model = OVGenAI_Image2Text(load_config)
-    
-    try:
-        print(f"Loading model from: {model_path}")
-        model.load_model(load_config)
-        print("Model loaded successfully!")
-        
-        # Create generation configuration with multimodal message
-        gen_config = OVGenAI_TextGenConfig(
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": data_url
-                            }
-                        },
-                        {
-                            "type": "text",
-                            "text": "describe the image"
-                        }
-                    ]
-                }
-            ],
-            max_new_tokens=512,
-            temperature=0.7,
-            stream=False
-        )
-        
-        print("\nGenerating response...")
-        print("=" * 50)
-        
-        # Generate response
-        async for output in model.generate_type(gen_config):
-            if isinstance(output, dict):
-                print("\nMetrics:")
-                for key, value in output.items():
-                    print(f"  {key}: {value}")
-            else:
-                print("Response:")
-                print(output)
-        
-        print("=" * 50)
-        print("Test completed successfully!")
-        
-    except Exception as e:
-        print(f"Error during test: {e}")
-        import traceback
-        traceback.print_exc()
-    
-    finally:
-        # Clean up
-        if hasattr(model, 'model_path') and model.model_path is not None:
-            del model.model_path
-        if hasattr(model, 'processor') and model.processor is not None:
-            del model.processor
-
-
-if __name__ == "__main__":
-    asyncio.run(test_image2text())

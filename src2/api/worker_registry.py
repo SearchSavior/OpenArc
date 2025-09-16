@@ -3,7 +3,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Optional, Dict, Any, AsyncIterator, Union
 
-from src2.api.base_config import OVGenAI_TextGenConfig
+from src2.api.base_config import OVGenAI_GenConfig
 from src2.api.model_registry import ModelRegistry, ModelRecord, TaskType
 from src2.engine.ov_genai.ov_genai_llm import OVGenAI_Text2Text
 from src2.engine.ov_genai.ov_genai_vlm import OVGenAI_Image2Text
@@ -40,7 +40,7 @@ class WorkerPacket:
     """
     request_id: str
     id_model: str  # model_name
-    gen_config: OVGenAI_TextGenConfig
+    gen_config: OVGenAI_GenConfig
     response: Optional[str] = None
     metrics: Optional[Dict[str, Any]] = None
     # Orchestration plumbing
@@ -324,7 +324,7 @@ class WorkerRegistry:
             return q
         raise ValueError(f"Model '{model_name}' is not loaded or no worker is available")
 
-    async def generate(self, model_name: str, gen_config: OVGenAI_TextGenConfig) -> Dict[str, Any]:
+    async def generate(self, model_name: str, gen_config: OVGenAI_GenConfig) -> Dict[str, Any]:
         if gen_config.stream:
             raise ValueError("Use stream_generate for streaming requests")
         request_id = uuid.uuid4().hex
@@ -340,7 +340,7 @@ class WorkerRegistry:
         completed = await result_future
         return {"text": completed.response or "", "metrics": completed.metrics or {}}
 
-    async def stream_generate(self, model_name: str, gen_config: OVGenAI_TextGenConfig) -> AsyncIterator[Union[str, Dict[str, Any]]]:
+    async def stream_generate(self, model_name: str, gen_config: OVGenAI_GenConfig) -> AsyncIterator[Union[str, Dict[str, Any]]]:
         if not gen_config.stream:
             raise ValueError("Use generate for non-streaming requests")
         request_id = uuid.uuid4().hex
