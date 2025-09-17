@@ -1,6 +1,7 @@
 # The first implementation of the OpenAI-like API was contributed by @gapeleon.
 # They are one hero among many future heroes working to make OpenArc better. 
 
+import datetime
 import json
 import os
 import sys
@@ -162,7 +163,7 @@ async def openai_list_models():
             models.append({
                 "id": model_name,
                 "object": "model",
-                "created": 0,  # OpenAI uses Unix timestamp, we don't track this
+                "created": int(datetime.datetime.now().timestamp()),  # OpenAI uses Unix timestamp, we don't track this
                 "owned_by": "OpenArc"
             })
         

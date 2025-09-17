@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 BASE_URL = "http://127.0.0.1:8000"
 MAIN_PATH = "/home/echo/Projects/OpenArc/src2/api/main.py"
 REQUEST_TIMEOUT_S = int(os.getenv("OPENARC_TEST_REQUEST_TIMEOUT_S", "120"))
+API_KEY = os.getenv("OPENARC_API_KEY")
 
 
 @dataclass
@@ -30,6 +31,8 @@ class RequestTiming:
 def http_get(path: str) -> Dict[str, Any]:
     req = Request(f"{BASE_URL}{path}", method="GET")
     req.add_header("Content-Type", "application/json")
+    if API_KEY:
+        req.add_header("Authorization", f"Bearer {API_KEY}")
     with urlopen(req, timeout=REQUEST_TIMEOUT_S) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
@@ -38,6 +41,8 @@ def http_post(path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     data = json.dumps(payload).encode("utf-8")
     req = Request(f"{BASE_URL}{path}", data=data, method="POST")
     req.add_header("Content-Type", "application/json")
+    if API_KEY:
+        req.add_header("Authorization", f"Bearer {API_KEY}")
     with urlopen(req, timeout=REQUEST_TIMEOUT_S) as resp:
         return json.loads(resp.read().decode("utf-8"))
 

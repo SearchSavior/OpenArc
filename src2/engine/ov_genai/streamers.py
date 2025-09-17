@@ -3,7 +3,7 @@ import openvino_genai
 import asyncio
 
 from openvino_genai import StreamerBase
-from src2.api.base_config import OVGenAI_TextGenConfig
+from src2.api.base_config import OVGenAI_GenConfig
 
 
 class ChunkStreamer(StreamerBase):
@@ -13,7 +13,7 @@ class ChunkStreamer(StreamerBase):
     - tokens_len  > 1 → emit after every N tokens.
     Uses cumulative decode + delta slicing to avoid subword boundary artifacts.
     """
-    def __init__(self, decoder_tokenizer, gen_config: OVGenAI_TextGenConfig):
+    def __init__(self, decoder_tokenizer, gen_config: OVGenAI_GenConfig):
         super().__init__()
         self.decoder_tokenizer = decoder_tokenizer
         self.tokens_len = (gen_config.stream_chunk_tokens)  # enforce at least 1
