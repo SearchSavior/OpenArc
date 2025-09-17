@@ -5,7 +5,7 @@ import datetime
 import json
 import os
 import sys
-from typing import AsyncIterator
+from typing import AsyncIterator, Any, Dict, List, Optional
 import logging
 import logging.config
 
@@ -146,10 +146,25 @@ async def generate_text(req: GenerateRequest):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(exc)}")
 
-
+\
 #===============================================================#
 # OpenAI-compatible endpoints
 #===============================================================#
+
+class ChatCompletionRequest(BaseModel):
+    messages: Any
+    model: str = "default"
+    temperature: Optional[float] = None
+    max_tokens: Optional[int] = 8192
+    stream: Optional[bool] = False
+    stop: Optional[List[str]] = None
+    top_p: Optional[float] = None
+    top_k: Optional[int] = None
+    repetition_penalty: Optional[float] = None
+    do_sample: Optional[bool] = None
+    num_return_sequences: Optional[int] = None
+
+
 
 @app.get("/v1/models", dependencies=[Depends(verify_api_key)])
 async def openai_list_models():
@@ -173,6 +188,27 @@ async def openai_list_models():
         }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to list models: {str(exc)}")
+
+
+@app.post("/v1/chat/completions", dependencies=[Depends(verify_api_key)])
+async def openai_chat_completions(request: ChatCompletionRequest):
+
+        config_kwargs = {
+            "conversation": request.messages,
+            "temperature": request.temperature,
+            "max_new_tokens": request.max_tokens,
+            "top_p": request.top_p,
+            "top_k": request.top_k,
+            "repetition_penalty": request.repetition_penalty,
+            "do_sample": request.do_sample,
+            "num_return_sequences": request.num_return_sequences,
+            "stream": request.stream,
+        }
+        # Remove keys with value None
+        config_kwargs = {k: v for k, v in config_kwargs.items() if v is not None}
+
+        generation_config = OVGenAI_GenConfig(**config_kwargs)
+
 
 
 if __name__ == "__main__":
