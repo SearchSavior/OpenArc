@@ -2,10 +2,11 @@
 # They are one hero among many future heroes working to make OpenArc better. 
 
 import datetime
+import time
+import uuid
 import json
 import os
-import sys
-from typing import AsyncIterator, Any, Dict, List, Optional
+from typing import AsyncIterator, Any, List, Optional
 import logging
 import logging.config
 
@@ -153,10 +154,10 @@ async def generate_text(req: GenerateRequest):
 
 class ChatCompletionRequest(BaseModel):
     messages: Any
-    model: str = "default"
+    model: str
     temperature: Optional[float] = None
-    max_tokens: Optional[int] = 8192
-    stream: Optional[bool] = False
+    max_tokens: Optional[int] = None
+    stream: Optional[bool] = None
     stop: Optional[List[str]] = None
     top_p: Optional[float] = None
     top_k: Optional[int] = None
@@ -192,9 +193,9 @@ async def openai_list_models():
 
 @app.post("/v1/chat/completions", dependencies=[Depends(verify_api_key)])
 async def openai_chat_completions(request: ChatCompletionRequest):
-
+    try:
         config_kwargs = {
-            "conversation": request.messages,
+            "messages": request.messages,
             "temperature": request.temperature,
             "max_new_tokens": request.max_tokens,
             "top_p": request.top_p,
@@ -208,6 +209,83 @@ async def openai_chat_completions(request: ChatCompletionRequest):
         config_kwargs = {k: v for k, v in config_kwargs.items() if v is not None}
 
         generation_config = OVGenAI_GenConfig(**config_kwargs)
+
+        model_name = request.model
+        created_ts = int(time.time())
+        request_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
+
+        if generation_config.stream:
+            async def event_stream() -> AsyncIterator[bytes]:
+                # Stream OpenAI-compatible chunks
+                async for item in _workers.stream_generate(model_name, generation_config):
+                    if isinstance(item, dict):
+                        # Metrics dict; do not emit as a separate event in OpenAI stream
+                        continue
+                    chunk_payload = {
+                        "id": request_id,
+                        "object": "chat.completion.chunk",
+                        "created": created_ts,
+                        "model": model_name,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {"content": item},
+                                "finish_reason": None,
+                            }
+                        ],
+                    }
+                    yield (f"data: {json.dumps(chunk_payload)}\n\n").encode()
+
+                # Final stop signal per OpenAI SSE
+                final_payload = {
+                    "id": request_id,
+                    "object": "chat.completion.chunk",
+                    "created": created_ts,
+                    "model": model_name,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {},
+                            "finish_reason": "stop",
+                        }
+                    ],
+                }
+                yield (f"data: {json.dumps(final_payload)}\n\n").encode()
+                yield b"data: [DONE]\n\n"
+
+            return StreamingResponse(event_stream(), media_type="text/event-stream")
+        else:
+            result = await _workers.generate(model_name, generation_config)
+            text = result.get("text", "")
+            metrics = result.get("metrics", {}) or {}
+
+            prompt_tokens = metrics.get("input_token", 0)
+            completion_tokens = metrics.get("new_token", 0)
+            total_tokens = metrics.get("total_token", prompt_tokens + completion_tokens)
+
+            response = {
+                "id": request_id,
+                "object": "chat.completion",
+                "created": created_ts,
+                "model": model_name,
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": text},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": total_tokens,
+                },
+            }
+            return response
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Generation failed: {str(exc)}")
 
 
 
