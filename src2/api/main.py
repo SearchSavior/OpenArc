@@ -217,9 +217,11 @@ async def openai_chat_completions(request: ChatCompletionRequest):
         if generation_config.stream:
             async def event_stream() -> AsyncIterator[bytes]:
                 # Stream OpenAI-compatible chunks
+                metrics_data = None
                 async for item in _workers.stream_generate(model_name, generation_config):
                     if isinstance(item, dict):
-                        # Metrics dict; do not emit as a separate event in OpenAI stream
+                        # Capture metrics for final usage payload
+                        metrics_data = item.get("metrics", item)
                         continue
                     chunk_payload = {
                         "id": request_id,
@@ -236,7 +238,10 @@ async def openai_chat_completions(request: ChatCompletionRequest):
                     }
                     yield (f"data: {json.dumps(chunk_payload)}\n\n").encode()
 
-                # Final stop signal per OpenAI SSE
+                # Final stop signal per OpenAI SSE with usage
+                prompt_tokens = (metrics_data or {}).get("input_token", 0)
+                completion_tokens = (metrics_data or {}).get("new_token", 0)
+                total_tokens = (metrics_data or {}).get("total_token", prompt_tokens + completion_tokens)
                 final_payload = {
                     "id": request_id,
                     "object": "chat.completion.chunk",
@@ -249,6 +254,11 @@ async def openai_chat_completions(request: ChatCompletionRequest):
                             "finish_reason": "stop",
                         }
                     ],
+                    "usage": {
+                        "prompt_tokens": prompt_tokens,
+                        "completion_tokens": completion_tokens,
+                        "total_tokens": total_tokens,
+                    },
                 }
                 yield (f"data: {json.dumps(final_payload)}\n\n").encode()
                 yield b"data: [DONE]\n\n"
