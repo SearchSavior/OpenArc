@@ -6,7 +6,7 @@ import openvino as ov
 
 
 
-model_dir = "/home/echo/Projects/OpenArc/smollm2_360m_compressed"
+model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Qwen3-1.7B-int8_asym-ov"
 
 pipe = LLMPipeline(
     model_dir,       # Path to the model directory. Remember this will not pull from hub like in transformers
