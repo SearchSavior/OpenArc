@@ -159,7 +159,7 @@ class OVGenAI_Image2Text:
 
         try:
             while True:
-                chunk = await asyncio.to_thread(streamer.text_queue.get)
+                chunk = await streamer.text_queue.get()
                 if chunk is None:
                     break
                 yield chunk

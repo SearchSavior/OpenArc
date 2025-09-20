@@ -212,7 +212,7 @@ async def openai_chat_completions(request: ChatCompletionRequest):
 
         model_name = request.model
         created_ts = int(time.time())
-        request_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
+        request_id = f"ov-{uuid.uuid4().hex[:24]}"
 
         if generation_config.stream:
             async def event_stream() -> AsyncIterator[bytes]:
