@@ -1,10 +1,6 @@
-from openvino_genai import LLMPipeline, GenerationConfig
-#import openvino.properties.hint as ov_config
-from transformers import AutoTokenizer
 import openvino as ov
-
-
-
+from openvino_genai import GenerationConfig, LLMPipeline
+from transformers import AutoTokenizer
 
 model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Qwen3-1.7B-int8_asym-ov"
 
