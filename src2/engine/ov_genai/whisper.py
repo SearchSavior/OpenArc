@@ -1,12 +1,13 @@
 import base64
 import io
+import json
 
 import librosa
 import numpy as np
 import openvino as ov
 from openvino_genai import WhisperGenerationConfig, WhisperPipeline
 
-model_path = "/mnt/Ironwolf-4TB/Models/OpenVINO/Whisper/whisper-medium-int4-ov"
+model_path = "/mnt/Ironwolf-4TB/Models/OpenVINO/Whisper/distil-whisper-large-v3-int8-ov"
 sample_audio_path = "/home/echo/Projects/OpenArc/src2/tests/john_steakly_armor_the_drop.wav"
 
 
@@ -22,7 +23,7 @@ def audio_file_to_base64(audio_path: str) -> str:
 
 
 class OVGenAI_Whisper:
-    def __init__(self, model_path: str, device: str = "GPU.0"):
+    def __init__(self, model_path: str, device: str = "GPU.1"):
         """
         Initialize an OpenVINO Whisper pipeline.
         """
@@ -47,10 +48,13 @@ class OVGenAI_Whisper:
         
         return audio_list
 
-    def transcribe(self, audio_base64: str) -> str:
+    def transcribe(self, audio_base64: str) -> dict:
         """
         Run transcription on a given base64 encoded audio.
         Language autodetection will be used (no language argument).
+        
+        Returns:
+            dict: Contains transcription text and performance metrics
         """
         # Prepare audio inputs from base64
         audio_list = self.prepare_inputs(audio_base64)
@@ -58,13 +62,43 @@ class OVGenAI_Whisper:
         # Run transcription
         result = self.pipeline.generate(audio_list)
 
-        # Access result as an object, not a dict
-        return result.texts
+        # Extract performance metrics from the result
+        perf_metrics = result.perf_metrics
+
+        # Collect key performance metrics
+        metrics = {
+            "num_generated_tokens": perf_metrics.get_num_generated_tokens(),
+            "throughput_tokens_per_sec": perf_metrics.get_throughput().mean,
+            "ttft_ms": perf_metrics.get_ttft().mean,
+            "load_time_ms": perf_metrics.get_load_time(),
+            "generate_duration_ms": perf_metrics.get_generate_duration().mean,
+            "features_extraction_duration_ms": perf_metrics.get_features_extraction_duration().mean,
+            "transcription": result.texts,
+            "scores": result.scores
+        }
+
+        return metrics
 
 
 if __name__ == "__main__":
     whisper = OVGenAI_Whisper(model_path)
     audio_base64 = audio_file_to_base64(sample_audio_path)
-    transcript = whisper.transcribe(audio_base64)
+    
+    # Transcription with metrics
+    result = whisper.transcribe(audio_base64)
     print("Transcription:")
-    print(transcript)
+    print(result['transcription'])
+    
+    # Display performance metrics as JSON
+    print("\n" + "="*50)
+    print("PERFORMANCE METRICS (JSON)")
+    print("="*50)
+    metrics = {
+        "num_generated_tokens": result["num_generated_tokens"],
+        "throughput_tokens_per_sec": result["throughput_tokens_per_sec"],
+        "ttft_ms": result["ttft_ms"],
+        "load_time_ms": result["load_time_ms"],
+        "generate_duration_ms": result["generate_duration_ms"],
+        "features_extraction_duration_ms": result["features_extraction_duration_ms"],
+    }
+    print(json.dumps(metrics, indent=2, ensure_ascii=False))
