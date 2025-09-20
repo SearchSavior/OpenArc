@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+import inspect
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -210,7 +211,16 @@ class ModelRegistry:
             
             # Call the model's unload_model method if it exists and model is loaded
             if model_instance and hasattr(model_instance, 'unload_model'):
-                await model_instance.unload_model(self, model_id)
+                unload_fn = getattr(model_instance, 'unload_model')
+                try:
+                    # Prefer (registry, model_name) signature used by OVGenAI_* classes
+                    result = unload_fn(self, record.model_name)
+                except TypeError:
+                    # Fallback to no-arg sync unload (e.g., Whisper)
+                    result = unload_fn()
+                # Await if coroutine/awaitable
+                if inspect.isawaitable(result):
+                    await result
             
             # Remove from registry
             async with self._lock:
@@ -255,6 +265,13 @@ async def create_model_instance(load_config: ModelLoadConfig) -> Any:
             from src2.engine.ov_genai.ov_genai_vlm import OVGenAI_Image2Text
             
             model_instance = OVGenAI_Image2Text(load_config)
+            await asyncio.to_thread(model_instance.load_model, load_config)
+            return model_instance
+        elif load_config.model_type == TaskType.WHISPER:
+
+            from src2.engine.ov_genai.whisper import OVGenAI_Whisper
+
+            model_instance = OVGenAI_Whisper(load_config)
             await asyncio.to_thread(model_instance.load_model, load_config)
             return model_instance
         else:

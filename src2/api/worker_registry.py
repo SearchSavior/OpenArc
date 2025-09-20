@@ -7,6 +7,7 @@ from src2.api.base_config import OVGenAI_GenConfig
 from src2.api.model_registry import ModelRegistry, ModelRecord, TaskType
 from src2.engine.ov_genai.ov_genai_llm import OVGenAI_Text2Text
 from src2.engine.ov_genai.ov_genai_vlm import OVGenAI_Image2Text
+from src2.engine.ov_genai.whisper import OVGenAI_Whisper
 
 
 @dataclass
@@ -293,6 +294,12 @@ class WorkerRegistry:
                     self._model_queues_image[record.model_name] = q
                     task = asyncio.create_task(Worker_ModelManager.inference_worker_image(record.model_name, q, instance))
                     self._model_tasks_image[record.model_name] = task
+
+            elif mt == TaskType.WHISPER and isinstance(instance, OVGenAI_Whisper):
+                # Whisper loaded successfully; no inference worker routing yet
+                # as the public API does not expose audio transcription endpoints.
+                # This avoids type/instance mismatch logs during load.
+                pass
 
             else:
                 print(f"[WorkerRegistry] Model type/instance mismatch for {record.model_name}: {record.model_type}, {type(instance)}")

@@ -2,13 +2,13 @@ import asyncio
 import base64
 import gc
 import io
-import json
 
 from pydantic import BaseModel, Field
 
 import librosa
 import numpy as np
-from openvino_genai import WhisperGenerationConfig, WhisperPipeline
+from openvino_genai import WhisperPipeline
+from src2.api.model_registry import ModelRegistry, ModelLoadConfig
 
 model_path = "/mnt/Ironwolf-4TB/Models/OpenVINO/Whisper/distil-whisper-large-v3-int8-ov"
 sample_audio_path = "/home/echo/Projects/OpenArc/src2/tests/john_steakly_armor_the_drop.wav"
@@ -19,20 +19,12 @@ class OVGenAI_WhisperGenConfig(BaseModel):
     audio_base64: str = Field(..., description="Base64 encoded audio")
 
 
-def audio_file_to_base64(audio_path: str) -> str:
-    """
-    Convert a local audio file to base64 string.
-    """
-    with open(audio_path, "rb") as audio_file:
-        audio_bytes = audio_file.read()
-        base64_string = base64.b64encode(audio_bytes).decode('utf-8')
-        return base64_string
-
 class OVGenAI_Whisper:
-    def __init__(self):
+    def __init__(self, load_config: ModelLoadConfig):
         """
         Do not initialize or store model/pipeline state here.
         """
+        self.load_config = load_config
         pass
 
     def prepare_audio(self, gen_config: OVGenAI_WhisperGenConfig) -> list[float]:
@@ -84,42 +76,33 @@ class OVGenAI_Whisper:
 
         return metrics
 
-    def load_model(self, model_path: str, device: str = "GPU.1") -> None:
+    def load_model(self, loader: ModelLoadConfig) -> None:
         """
         Load (or reload) a Whisper model into a pipeline for the given device.
         """
         self.whisper_model = WhisperPipeline(
-            model_path, 
-            device=device
-            
-            )
+            loader.model_path,
+            loader.device,
+            **(loader.runtime_config or {})
+        )
 
-    def unload_model(self) -> None:
+    async def unload_model(self, registry: ModelRegistry, model_name: str) -> bool:
+        """Unregister model from registry and free memory resources.
+
+        Args:
+            registry: ModelRegistry to unregister from
+            model_id: Private model identifier returned by register_load
+
+        Returns:
+            True if the model was found and unregistered, else False.
         """
-        Unload the currently loaded Whisper pipeline and free resources.
-        """
-        if hasattr(self, "whisper_model"):
+        removed = await registry.register_unload(model_name)
+
+        if self.whisper_model is not None:
             del self.whisper_model
-            gc.collect()
+            self.whisper_model = None
 
-if __name__ == "__main__":
-    async def _demo():
-        whisper = OVGenAI_Whisper()
-        whisper.load_model(model_path)
-        audio_base64 = audio_file_to_base64(sample_audio_path)
+        gc.collect()
+        print(f"[{self.load_config.model_name}] weights and tokenizer unloaded and memory cleaned up")
+        return removed
 
-        # Transcription with metrics
-        gen_config = OVGenAI_WhisperGenConfig(audio_base64=audio_base64)
-        transcription2 = await whisper.transcribe(gen_config)
-        audio_list = whisper.prepare_audio(gen_config)
-        metrics2 = whisper.collect_metrics(whisper.whisper_model.generate(audio_list).perf_metrics)
-        print("Transcription:")
-        print(transcription2)
-
-        # Display performance metrics as JSON
-        print("\n" + "="*50)
-        print("PERFORMANCE METRICS (JSON)")
-        print("="*50)
-        print(json.dumps(metrics2, indent=2, ensure_ascii=False))
-
-    asyncio.run(_demo())
