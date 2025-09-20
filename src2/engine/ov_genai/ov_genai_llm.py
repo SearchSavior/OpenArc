@@ -1,19 +1,18 @@
-import gc
 import asyncio
+import gc
 import json
-from typing import Any, Dict, List, Union, AsyncIterator
-
 import logging
-from transformers import AutoTokenizer
+from typing import Any, AsyncIterator, Dict, List, Union
+
 import openvino as ov
 from openvino_genai import (
-    GenerationConfig, 
+    GenerationConfig,
     LLMPipeline,
-    )
+)
+from transformers import AutoTokenizer
 
 from src2.api.base_config import OVGenAI_GenConfig
-
-from src2.api.model_registry import ModelLoadConfig, ModelRegistry, EngineType
+from src2.api.model_registry import ModelLoadConfig, ModelRegistry
 from src2.engine.ov_genai.streamers import ChunkStreamer
 
 logger = logging.getLogger(__name__)
@@ -78,10 +77,10 @@ class OVGenAI_Text2Text:
         )
 
         prompt_token_ids = self.prepare_inputs(gen_config.messages)
-        result = await asyncio.to_thread(self.model_path.generate, prompt_token_ids, generation_kwargs)
+        result = await asyncio.to_thread(self.model.generate, prompt_token_ids, generation_kwargs)
         
         perf_metrics = result.perf_metrics
-        decoder_tokenizer = self.model_path.get_tokenizer()
+        decoder_tokenizer = self.model.get_tokenizer()
         text = decoder_tokenizer.decode(result.tokens)[0] if getattr(result, "tokens", None) else ""
 
         metrics_dict = self.collect_metrics(gen_config, perf_metrics)
@@ -101,13 +100,13 @@ class OVGenAI_Text2Text:
             repetition_penalty=gen_config.repetition_penalty
         )
 
-        decoder_tokenizer = self.model_path.get_tokenizer()
+        decoder_tokenizer = self.model.get_tokenizer()
         streamer = ChunkStreamer(decoder_tokenizer, gen_config)
         prompt_token_ids = self.prepare_inputs(gen_config.messages)
 
         async def _run_generation():
             return await asyncio.to_thread(
-                self.model_path.generate,
+                self.model.generate,
                 prompt_token_ids,
                 generation_kwargs,
                 streamer
@@ -169,12 +168,8 @@ class OVGenAI_Text2Text:
         Args:
             loader: ModelLoadConfig containing model_path, device, engine, and runtime_config.
         """
-        if loader.engine != EngineType.OV_GENAI:
-            raise ValueError(
-                f"Engine '{loader.engine}' is not supported by OVGenAI_Text2Text. Use '{EngineType.OV_GENAI}'."
-            )
 
-        self.model_path = LLMPipeline(
+        self.model = LLMPipeline(
             loader.model_path,
             loader.device,
             **(loader.runtime_config or {})
@@ -195,9 +190,9 @@ class OVGenAI_Text2Text:
         """
         removed = await registry.register_unload(model_name)
 
-        if self.model_path is not None:
-            del self.model_path
-            self.model_path = None
+        if self.model is not None:
+            del self.model
+            self.model = None
         
         if self.encoder_tokenizer is not None:
             del self.encoder_tokenizer

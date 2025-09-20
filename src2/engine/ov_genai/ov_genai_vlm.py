@@ -1,22 +1,22 @@
-import gc
 import asyncio
-import json
 import base64
-from io import BytesIO
-from typing import Any, Dict, List, Optional, Union, AsyncIterator, Tuple
-
+import gc
+import json
 import logging
+from io import BytesIO
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
+
 import numpy as np
-from PIL import Image
-from transformers import AutoProcessor
 import openvino as ov
 from openvino_genai import (
     GenerationConfig,
     VLMPipeline,
 )
+from PIL import Image
+from transformers import AutoProcessor
 
 from src2.api.base_config import OVGenAI_GenConfig
-from src2.api.model_registry import ModelLoadConfig, ModelRegistry, EngineType, TaskType
+from src2.api.model_registry import ModelLoadConfig, ModelRegistry
 from src2.engine.ov_genai.streamers import ChunkStreamer
 
 logger = logging.getLogger(__name__)
