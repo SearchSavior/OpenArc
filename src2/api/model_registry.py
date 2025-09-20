@@ -59,6 +59,7 @@ class TaskType(str, Enum):
     
     TEXT_TO_TEXT = "text_to_text"
     IMAGE_TO_TEXT = "image_to_text"
+    WHISPER = "whisper"
 
 class EngineType(str, Enum):
     """Engine used to load the model.
