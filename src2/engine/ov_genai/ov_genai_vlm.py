@@ -114,7 +114,7 @@ class OVGenAI_Image2Text:
             result = await asyncio.to_thread(self.model_path.generate, prompt, generation_config=generation_kwargs)
 
         perf_metrics = result.perf_metrics
-        # VLMDecodedResults exposes decoded texts directly
+
         text = result.texts[0] if getattr(result, "texts", None) else ""
 
         metrics_dict = self.collect_metrics(gen_config, perf_metrics)

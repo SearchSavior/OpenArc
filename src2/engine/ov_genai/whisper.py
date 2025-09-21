@@ -2,6 +2,7 @@ import asyncio
 import base64
 import gc
 import io
+from typing import AsyncIterator, Dict, Any, Union
 
 from pydantic import BaseModel, Field
 
@@ -42,24 +43,29 @@ class OVGenAI_Whisper:
         # Return as a Python list[float] (float32 -> float) for pybind compatibility
         return audio.astype(np.float32).tolist()
 
-    async def transcribe(self, gen_config: OVGenAI_WhisperGenConfig) -> list[str]:
+    async def transcribe(self, gen_config: OVGenAI_WhisperGenConfig) -> AsyncIterator[Union[Dict[str, Any], str]]:
         """
-        Run transcription on a given base64 encoded audio.
+        Run transcription on a given base64 encoded audio and return texts with metrics.
         If `language` is provided in config, it will be used; otherwise autodetection applies.
         
-        Returns:
-            list[str]: transcription_texts
+        Yields in order: metrics (dict), transcribed_text (str).
         """
         # Prepare audio inputs from base64 in a worker thread
         audio_list = await asyncio.to_thread(self.prepare_audio, gen_config)
 
-
         result = await asyncio.to_thread(self.whisper_model.generate, audio_list)
 
-        # Collect transcription
+        # Collect transcription and metrics
         transcription = result.texts
+        perf_metrics = getattr(result, "perf_metrics", None)
+        metrics_dict = self.collect_metrics(perf_metrics) if perf_metrics is not None else {}
 
-        return transcription
+        # transcription is the complete result from WhisperPipeline (not streaming chunks)
+        final_text = transcription
+
+        # Yield metrics first, then text (following the pattern of generate_text methods)
+        yield metrics_dict
+        yield final_text
 
     def collect_metrics(self, perf_metrics) -> dict:
         """

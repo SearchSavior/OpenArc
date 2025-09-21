@@ -7,7 +7,7 @@ from src2.api.base_config import OVGenAI_GenConfig
 from src2.api.model_registry import ModelRegistry, ModelRecord, TaskType
 from src2.engine.ov_genai.ov_genai_llm import OVGenAI_Text2Text
 from src2.engine.ov_genai.ov_genai_vlm import OVGenAI_Image2Text
-from src2.engine.ov_genai.whisper import OVGenAI_Whisper
+from src2.engine.ov_genai.whisper import OVGenAI_Whisper, OVGenAI_WhisperGenConfig
 
 
 @dataclass
@@ -41,7 +41,7 @@ class WorkerPacket:
     """
     request_id: str
     id_model: str  # model_name
-    gen_config: OVGenAI_GenConfig
+    gen_config: Union[OVGenAI_GenConfig, OVGenAI_WhisperGenConfig]
     response: Optional[str] = None
     metrics: Optional[Dict[str, Any]] = None
     # Orchestration plumbing
@@ -120,6 +120,26 @@ class Worker_QueueHandler:
             if metrics is not None:
                 await packet.stream_queue.put({"metrics": metrics})
             await packet.stream_queue.put(None)
+        return packet
+
+    @staticmethod
+    async def generator_worker_whisper(packet: WorkerPacket, whisper_generator: OVGenAI_Whisper) -> WorkerPacket:
+        """Transcribe audio for a single packet using the OVGenAI_Whisper pipeline.
+
+        Note: Whisper pipeline operates non-streaming; this method processes the
+        AsyncIterator to collect metrics and final text.
+        """
+        metrics = None
+        final_text = ""
+
+        async for item in whisper_generator.transcribe(packet.gen_config):
+            if isinstance(item, dict):
+                metrics = item
+            else:
+                final_text = item
+
+        packet.response = final_text
+        packet.metrics = metrics
         return packet
 
 class Worker_ModelManager:
@@ -213,6 +233,28 @@ class Worker_ModelManager:
 
             model_queue.task_done()
 
+    @staticmethod
+    async def inference_worker_whisper(model_name: str, model_queue: asyncio.Queue, whisper_generator: OVGenAI_Whisper):
+        """Whisper model inference worker that processes packets from queue"""
+        print(f"[{model_name} Whisper Worker] Started, waiting for packets...")
+        while True:
+            packet = await model_queue.get()
+            if packet is None:
+                print(f"[{model_name} Whisper Worker] Shutdown signal received.")
+                break
+
+            completed_packet = await Worker_QueueHandler.generator_worker_whisper(packet, whisper_generator)
+
+            # Log a short preview; audio requests don't have a textual user prompt
+            print(f"[{model_name} Whisper Worker] Request {completed_packet.request_id}: -> {completed_packet.response!r}")
+            if completed_packet.metrics:
+                print(f"[{model_name} Whisper Worker] Metrics: {completed_packet.metrics}")
+
+            if packet.result_future is not None and not packet.result_future.done():
+                packet.result_future.set_result(completed_packet)
+
+            model_queue.task_done()
+
 class WorkerRegistry:
     """
     Central orchestrator for managing per-model inference workers and request routing.
@@ -248,7 +290,7 @@ class WorkerRegistry:
     Uses asyncio.Lock for thread-safe access to internal dictionaries during
     concurrent model loading/unloading operations.
     """
-    
+
     def __init__(self, model_registry: ModelRegistry):
         self._model_registry = model_registry
 
@@ -258,6 +300,9 @@ class WorkerRegistry:
 
         self._model_queues_image: Dict[str, asyncio.Queue] = {}
         self._model_tasks_image: Dict[str, asyncio.Task] = {}
+
+        self._model_queues_whisper: Dict[str, asyncio.Queue] = {}
+        self._model_tasks_whisper: Dict[str, asyncio.Task] = {}
 
         self._lock = asyncio.Lock()
 
@@ -296,10 +341,11 @@ class WorkerRegistry:
                     self._model_tasks_image[record.model_name] = task
 
             elif mt == TaskType.WHISPER and isinstance(instance, OVGenAI_Whisper):
-                # Whisper loaded successfully; no inference worker routing yet
-                # as the public API does not expose audio transcription endpoints.
-                # This avoids type/instance mismatch logs during load.
-                pass
+                if record.model_name not in self._model_queues_whisper:
+                    q: asyncio.Queue = asyncio.Queue()
+                    self._model_queues_whisper[record.model_name] = q
+                    task = asyncio.create_task(Worker_ModelManager.inference_worker_whisper(record.model_name, q, instance))
+                    self._model_tasks_whisper[record.model_name] = task
 
             else:
                 print(f"[WorkerRegistry] Model type/instance mismatch for {record.model_name}: {record.model_type}, {type(instance)}")
@@ -322,6 +368,14 @@ class WorkerRegistry:
             if t is not None and not t.done():
                 t.cancel()
 
+            # Try whisper dicts
+            q = self._model_queues_whisper.pop(record.model_name, None)
+            t = self._model_tasks_whisper.pop(record.model_name, None)
+            if q is not None:
+                await q.put(None)
+            if t is not None and not t.done():
+                t.cancel()
+
     def _get_model_queue(self, model_name: str) -> asyncio.Queue:
         q = self._model_queues_text.get(model_name)
         if q is not None:
@@ -330,6 +384,12 @@ class WorkerRegistry:
         if q is not None:
             return q
         raise ValueError(f"Model '{model_name}' is not loaded or no worker is available")
+
+    def _get_whisper_queue(self, model_name: str) -> asyncio.Queue:
+        q = self._model_queues_whisper.get(model_name)
+        if q is not None:
+            return q
+        raise ValueError(f"Whisper model '{model_name}' is not loaded or no worker is available")
 
     async def generate(self, model_name: str, gen_config: OVGenAI_GenConfig) -> Dict[str, Any]:
         if gen_config.stream:
@@ -367,3 +427,21 @@ class WorkerRegistry:
             if item is None:
                 break
             yield item
+
+    async def transcribe_whisper(self, model_name: str, gen_config: OVGenAI_WhisperGenConfig) -> Dict[str, Any]:
+        """Transcribe audio using a loaded Whisper model asynchronously via worker queue.
+
+        Returns a dict with text and optional metrics for consistency with other APIs.
+        """
+        request_id = uuid.uuid4().hex
+        result_future: asyncio.Future = asyncio.get_running_loop().create_future()
+        packet = WorkerPacket(
+            request_id=request_id,
+            id_model=model_name,
+            gen_config=gen_config,
+            result_future=result_future,
+        )
+        q = self._get_whisper_queue(model_name)
+        await q.put(packet)
+        completed = await result_future
+        return {"text": completed.response or "", "metrics": completed.metrics or {}}

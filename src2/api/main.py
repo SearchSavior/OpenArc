@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from src2.api.base_config import OVGenAI_GenConfig
 from src2.api.model_registry import ModelLoadConfig, ModelRegistry, ModelUnloadConfig
 from src2.api.worker_registry import WorkerRegistry
+from src2.engine.ov_genai.whisper import OVGenAI_WhisperGenConfig
 
 #===============================================================#
 # Logging
@@ -298,6 +299,26 @@ async def openai_chat_completions(request: ChatCompletionRequest):
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(exc)}")
 
 
+
+#===============================================================#
+# OpenAI audio transcription endpoint (Whisper)
+#===============================================================#
+
+class TranscriptionRequest(BaseModel):
+    model: str
+    audio_base64: str
+
+
+@app.post("/v1/audio/transcriptions", dependencies=[Depends(verify_api_key)])
+async def openai_audio_transcriptions(request: TranscriptionRequest):
+    try:
+        gen_config = OVGenAI_WhisperGenConfig(audio_base64=request.audio_base64)
+        result = await _workers.transcribe_whisper(request.model, gen_config)
+        return {"text": result.get("text", ""), "metrics": result.get("metrics", {})}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(exc)}")
 
 if __name__ == "__main__":
     import uvicorn
