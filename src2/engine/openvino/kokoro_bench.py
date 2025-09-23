@@ -9,7 +9,6 @@ import asyncio
 import re
 from pathlib import Path
 from typing import AsyncIterator, NamedTuple
-from time import perf_counter
 
 import numpy as np
 import torch
@@ -37,10 +36,11 @@ class OV_KokoroLoadConfig(BaseModel):
 
 
 class OV_KokoroGenConfig(BaseModel):
-    input_text: str = Field(..., description="Text to convert to speech")
+    kokoro_message: str = Field(..., description="Text to convert to speech")
     voice: str = Field(..., description="Voice token")
     speed: float = Field(1.0, description="Speech speed multiplier")
     character_count_chunk: int = Field(100, description="Max characters per chunk")
+    response_format: str = Field("wav", description="Output format")
 
 
 # =====================================================================
@@ -78,11 +78,8 @@ class OVKModel(KModel):
         current_chunk = ""
 
         # Regex: split after ., !, ? followed by space
-        t_regex_start = perf_counter()
         sentences = re.split(r'(?<=[.!?]) +', text)
-        t_regex_end = perf_counter()
 
-        t_build_start = perf_counter()
         for sentence in sentences:
             sentence = sentence.strip()
             if not sentence:
@@ -110,13 +107,6 @@ class OVKModel(KModel):
         if current_chunk:
             chunks.append(current_chunk.strip())
 
-        t_build_end = perf_counter()
-
-        regex_ms = (t_regex_end - t_regex_start) * 1000.0
-        build_ms = (t_build_end - t_build_start) * 1000.0
-        total_ms = (t_build_end - t_regex_start) * 1000.0
-        print(f"[Chunking] regex_split_ms={regex_ms:.3f} build_ms={build_ms:.3f} total_ms={total_ms:.3f} num_chunks={len(chunks)}")
-
         return chunks
 
     # -----------------------------------------------------------------
@@ -129,24 +119,20 @@ class OVKModel(KModel):
         Async generator yielding audio chunks from text.
         Uses asyncio.to_thread to offload inference calls.
         """
-        t_stream_start = perf_counter()
-        text_chunks = self._chunk_text(config.input_text, config.character_count_chunk)
+        text_chunks = self._chunk_text(config.kokoro_message, config.character_count_chunk)
         total_chunks = len(text_chunks)
 
         for idx, chunk_text in enumerate(text_chunks):
 
-            def run_inference():
+            def kokoro_forward():
                 """Blocking inference run in background thread."""
                 with torch.no_grad():
-                    t_inf_start = perf_counter()
-                    gen = pipeline(chunk_text, voice=config.voice, speed=config.speed)
-                    result = next(gen) if hasattr(gen, "__iter__") else gen
-                    t_inf_end = perf_counter()
-                    return result, (t_inf_end - t_inf_start)
+                    infer = pipeline(chunk_text, voice=config.voice, speed=config.speed)
+                    result = next(infer) if hasattr(infer, "__iter__") else infer
+                    return result
 
             # Run blocking inference off the main loop
-            result, infer_secs = await asyncio.to_thread(run_inference)
-            print(f"[Inference] chunk={idx+1}/{total_chunks} latency_ms={infer_secs*1000.0:.3f} text_len={len(chunk_text)} samples={len(result.audio)}")
+            result = await asyncio.to_thread(kokoro_forward)
 
             yield StreamChunk(
                 audio=result.audio,
@@ -154,9 +140,6 @@ class OVKModel(KModel):
                 chunk_index=idx,
                 total_chunks=total_chunks,
             )
-
-        t_stream_end = perf_counter()
-        print(f"[Generation] total_stream_time_ms={(t_stream_end - t_stream_start)*1000.0:.3f}")
 
 
 # =====================================================================
@@ -172,10 +155,10 @@ if __name__ == "__main__":
 
     with open("/home/echo/Projects/OpenArc/src2/tests/test_kokoro.json", "r", encoding="utf-8") as f:
         data = json.load(f)
-        test_text = data.get("input_text", "")
+        test_text = data.get("kokoro_message", "")
 
     gen_config = OV_KokoroGenConfig(
-        input_text=test_text,
+        kokoro_message=test_text,
         voice="af_heart",
         speed=1.0,
     )
@@ -189,10 +172,7 @@ if __name__ == "__main__":
             audio_chunks.append(chunk.audio.cpu().numpy())
 
         if audio_chunks:
-            t_concat_start = perf_counter()
             combined = np.concatenate(audio_chunks, axis=0)
-            t_concat_end = perf_counter()
-            print(f"[Post] concatenate_ms={(t_concat_end - t_concat_start)*1000.0:.3f}")
             sf.write("kokoro_stream_output.wav", combined, 24000)
             print("Saved kokoro_stream_output.wav")
 
