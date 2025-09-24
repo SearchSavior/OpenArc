@@ -6,31 +6,21 @@ Now uses asyncio.to_thread for non-blocking streaming inference.
 
 import json
 import asyncio
+import gc
 import re
 from pathlib import Path
 from typing import AsyncIterator, NamedTuple
 from enum import Enum
+from pydantic import BaseModel, Field
 
 import numpy as np
 import torch
 import openvino as ov
 import soundfile as sf
-from pydantic import BaseModel, Field
-from typing import Literal
+
 from kokoro.model import KModel
 from kokoro.pipeline import KPipeline
 
-
-
-class StreamChunk(NamedTuple):
-    audio: torch.Tensor
-    chunk_text: str
-    chunk_index: int
-    total_chunks: int
-
-class OV_KokoroLoadConfig(BaseModel):
-    model_dir: Path = Field(..., description="Model directory containing config.json + IR")
-    device: str = Field(..., description="OpenVINO device string (e.g., 'CPU', 'GPU')")
 
 class KokoroLanguage(str, Enum):
     """Language codes for Kokoro TTS voices"""
@@ -118,6 +108,10 @@ class KokoroVoice(str, Enum):
     PM_ALEX = "pm_alex"
     PM_SANTA = "pm_santa"
 
+class OV_KokoroLoadConfig(BaseModel):
+    kokoro_path: Path = Field(..., description="Model directory containing config.json + IR")
+    device: str = Field(..., description="OpenVINO device string (e.g., 'CPU', 'GPU')")
+
 class OV_KokoroGenConfig(BaseModel):
     kokoro_message: str = Field(..., description="Text to convert to speech")
     voice: KokoroVoice = Field(..., description="Voice token from available Kokoro voices")
@@ -126,26 +120,44 @@ class OV_KokoroGenConfig(BaseModel):
     character_count_chunk: int = Field(100, description="Max characters per chunk")
     response_format: str = Field("wav", description="Output format")
 
+class StreamChunk(NamedTuple):
+    audio: torch.Tensor
+    chunk_text: str
+    chunk_index: int
+    total_chunks: int
 
 # =====================================================================
 # Model wrapper (streaming only, async inference via to_thread)
 # =====================================================================
-class OVKModel(KModel):
-    def __init__(self, config: OV_KokoroLoadConfig):
+class OV_Kokoro(KModel):
+    """
+    We subclass the KModel from Kokoro to use with OpenVINO inputs.
+    """
+    
+    def __init__(self, load_config: OV_KokoroLoadConfig):
         super().__init__()
-        self.model_dir = config.model_dir
-        self._device = config.device
+        self.model = None
+        self._device = None
 
-        # Load model config.json (used by KPipeline)
-        with (self.model_dir / "config.json").open("r", encoding="utf-8") as f:
+    def load_model(self, load_config: OV_KokoroLoadConfig):
+        self.kokoro_path = load_config.kokoro_path
+        self._device = load_config.device
+
+        with (self.kokoro_path / "config.json").open("r", encoding="utf-8") as f:
             model_config = json.load(f)
 
         self.vocab = model_config["vocab"]
         self.context_length = model_config["plbert"]["max_position_embeddings"]
 
-        # Compile OpenVINO IR once -> kept in memory
         core = ov.Core()
-        self.model = core.compile_model(self.model_dir / "openvino_model.xml", self._device)
+        self.model = core.compile_model(self.kokoro_path / "openvino_model.xml", self._device)
+        return self.model
+
+    async def unload_model(self):
+        self.model = None
+
+        gc.collect()
+        return True
 
     # -----------------------------------------------------------------
     # Text chunking
@@ -231,10 +243,11 @@ class OVKModel(KModel):
 # =====================================================================
 if __name__ == "__main__":
     load_config = OV_KokoroLoadConfig(
-        model_dir=Path("/mnt/Ironwolf-4TB/Models/OpenVINO/Kokoro-82M-FP16-OpenVINO"),
+        kokoro_path=Path("/mnt/Ironwolf-4TB/Models/OpenVINO/Kokoro-82M-FP16-OpenVINO"),
         device="CPU",
     )
-    ov_model = OVKModel(load_config)
+    ov_model = OV_Kokoro(load_config)
+    ov_model.load_model(load_config)
     pipeline = KPipeline(model=ov_model, lang_code="a")
 
     with open("/home/echo/Projects/OpenArc/src2/tests/test_kokoro.json", "r", encoding="utf-8") as f:
