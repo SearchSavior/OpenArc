@@ -13,13 +13,14 @@ from typing import AsyncIterator, NamedTuple
 from enum import Enum
 from pydantic import BaseModel, Field
 
-import numpy as np
 import torch
 import openvino as ov
 import soundfile as sf
 
 from kokoro.model import KModel
-from kokoro.pipeline import KPipeline
+
+from src2.api.model_registry import ModelLoadConfig
+
 
 
 class KokoroLanguage(str, Enum):
@@ -108,9 +109,10 @@ class KokoroVoice(str, Enum):
     PM_ALEX = "pm_alex"
     PM_SANTA = "pm_santa"
 
-class OV_KokoroLoadConfig(BaseModel):
-    kokoro_path: Path = Field(..., description="Model directory containing config.json + IR")
-    device: str = Field(..., description="OpenVINO device string (e.g., 'CPU', 'GPU')")
+
+
+
+
 
 class OV_KokoroGenConfig(BaseModel):
     kokoro_message: str = Field(..., description="Text to convert to speech")
@@ -126,31 +128,29 @@ class StreamChunk(NamedTuple):
     chunk_index: int
     total_chunks: int
 
-# =====================================================================
-# Model wrapper (streaming only, async inference via to_thread)
-# =====================================================================
+
 class OV_Kokoro(KModel):
     """
     We subclass the KModel from Kokoro to use with OpenVINO inputs.
     """
     
-    def __init__(self, load_config: OV_KokoroLoadConfig):
+    def __init__(self, load_config: ModelLoadConfig):
         super().__init__()
         self.model = None
         self._device = None
 
-    def load_model(self, load_config: OV_KokoroLoadConfig):
-        self.kokoro_path = load_config.kokoro_path
+    def load_model(self, load_config: ModelLoadConfig):
+        self.model_path = Path(load_config.model_path)
         self._device = load_config.device
 
-        with (self.kokoro_path / "config.json").open("r", encoding="utf-8") as f:
+        with (self.model_path / "config.json").open("r", encoding="utf-8") as f:
             model_config = json.load(f)
 
         self.vocab = model_config["vocab"]
         self.context_length = model_config["plbert"]["max_position_embeddings"]
 
         core = ov.Core()
-        self.model = core.compile_model(self.kokoro_path / "openvino_model.xml", self._device)
+        self.model = core.compile_model(self.model_path / "openvino_model.xml", self._device)
         return self.model
 
     async def unload_model(self):
@@ -159,9 +159,7 @@ class OV_Kokoro(KModel):
         gc.collect()
         return True
 
-    # -----------------------------------------------------------------
-    # Text chunking
-    # -----------------------------------------------------------------
+
     def make_chunks(self, text: str, chunk_size: int) -> list[str]:
         """
         Split text into chunks up to `chunk_size` characters,
@@ -205,16 +203,17 @@ class OV_Kokoro(KModel):
 
         return chunks
 
-    # -----------------------------------------------------------------
-    # Streaming generator
-    # -----------------------------------------------------------------
     async def chunk_forward_pass(
-        self, pipeline: KPipeline, config: OV_KokoroGenConfig
+        self, config: OV_KokoroGenConfig
     ) -> AsyncIterator[StreamChunk]:
         """
         Async generator yielding audio chunks from text.
         Uses asyncio.to_thread to offload inference calls.
         """
+        # Create pipeline with the language code from config
+        from kokoro.pipeline import KPipeline
+        pipeline = KPipeline(model=self, lang_code=config.lang_code.value)
+
         text_chunks = self.make_chunks(config.kokoro_message, config.character_count_chunk)
         total_chunks = len(text_chunks)
 
@@ -237,40 +236,83 @@ class OV_Kokoro(KModel):
                 total_chunks=total_chunks,
             )
 
+async def demo_entrypoint():
+    """
+    Demo entrypoint: Load OV_Kokoro model, generate speech, save to WAV, and unload.
+    """
+    import sys
 
-# =====================================================================
-# Example usage
-# =====================================================================
-if __name__ == "__main__":
-    load_config = OV_KokoroLoadConfig(
-        kokoro_path=Path("/mnt/Ironwolf-4TB/Models/OpenVINO/Kokoro-82M-FP16-OpenVINO"),
-        device="CPU",
+    # Add the project root to Python path for imports
+    project_root = Path(__file__).parent.parent.parent
+    sys.path.insert(0, str(project_root))
+
+    from src2.api.model_registry import ModelLoadConfig, TaskType, EngineType
+
+    # Example configuration - adjust paths and parameters as needed
+    model_path = Path("/mnt/Ironwolf-4TB/Models/OpenVINO/Kokoro-82M-FP16-OpenVINO")  # Replace with actual model path
+    if not model_path.exists():
+        print(f"Error: Model path {model_path} does not exist")
+        print("Please update the model_path in demo_entrypoint()")
+        return
+
+    load_config = ModelLoadConfig(
+        model_path=str(model_path),
+        model_name="kokoro-demo",
+        model_type=TaskType.KOKORO,
+        engine=EngineType.OPENVINO,
+        device="CPU",  # or "GPU" if available
     )
-    ov_model = OV_Kokoro(load_config)
-    ov_model.load_model(load_config)
-    pipeline = KPipeline(model=ov_model, lang_code="a")
 
-    with open("/home/echo/Projects/OpenArc/src2/tests/test_kokoro.json", "r", encoding="utf-8") as f:
-        data = json.load(f)
-        test_text = data.get("kokoro_message", "")
+    # Create model instance
+    kokoro_model = OV_Kokoro(load_config)
 
-    gen_config = OV_KokoroGenConfig(
-        kokoro_message=test_text,
-        voice="af_heart",
-        speed=1.0,
-    )
+    try:
+        # Load the model
+        print("Loading Kokoro model...")
+        kokoro_model.load_model(load_config)
+        print("Model loaded successfully")
 
-    async def stream_example():
-        print("\n--- Streaming Example ---")
+        # Configure generation
+        gen_config = OV_KokoroGenConfig(
+            kokoro_message="Hello world! This is a test of Kokoro text-to-speech synthesis.",
+            voice=KokoroVoice.AF_SARAH,  # American English female voice
+            lang_code=KokoroLanguage.AMERICAN_ENGLISH,
+            speed=1.0,
+            character_count_chunk=100,
+            response_format="wav"
+        )
+
+        # Generate speech
+        print("Generating speech...")
         audio_chunks = []
-        async for chunk in ov_model.chunk_forward_pass(pipeline, gen_config):
-            print(f"[Chunk {chunk.chunk_index+1}/{chunk.total_chunks}] "
-                  f"{len(chunk.chunk_text)} chars, {len(chunk.audio)} samples")
-            audio_chunks.append(chunk.audio.cpu().numpy())
+        async for chunk in kokoro_model.chunk_forward_pass(gen_config):
+            print(f"Generated chunk {chunk.chunk_index + 1}/{chunk.total_chunks}: '{chunk.chunk_text}'")
+            audio_chunks.append(chunk.audio)
 
+        # Concatenate all audio chunks
         if audio_chunks:
-            combined = np.concatenate(audio_chunks, axis=0)
-            sf.write("chunk_forward_pass_output.wav", combined, 24000)
-            print("Saved chunk_forward_pass_output.wav")
+            full_audio = torch.cat(audio_chunks, dim=0)
+            print(f"Generated audio with shape: {full_audio.shape}")
 
-    asyncio.run(stream_example())
+            # Save to WAV file
+            output_path = Path("kokoro_output.wav")
+            sf.write(str(output_path), full_audio.numpy(), samplerate=24000)  # Kokoro uses 24kHz
+            print(f"Audio saved to {output_path}")
+
+    except Exception as e:
+        print(f"Error during demo: {e}")
+        import traceback
+        traceback.print_exc()
+
+    finally:
+        # Unload the model
+        print("Unloading model...")
+        await kokoro_model.unload_model()
+        print("Model unloaded")
+
+
+if __name__ == "__main__":
+    asyncio.run(demo_entrypoint())
+
+
+

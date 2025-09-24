@@ -72,6 +72,7 @@ class EngineType(str, Enum):
     
     OV_OPTIMUM = "optimum"
     OV_GENAI = "ovgenai"
+    OPENVINO = "openvino"
 
 @dataclass(frozen=False, slots=True)
 class ModelRecord:
@@ -273,6 +274,17 @@ async def create_model_instance(load_config: ModelLoadConfig) -> Any:
             from src2.engine.ov_genai.whisper import OVGenAI_Whisper
 
             model_instance = OVGenAI_Whisper(load_config)
+            await asyncio.to_thread(model_instance.load_model, load_config)
+            return model_instance
+            
+        else:
+            raise ValueError(f"Model type '{load_config.model_type}' not supported with engine '{load_config.engine}'")
+    elif load_config.engine == EngineType.OPENVINO:
+        if load_config.model_type == TaskType.KOKORO:
+            # Import here to avoid circular imports
+            from src2.engine.openvino.ov_kokoro import OV_Kokoro
+
+            model_instance = OV_Kokoro(load_config)
             await asyncio.to_thread(model_instance.load_model, load_config)
             return model_instance
         else:
