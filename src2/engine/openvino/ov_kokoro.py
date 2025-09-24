@@ -9,12 +9,14 @@ import asyncio
 import re
 from pathlib import Path
 from typing import AsyncIterator, NamedTuple
+from enum import Enum
 
 import numpy as np
 import torch
 import openvino as ov
 import soundfile as sf
 from pydantic import BaseModel, Field
+from typing import Literal
 from kokoro.model import KModel
 from kokoro.pipeline import KPipeline
 
@@ -26,18 +28,100 @@ class StreamChunk(NamedTuple):
     chunk_index: int
     total_chunks: int
 
-
-# =====================================================================
-# Config
-# =====================================================================
 class OV_KokoroLoadConfig(BaseModel):
     model_dir: Path = Field(..., description="Model directory containing config.json + IR")
     device: str = Field(..., description="OpenVINO device string (e.g., 'CPU', 'GPU')")
 
+class KokoroLanguage(str, Enum):
+    """Language codes for Kokoro TTS voices"""
+    AMERICAN_ENGLISH = "a"
+    BRITISH_ENGLISH = "b" 
+    JAPANESE = "j"
+    MANDARIN_CHINESE = "z"
+    SPANISH = "e"
+    FRENCH = "f"
+    HINDI = "h"
+    ITALIAN = "i"
+    BRAZILIAN_PORTUGUESE = "p"
+
+class KokoroVoice(str, Enum):
+    """Available Kokoro TTS voices organized by language"""
+    # American English (🇺🇸) - 11F 9M
+    AF_HEART = "af_heart"
+    AF_ALLOY = "af_alloy"
+    AF_AOEDE = "af_aoede"
+    AF_BELLA = "af_bella"
+    AF_JESSICA = "af_jessica"
+    AF_KORE = "af_kore"
+    AF_NICOLE = "af_nicole"
+    AF_NOVA = "af_nova"
+    AF_RIVER = "af_river"
+    AF_SARAH = "af_sarah"
+    AF_SKY = "af_sky"
+    AM_ADAM = "am_adam"
+    AM_ECHO = "am_echo"
+    AM_ERIC = "am_eric"
+    AM_FENRIR = "am_fenrir"
+    AM_LIAM = "am_liam"
+    AM_MICHAEL = "am_michael"
+    AM_ONYX = "am_onyx"
+    AM_PUCK = "am_puck"
+    AM_SANTA = "am_santa"
+    
+    # British English (🇬🇧) - 4F 4M
+    BF_ALICE = "bf_alice"
+    BF_EMMA = "bf_emma"
+    BF_ISABELLA = "bf_isabella"
+    BF_LILY = "bf_lily"
+    BM_DANIEL = "bm_daniel"
+    BM_FABLE = "bm_fable"
+    BM_GEORGE = "bm_george"
+    BM_LEWIS = "bm_lewis"
+    
+    # Japanese (🇯🇵) - 4F 1M
+    JF_ALPHA = "jf_alpha"
+    JF_GONGITSUNE = "jf_gongitsune"
+    JF_NEZUMI = "jf_nezumi"
+    JF_TEBUKURO = "jf_tebukuro"
+    JM_KUMO = "jm_kumo"
+    
+    # Mandarin Chinese (🇨🇳) - 4F 4M
+    ZF_XIAOBEI = "zf_xiaobei"
+    ZF_XIAONI = "zf_xiaoni"
+    ZF_XIAOXIAO = "zf_xiaoxiao"
+    ZF_XIAOYI = "zf_xiaoyi"
+    ZM_YUNJIAN = "zm_yunjian"
+    ZM_YUNXI = "zm_yunxi"
+    ZM_YUNXIA = "zm_yunxia"
+    ZM_YUNYANG = "zm_yunyang"
+    
+    # Spanish (🇪🇸) - 1F 2M
+    EF_DORA = "ef_dora"
+    EM_ALEX = "em_alex"
+    EM_SANTA = "em_santa"
+    
+    # French (🇫🇷) - 1F
+    FF_SIWIS = "ff_siwis"
+    
+    # Hindi (🇮🇳) - 2F 2M
+    HF_ALPHA = "hf_alpha"
+    HF_BETA = "hf_beta"
+    HM_OMEGA = "hm_omega"
+    HM_PSI = "hm_psi"
+    
+    # Italian (🇮🇹) - 1F 1M
+    IF_SARA = "if_sara"
+    IM_NICOLA = "im_nicola"
+    
+    # Brazilian Portuguese (🇧🇷) - 1F 2M
+    PF_DORA = "pf_dora"
+    PM_ALEX = "pm_alex"
+    PM_SANTA = "pm_santa"
 
 class OV_KokoroGenConfig(BaseModel):
     kokoro_message: str = Field(..., description="Text to convert to speech")
-    voice: str = Field(..., description="Voice token")
+    voice: KokoroVoice = Field(..., description="Voice token from available Kokoro voices")
+    lang_code: KokoroLanguage = Field(..., description="Language code for the voice")
     speed: float = Field(1.0, description="Speech speed multiplier")
     character_count_chunk: int = Field(100, description="Max characters per chunk")
     response_format: str = Field("wav", description="Output format")
@@ -66,7 +150,7 @@ class OVKModel(KModel):
     # -----------------------------------------------------------------
     # Text chunking
     # -----------------------------------------------------------------
-    def _chunk_text(self, text: str, chunk_size: int) -> list[str]:
+    def make_chunks(self, text: str, chunk_size: int) -> list[str]:
         """
         Split text into chunks up to `chunk_size` characters,
         preferring sentence boundaries.
@@ -112,19 +196,19 @@ class OVKModel(KModel):
     # -----------------------------------------------------------------
     # Streaming generator
     # -----------------------------------------------------------------
-    async def kokoro_stream(
+    async def chunk_forward_pass(
         self, pipeline: KPipeline, config: OV_KokoroGenConfig
     ) -> AsyncIterator[StreamChunk]:
         """
         Async generator yielding audio chunks from text.
         Uses asyncio.to_thread to offload inference calls.
         """
-        text_chunks = self._chunk_text(config.kokoro_message, config.character_count_chunk)
+        text_chunks = self.make_chunks(config.kokoro_message, config.character_count_chunk)
         total_chunks = len(text_chunks)
 
         for idx, chunk_text in enumerate(text_chunks):
 
-            def kokoro_forward():
+            def infer_on_chunk():
                 """Blocking inference run in background thread."""
                 with torch.no_grad():
                     infer = pipeline(chunk_text, voice=config.voice, speed=config.speed)
@@ -132,7 +216,7 @@ class OVKModel(KModel):
                     return result
 
             # Run blocking inference off the main loop
-            result = await asyncio.to_thread(kokoro_forward)
+            result = await asyncio.to_thread(infer_on_chunk)
 
             yield StreamChunk(
                 audio=result.audio,
@@ -166,14 +250,14 @@ if __name__ == "__main__":
     async def stream_example():
         print("\n--- Streaming Example ---")
         audio_chunks = []
-        async for chunk in ov_model.kokoro_stream(pipeline, gen_config):
+        async for chunk in ov_model.chunk_forward_pass(pipeline, gen_config):
             print(f"[Chunk {chunk.chunk_index+1}/{chunk.total_chunks}] "
                   f"{len(chunk.chunk_text)} chars, {len(chunk.audio)} samples")
             audio_chunks.append(chunk.audio.cpu().numpy())
 
         if audio_chunks:
             combined = np.concatenate(audio_chunks, axis=0)
-            sf.write("kokoro_stream_output.wav", combined, 24000)
-            print("Saved kokoro_stream_output.wav")
+            sf.write("chunk_forward_pass_output.wav", combined, 24000)
+            print("Saved chunk_forward_pass_output.wav")
 
     asyncio.run(stream_example())
