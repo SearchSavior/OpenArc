@@ -8,24 +8,25 @@ from src2.api.model_registry import ModelRegistry, ModelRecord, TaskType
 from src2.engine.ov_genai.ov_genai_llm import OVGenAI_Text2Text
 from src2.engine.ov_genai.ov_genai_vlm import OVGenAI_Image2Text
 from src2.engine.ov_genai.whisper import OVGenAI_Whisper, OVGenAI_WhisperGenConfig
+from src2.engine.openvino.ov_kokoro import OV_Kokoro, OV_KokoroGenConfig
 
 
 @dataclass
 class WorkerPacket:
     """
     Data container for inference requests flowing through the worker system.
-    
+
     WorkerPacket encapsulates all information needed to process a single generation
     request, including the request configuration, response data, and orchestration
     primitives for async communication between components.
-    
+
     Request Flow:
     1. Created by WorkerRegistry with request_id, id_model, and gen_config
     2. Routed to appropriate model queue based on id_model
     3. Processed by Worker_ModelManager which delegates to Worker_QueueHandler
     4. Response and metrics populated during generation
     5. Results communicated back via result_future or stream_queue
-    
+
     Fields:
     - request_id: Unique identifier for tracking and logging
     - id_model: Target model name for routing to correct worker
@@ -34,14 +35,14 @@ class WorkerPacket:
     - metrics: Performance metrics from generation (tokens/sec, etc.)
     - result_future: Async communication for non-streaming requests
     - stream_queue: Async communication for streaming requests
-    
+
     Usage Patterns:
     - Non-streaming: Uses result_future to return completed packet
     - Streaming: Uses stream_queue to yield incremental results + final metrics
     """
     request_id: str
     id_model: str  # model_name
-    gen_config: Union[OVGenAI_GenConfig, OVGenAI_WhisperGenConfig]
+    gen_config: Union[OVGenAI_GenConfig, OVGenAI_WhisperGenConfig, OV_KokoroGenConfig]
     response: Optional[str] = None
     metrics: Optional[Dict[str, Any]] = None
     # Orchestration plumbing
@@ -140,6 +141,49 @@ class Worker_QueueHandler:
 
         packet.response = final_text
         packet.metrics = metrics
+        return packet
+
+    @staticmethod
+    async def generator_worker_kokoro(packet: WorkerPacket, kokoro_generator: OV_Kokoro) -> WorkerPacket:
+        """Generate speech audio for a single packet using the OV_Kokoro pipeline.
+
+        Collects audio chunks and concatenates them into a single audio tensor,
+        then converts to bytes for response.
+        """
+        import torch
+        import base64
+        import io
+
+        audio_chunks = []
+        chunk_texts = []
+
+        async for chunk in kokoro_generator.chunk_forward_pass(packet.gen_config):
+            audio_chunks.append(chunk.audio)
+            chunk_texts.append(chunk.chunk_text)
+
+        if audio_chunks:
+            # Concatenate all audio chunks
+            full_audio = torch.cat(audio_chunks, dim=0)
+
+            # Convert to WAV bytes
+            wav_buffer = io.BytesIO()
+            import soundfile as sf
+            sf.write(wav_buffer, full_audio.numpy(), samplerate=24000, format='WAV')
+            wav_bytes = wav_buffer.getvalue()
+
+            # Encode as base64 for JSON response
+            audio_base64 = base64.b64encode(wav_bytes).decode('utf-8')
+            packet.response = audio_base64
+        else:
+            packet.response = ""
+
+        # Add some basic metrics
+        packet.metrics = {
+            "chunks_processed": len(audio_chunks),
+            "chunk_texts": chunk_texts,
+            "total_samples": sum(len(chunk) for chunk in audio_chunks) if audio_chunks else 0
+        }
+
         return packet
 
 class Worker_ModelManager:
@@ -255,6 +299,29 @@ class Worker_ModelManager:
 
             model_queue.task_done()
 
+    @staticmethod
+    async def inference_worker_kokoro(model_name: str, model_queue: asyncio.Queue, kokoro_generator: OV_Kokoro):
+        """Kokoro model inference worker that processes packets from queue"""
+        print(f"[{model_name} Kokoro Worker] Started, waiting for packets...")
+        while True:
+            packet = await model_queue.get()
+            if packet is None:
+                print(f"[{model_name} Kokoro Worker] Shutdown signal received.")
+                break
+
+            completed_packet = await Worker_QueueHandler.generator_worker_kokoro(packet, kokoro_generator)
+
+            # Log the text that was converted to speech
+            text_preview = packet.gen_config.kokoro_message[:50] + "..." if len(packet.gen_config.kokoro_message) > 50 else packet.gen_config.kokoro_message
+            print(f"[{model_name} Kokoro Worker] Request {completed_packet.request_id}: '{text_preview}' -> audio ({len(completed_packet.response) if completed_packet.response else 0} chars base64)")
+            if completed_packet.metrics:
+                print(f"[{model_name} Kokoro Worker] Metrics: {completed_packet.metrics}")
+
+            if packet.result_future is not None and not packet.result_future.done():
+                packet.result_future.set_result(completed_packet)
+
+            model_queue.task_done()
+
 class WorkerRegistry:
     """
     Central orchestrator for managing per-model inference workers and request routing.
@@ -304,6 +371,9 @@ class WorkerRegistry:
         self._model_queues_whisper: Dict[str, asyncio.Queue] = {}
         self._model_tasks_whisper: Dict[str, asyncio.Task] = {}
 
+        self._model_queues_kokoro: Dict[str, asyncio.Queue] = {}
+        self._model_tasks_kokoro: Dict[str, asyncio.Task] = {}
+
         self._lock = asyncio.Lock()
 
         self._model_registry.add_on_loaded(self._on_model_loaded)
@@ -347,6 +417,13 @@ class WorkerRegistry:
                     task = asyncio.create_task(Worker_ModelManager.inference_worker_whisper(record.model_name, q, instance))
                     self._model_tasks_whisper[record.model_name] = task
 
+            elif mt == TaskType.KOKORO and isinstance(instance, OV_Kokoro):
+                if record.model_name not in self._model_queues_kokoro:
+                    q: asyncio.Queue = asyncio.Queue()
+                    self._model_queues_kokoro[record.model_name] = q
+                    task = asyncio.create_task(Worker_ModelManager.inference_worker_kokoro(record.model_name, q, instance))
+                    self._model_tasks_kokoro[record.model_name] = task
+
             else:
                 print(f"[WorkerRegistry] Model type/instance mismatch for {record.model_name}: {record.model_type}, {type(instance)}")
 
@@ -376,6 +453,14 @@ class WorkerRegistry:
             if t is not None and not t.done():
                 t.cancel()
 
+            # Try kokoro dicts
+            q = self._model_queues_kokoro.pop(record.model_name, None)
+            t = self._model_tasks_kokoro.pop(record.model_name, None)
+            if q is not None:
+                await q.put(None)
+            if t is not None and not t.done():
+                t.cancel()
+
     def _get_model_queue(self, model_name: str) -> asyncio.Queue:
         q = self._model_queues_text.get(model_name)
         if q is not None:
@@ -390,6 +475,12 @@ class WorkerRegistry:
         if q is not None:
             return q
         raise ValueError(f"Whisper model '{model_name}' is not loaded or no worker is available")
+
+    def _get_kokoro_queue(self, model_name: str) -> asyncio.Queue:
+        q = self._model_queues_kokoro.get(model_name)
+        if q is not None:
+            return q
+        raise ValueError(f"Kokoro model '{model_name}' is not loaded or no worker is available")
 
     async def generate(self, model_name: str, gen_config: OVGenAI_GenConfig) -> Dict[str, Any]:
         if gen_config.stream:
@@ -445,3 +536,21 @@ class WorkerRegistry:
         await q.put(packet)
         completed = await result_future
         return {"text": completed.response or "", "metrics": completed.metrics or {}}
+
+    async def generate_speech_kokoro(self, model_name: str, gen_config: OV_KokoroGenConfig) -> Dict[str, Any]:
+        """Generate speech using a loaded Kokoro model asynchronously via worker queue.
+
+        Returns a dict with base64-encoded WAV audio and optional metrics.
+        """
+        request_id = uuid.uuid4().hex
+        result_future: asyncio.Future = asyncio.get_running_loop().create_future()
+        packet = WorkerPacket(
+            request_id=request_id,
+            id_model=model_name,
+            gen_config=gen_config,
+            result_future=result_future,
+        )
+        q = self._get_kokoro_queue(model_name)
+        await q.put(packet)
+        completed = await result_future
+        return {"audio_base64": completed.response or "", "metrics": completed.metrics or {}}
