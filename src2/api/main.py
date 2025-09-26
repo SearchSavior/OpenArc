@@ -22,7 +22,7 @@ from src2.api.base_config import OVGenAI_GenConfig
 from src2.api.model_registry import ModelLoadConfig, ModelRegistry, ModelUnloadConfig
 from src2.api.worker_registry import WorkerRegistry
 from src2.engine.ov_genai.whisper import OVGenAI_WhisperGenConfig
-from src2.engine.openvino.ov_kokoro import OV_KokoroGenConfig, KokoroVoice, KokoroLanguage
+from src2.engine.openvino.ov_kokoro import OV_KokoroGenConfig
 
 #===============================================================#
 # Logging
@@ -121,35 +121,6 @@ async def get_status():
     """Get registry status showing all loaded models."""
     return await _registry.status()
 
-
-class GenerateRequest(BaseModel):
-    model_name: str
-    gen_config: OVGenAI_GenConfig
-
-
-@app.post("/openarc/generate", dependencies=[Depends(verify_api_key)])
-async def generate_text(req: GenerateRequest):
-    """Generate text using a loaded model. Supports streaming and non-streaming."""
-    try:
-        if req.gen_config.stream:
-            async def event_stream() -> AsyncIterator[bytes]:
-                async for item in _workers.stream_generate(req.model_name, req.gen_config):
-                    if isinstance(item, dict):
-                        payload = {"event": "metrics", "data": item}
-                        yield (f"data: {json.dumps(payload)}\n\n").encode()
-                    else:
-                        yield (f"data: {item}\n\n").encode()
-
-            return StreamingResponse(event_stream(), media_type="text/event-stream")
-        else:
-            result = await _workers.generate(req.model_name, req.gen_config)
-            return result
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Generation failed: {str(exc)}")
-
-\
 #===============================================================#
 # OpenAI-compatible endpoints
 #===============================================================#
@@ -300,26 +271,21 @@ async def openai_chat_completions(request: ChatCompletionRequest):
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(exc)}")
 
 
-
-#===============================================================#
-# OpenAI audio transcription endpoint (Whisper)
-#===============================================================#
-
-class TranscriptionRequest(BaseModel):
+class WhisperRequest(BaseModel):
     model: str
     audio_base64: str
 
-
-class SpeechRequest(BaseModel):
+class KokoroRequest(BaseModel):
     model: str
     input: str
-    voice: Optional[str] = "af_sarah"  # Default voice
-    speed: Optional[float] = 1.0
+    voice: Optional[str] = None
+    speed: Optional[float] = None
+    language: Optional[str] = None
     response_format: Optional[str] = "wav"
 
 
 @app.post("/v1/audio/transcriptions", dependencies=[Depends(verify_api_key)])
-async def openai_audio_transcriptions(request: TranscriptionRequest):
+async def openai_audio_transcriptions(request: WhisperRequest):
     try:
         gen_config = OVGenAI_WhisperGenConfig(audio_base64=request.audio_base64)
         result = await _workers.transcribe_whisper(request.model, gen_config)
@@ -331,48 +297,17 @@ async def openai_audio_transcriptions(request: TranscriptionRequest):
 
 
 @app.post("/v1/audio/speech", dependencies=[Depends(verify_api_key)])
-async def openai_audio_speech(request: SpeechRequest):
+async def openai_audio_speech(request: KokoroRequest):
     """OpenAI-compatible endpoint for text-to-speech using Kokoro models.
 
     Returns a WAV file containing the synthesized speech.
     """
     try:
-        # Map voice string to KokoroVoice enum
-        try:
-            voice_enum = KokoroVoice(request.voice)
-        except ValueError:
-            # Default to af_sarah if invalid voice provided
-            voice_enum = KokoroVoice.AF_SARAH
-
-        # Determine language from voice
-        # American English voices start with 'af' or 'am'
-        # British English voices start with 'bf' or 'bm'
-        # etc.
-        if request.voice.startswith(('af', 'am')):
-            lang_code = KokoroLanguage.AMERICAN_ENGLISH
-        elif request.voice.startswith(('bf', 'bm')):
-            lang_code = KokoroLanguage.BRITISH_ENGLISH
-        elif request.voice.startswith(('jf', 'jm')):
-            lang_code = KokoroLanguage.JAPANESE
-        elif request.voice.startswith(('zf', 'zm')):
-            lang_code = KokoroLanguage.MANDARIN_CHINESE
-        elif request.voice.startswith(('ef', 'em')):
-            lang_code = KokoroLanguage.SPANISH
-        elif request.voice.startswith('ff'):
-            lang_code = KokoroLanguage.FRENCH
-        elif request.voice.startswith(('hf', 'hm')):
-            lang_code = KokoroLanguage.HINDI
-        elif request.voice.startswith(('if', 'im')):
-            lang_code = KokoroLanguage.ITALIAN
-        elif request.voice.startswith(('pf', 'pm')):
-            lang_code = KokoroLanguage.BRAZILIAN_PORTUGUESE
-        else:
-            lang_code = KokoroLanguage.AMERICAN_ENGLISH  # Default fallback
 
         gen_config = OV_KokoroGenConfig(
             kokoro_message=request.input,
-            voice=voice_enum,
-            lang_code=lang_code,
+            voice=request.voice,
+            lang_code=request.language,
             speed=request.speed,
             response_format=request.response_format
         )
