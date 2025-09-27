@@ -2,27 +2,25 @@
 # They are one hero among many future heroes working to make OpenArc better. 
 
 import datetime
-import time
-import uuid
 import json
-import os
-from typing import AsyncIterator, Any, List, Optional
 import logging
 import logging.config
+import os
+import time
+import uuid
+from typing import Any, AsyncIterator, List, Optional
 
-
-from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
-from src2.api.base_config import OVGenAI_GenConfig
-from src2.api.model_registry import ModelLoadConfig, ModelRegistry, ModelUnloadConfig
-from src2.api.worker_registry import WorkerRegistry
-from src2.engine.ov_genai.whisper import OVGenAI_WhisperGenConfig
-from src2.engine.openvino.ov_kokoro import OV_KokoroGenConfig
+from src2.server.model_registry import ModelLoadConfig, ModelRegistry, ModelUnloadConfig
+from src2.server.models.openvino import OV_KokoroGenConfig
+from src2.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
+from src2.server.worker_registry import WorkerRegistry
 
 #===============================================================#
 # Logging

@@ -5,7 +5,7 @@ import logging
 from transformers import AutoTokenizer
 from optimum.intel.openvino import OVModelForCausalLM
 
-from src2.api.model_registry import ModelLoadConfig
+from src2.server.model_registry import ModelLoadConfig
 
 
 
@@ -14,7 +14,7 @@ from src2.api.model_registry import ModelLoadConfig
 
 class Optimum_VLM:
     def __init__(self, load_config: ModelLoadConfig):
-
+        pass
     def generate_type():
         pass
 

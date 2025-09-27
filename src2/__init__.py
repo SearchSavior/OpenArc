@@ -1,4 +1,6 @@
-from src2.engine.ov_genai.ov_genai_llm import OVGenAI_Text2Text
-from src2.engine.ov_genai.ov_genai_vlm import OVGenAI_Image2Text
+from src2.engine.ov_genai.llm import OVGenAI_LLM
+from src2.engine.ov_genai.vlm import OVGenAI_VLM
+from src2.engine.ov_genai.whisper import OVGenAI_Whisper
+from src2.engine.openvino.kokoro import OV_Kokoro
 
-__all__ = ["OVGenAI_Text2Text", "OVGenAI_Image2Text"]
+__all__ = ["OVGenAI_LLM", "OVGenAI_VLM", "OVGenAI_Whisper", "OV_Kokoro"]

@@ -15,8 +15,8 @@ from openvino_genai import (
 from PIL import Image
 from transformers import AutoProcessor
 
-from src2.api.base_config import OVGenAI_GenConfig
-from src2.api.model_registry import ModelLoadConfig, ModelRegistry
+from src2.server.models.ov_genai import OVGenAI_GenConfig
+from src2.server.model_registry import ModelLoadConfig, ModelRegistry
 from src2.engine.ov_genai.streamers import ChunkStreamer
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ logger.setLevel(logging.INFO)
 
 class OVGenAI_VLM:
     def __init__(self, load_config: ModelLoadConfig):
-        self.model_path = None  # VLMPipeline
+        self.model_path
         self.processor: Optional[AutoProcessor] = None
         self.load_config = load_config
 
@@ -37,9 +37,6 @@ class OVGenAI_VLM:
         
         These match VLMPipeline.generate() expected inputs.
         """
-        if self.processor is None:
-            raise RuntimeError("Processor is not initialized. Call load_model() first.")
-
         images: List[Image.Image] = []
         text_conversation: List[Dict[str, Any]] = []
 
@@ -205,7 +202,7 @@ class OVGenAI_VLM:
         )
 
         self.processor = AutoProcessor.from_pretrained(loader.model_path)
-        print(f"Model loaded successfully: {loader.model_name}")
+        logger.info(f"Model loaded successfully: {loader.model_name}")
 
     async def unload_model(self, registry: ModelRegistry, model_name: str) -> bool:
         """
@@ -222,7 +219,7 @@ class OVGenAI_VLM:
             self.processor = None
 
         gc.collect()
-        print(f"[{self.load_config.model_name}] weights and tokenizer unloaded and memory cleaned up")
+        logger.info(f"[{self.load_config.model_name}] weights and tokenizer unloaded and memory cleaned up")
         return removed
 
 

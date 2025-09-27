@@ -257,14 +257,14 @@ async def create_model_instance(load_config: ModelLoadConfig) -> Any:
     if load_config.engine == EngineType.OV_GENAI:
         if load_config.model_type == TaskType.TEXT_TO_TEXT:
             # Import here to avoid circular imports
-            from src2.engine.ov_genai.ov_genai_llm import OVGenAI_LLM
+            from src2.engine.ov_genai.llm import OVGenAI_LLM
             
             model_instance = OVGenAI_LLM(load_config)
             await asyncio.to_thread(model_instance.load_model, load_config)
             return model_instance
         elif load_config.model_type == TaskType.IMAGE_TO_TEXT:
             # Import here to avoid circular imports
-            from src2.engine.ov_genai.ov_genai_vlm import OVGenAI_VLM
+            from src2.engine.ov_genai.vlm import OVGenAI_VLM
             
             model_instance = OVGenAI_VLM(load_config)
             await asyncio.to_thread(model_instance.load_model, load_config)
@@ -282,7 +282,7 @@ async def create_model_instance(load_config: ModelLoadConfig) -> Any:
     elif load_config.engine == EngineType.OPENVINO:
         if load_config.model_type == TaskType.KOKORO:
             # Import here to avoid circular imports
-            from src2.engine.openvino.ov_kokoro import OV_Kokoro
+            from src2.engine.openvino.kokoro import OV_Kokoro
 
             model_instance = OV_Kokoro(load_config)
             await asyncio.to_thread(model_instance.load_model, load_config)

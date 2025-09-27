@@ -23,7 +23,8 @@ from transformers.generation.streamers import TextIteratorStreamer
 
 class Optimum_LLM:
     def __init__():
-
+        pass
+    
     def generate_type():
         pass
 

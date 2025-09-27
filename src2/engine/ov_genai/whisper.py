@@ -9,15 +9,12 @@ from pydantic import BaseModel, Field
 import librosa
 import numpy as np
 from openvino_genai import WhisperPipeline
-from src2.api.model_registry import ModelRegistry, ModelLoadConfig
+from src2.server.model_registry import ModelRegistry, ModelLoadConfig
+from src2.server.models.ov_genai import OVGenAI_WhisperGenConfig
+
 
 model_path = "/mnt/Ironwolf-4TB/Models/OpenVINO/Whisper/distil-whisper-large-v3-int8-ov"
 sample_audio_path = "/home/echo/Projects/OpenArc/src2/tests/john_steakly_armor_the_drop.wav"
-
-
-
-class OVGenAI_WhisperGenConfig(BaseModel):
-    audio_base64: str = Field(..., description="Base64 encoded audio")
 
 
 class OVGenAI_Whisper:

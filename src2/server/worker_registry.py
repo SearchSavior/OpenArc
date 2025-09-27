@@ -1,15 +1,17 @@
 import asyncio
 import uuid
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, AsyncIterator, Union
+from typing import Any, AsyncIterator, Dict, Optional, Union
 
-from src2.api.base_config import OVGenAI_GenConfig
-from src2.api.model_registry import ModelRegistry, ModelRecord, TaskType
-from src2.engine.ov_genai.ov_genai_llm import OVGenAI_LLM
-from src2.engine.ov_genai.ov_genai_vlm import OVGenAI_VLM
-from src2.engine.ov_genai.whisper import OVGenAI_Whisper, OVGenAI_WhisperGenConfig
-from src2.engine.openvino.ov_kokoro import OV_Kokoro, OV_KokoroGenConfig
+from src2.engine.ov_genai.llm import OVGenAI_LLM
+from src2.engine.ov_genai.vlm import OVGenAI_VLM
+from src2.engine.ov_genai.whisper import OVGenAI_Whisper
+from src2.engine.openvino.kokoro import OV_Kokoro
 
+from src2.server.models.openvino import OV_KokoroGenConfig
+from src2.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
+
+from src2.server.model_registry import ModelRecord, ModelRegistry, TaskType
 
 @dataclass
 class WorkerPacket:
@@ -143,9 +145,10 @@ class InferWorker:
         Collects audio chunks and concatenates them into a single audio tensor,
         then converts to bytes for response.
         """
-        import torch
         import base64
         import io
+
+        import torch
 
         audio_chunks = []
         chunk_texts = []
