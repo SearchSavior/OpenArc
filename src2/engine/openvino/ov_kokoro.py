@@ -110,10 +110,6 @@ class KokoroVoice(str, Enum):
     PM_SANTA = "pm_santa"
 
 
-
-
-
-
 class OV_KokoroGenConfig(BaseModel):
     kokoro_message: str = Field(..., description="Text to convert to speech")
     voice: KokoroVoice = Field(..., description="Voice token from available Kokoro voices")

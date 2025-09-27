@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-class OVGenAI_Image2Text:
+class OVGenAI_VLM:
     def __init__(self, load_config: ModelLoadConfig):
         self.model_path = None  # VLMPipeline
         self.processor: Optional[AutoProcessor] = None

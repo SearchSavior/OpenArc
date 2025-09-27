@@ -184,7 +184,7 @@ class ModelRegistry:
                 if model_id in self._models:
                     record = self._models[model_id]
                     record.model_instance = model_instance
-                    record.status = ModelStatus.LOADED
+                    record.status = ModelStatus.LOADING
                     record.loading_task = None
                 else:
                     return
@@ -257,16 +257,16 @@ async def create_model_instance(load_config: ModelLoadConfig) -> Any:
     if load_config.engine == EngineType.OV_GENAI:
         if load_config.model_type == TaskType.TEXT_TO_TEXT:
             # Import here to avoid circular imports
-            from src2.engine.ov_genai.ov_genai_llm import OVGenAI_Text2Text
+            from src2.engine.ov_genai.ov_genai_llm import OVGenAI_LLM
             
-            model_instance = OVGenAI_Text2Text(load_config)
+            model_instance = OVGenAI_LLM(load_config)
             await asyncio.to_thread(model_instance.load_model, load_config)
             return model_instance
         elif load_config.model_type == TaskType.IMAGE_TO_TEXT:
             # Import here to avoid circular imports
-            from src2.engine.ov_genai.ov_genai_vlm import OVGenAI_Image2Text
+            from src2.engine.ov_genai.ov_genai_vlm import OVGenAI_VLM
             
-            model_instance = OVGenAI_Image2Text(load_config)
+            model_instance = OVGenAI_VLM(load_config)
             await asyncio.to_thread(model_instance.load_model, load_config)
             return model_instance
         elif load_config.model_type == TaskType.WHISPER:
@@ -291,6 +291,5 @@ async def create_model_instance(load_config: ModelLoadConfig) -> Any:
             raise ValueError(f"Model type '{load_config.model_type}' not supported with engine '{load_config.engine}'")
     elif load_config.engine == EngineType.OV_OPTIMUM:
         raise ValueError(f"Engine '{load_config.engine}' not yet implemented")
-    else:
-        raise ValueError(f"Unknown engine type: '{load_config.engine}'")
+
             

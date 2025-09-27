@@ -5,8 +5,8 @@ from typing import Optional, Dict, Any, AsyncIterator, Union
 
 from src2.api.base_config import OVGenAI_GenConfig
 from src2.api.model_registry import ModelRegistry, ModelRecord, TaskType
-from src2.engine.ov_genai.ov_genai_llm import OVGenAI_Text2Text
-from src2.engine.ov_genai.ov_genai_vlm import OVGenAI_Image2Text
+from src2.engine.ov_genai.ov_genai_llm import OVGenAI_LLM
+from src2.engine.ov_genai.ov_genai_vlm import OVGenAI_VLM
 from src2.engine.ov_genai.whisper import OVGenAI_Whisper, OVGenAI_WhisperGenConfig
 from src2.engine.openvino.ov_kokoro import OV_Kokoro, OV_KokoroGenConfig
 
@@ -36,9 +36,7 @@ class WorkerPacket:
     - result_future: Async communication for non-streaming requests
     - stream_queue: Async communication for streaming requests
 
-    Usage Patterns:
-    - Non-streaming: Uses result_future to return completed packet
-    - Streaming: Uses stream_queue to yield incremental results + final metrics
+
     """
     request_id: str
     id_model: str  # model_name
@@ -49,37 +47,32 @@ class WorkerPacket:
     result_future: Optional[asyncio.Future] = None
     stream_queue: Optional[asyncio.Queue] = None
 
-class Worker_QueueHandler:
+class InferWorker:
     """
-    Handles text/image generation for individual packets.
-    
-    This class provides static methods for processing WorkerPacket instances through
-    different generation pipelines (text-to-text and image-to-text). It manages the
-    core generation logic including streaming support, metrics collection, and
-    response formatting.
+    Handles generation for individual packets.
     
     Responsibilities:
-    - Execute generation requests using OVGenAI pipelines
-    - Handle both streaming and non-streaming generation modes
-    - Manage packet state updates (response, metrics)
-    - Route streaming chunks to appropriate queues
-    - Format final responses with metrics
+    - Execute generation requests using pipelines
+
     
     Methods:
-    - generator_worker_text: Process text-to-text generation requests
-    - generator_worker_image: Process image-to-text generation requests
+    - infer_llm: Process text-to-text generation requests
+    - infer_vlm: Process image-to-text generation requests
+    - infer_whisper: Process audio transcription requests
+    - infer_kokoro: Process speech generation requests
+
     
     Note: All methods are static as they operate on provided packets and generators
     without maintaining internal state.
     """
     
     @staticmethod
-    async def generator_worker_text(packet: WorkerPacket, text_generator: OVGenAI_Text2Text) -> WorkerPacket:
-        """Generate text for a single packet using the OVGenAI_Text2Text pipeline"""
+    async def infer_llm(packet: WorkerPacket, llm_instance: OVGenAI_LLM) -> WorkerPacket:
+        """Generate text for a single packet using the OVGenAI_LLM pipeline"""
         metrics = None
         final_text = ""
 
-        async for item in text_generator.generate_type(packet.gen_config):
+        async for item in llm_instance.generate_type(packet.gen_config):
             if isinstance(item, dict):
                 metrics = item
             else:
@@ -99,12 +92,12 @@ class Worker_QueueHandler:
         return packet
 
     @staticmethod
-    async def generator_worker_image(packet: WorkerPacket, image_generator: OVGenAI_Image2Text) -> WorkerPacket:
-        """Generate text from image for a single packet using the OVGenAI_Image2Text pipeline"""
+    async def infer_vlm(packet: WorkerPacket, vlm_model: OVGenAI_VLM) -> WorkerPacket:
+        """Generate text from image for a single packet using the OVGenAI_VLM pipeline"""
         metrics = None
         final_text = ""
 
-        async for item in image_generator.generate_type(packet.gen_config):
+        async for item in vlm_model.generate_type(packet.gen_config):
             if isinstance(item, dict):
                 metrics = item
             else:
@@ -124,7 +117,7 @@ class Worker_QueueHandler:
         return packet
 
     @staticmethod
-    async def generator_worker_whisper(packet: WorkerPacket, whisper_generator: OVGenAI_Whisper) -> WorkerPacket:
+    async def infer_whisper(packet: WorkerPacket, whisper_model: OVGenAI_Whisper) -> WorkerPacket:
         """Transcribe audio for a single packet using the OVGenAI_Whisper pipeline.
 
         Note: Whisper pipeline operates non-streaming; this method processes the
@@ -133,7 +126,7 @@ class Worker_QueueHandler:
         metrics = None
         final_text = ""
 
-        async for item in whisper_generator.transcribe(packet.gen_config):
+        async for item in whisper_model.transcribe(packet.gen_config):
             if isinstance(item, dict):
                 metrics = item
             else:
@@ -144,7 +137,7 @@ class Worker_QueueHandler:
         return packet
 
     @staticmethod
-    async def generator_worker_kokoro(packet: WorkerPacket, kokoro_generator: OV_Kokoro) -> WorkerPacket:
+    async def infer_kokoro(packet: WorkerPacket, kokoro_model: OV_Kokoro) -> WorkerPacket:
         """Generate speech audio for a single packet using the OV_Kokoro pipeline.
 
         Collects audio chunks and concatenates them into a single audio tensor,
@@ -157,7 +150,7 @@ class Worker_QueueHandler:
         audio_chunks = []
         chunk_texts = []
 
-        async for chunk in kokoro_generator.chunk_forward_pass(packet.gen_config):
+        async for chunk in kokoro_model.chunk_forward_pass(packet.gen_config):
             audio_chunks.append(chunk.audio)
             chunk_texts.append(chunk.chunk_text)
 
@@ -186,7 +179,7 @@ class Worker_QueueHandler:
 
         return packet
 
-class Worker_ModelManager:
+class QueueWorker:
     """
     Manages inference worker loops for consuming and processing packets from model queues.
     
@@ -208,8 +201,8 @@ class Worker_ModelManager:
     - Image Workers (VLM): Handle image-to-text/vision-language models
     
     Methods:
-    - inference_worker_text: Continuous worker for text models
-    - inference_worker_image: Continuous worker for image/multimodal models
+    - worker_llm: Continuous worker for text models
+    - worker_vlm: Continuous worker for image/multimodal models
     
     Architecture:
     Each worker runs as an independent asyncio task, processing packets sequentially
@@ -218,7 +211,7 @@ class Worker_ModelManager:
     """
     
     @staticmethod
-    async def inference_worker_text(model_name: str, model_queue: asyncio.Queue, text_generator: OVGenAI_Text2Text):
+    async def queue_worker_llm(model_name: str, model_queue: asyncio.Queue, llm_model: OVGenAI_LLM):
         """Text model inference worker that processes packets from queue"""
         print(f"[{model_name} LLM Worker] Started, waiting for packets...")
         while True:
@@ -227,11 +220,8 @@ class Worker_ModelManager:
                 print(f"[{model_name} LLM Worker] Shutdown signal received.")
                 break
 
-            completed_packet = await Worker_QueueHandler.generator_worker_text(packet, text_generator)
+            completed_packet = await InferWorker.infer_llm(packet, llm_model)
 
-            # Extract user prompt for logging (text-only)
-            user_message = next((msg.get("content", "") for msg in packet.gen_config.messages if msg.get("role") == "user"), "")
-            print(f"[{model_name} LLM Worker] Request {completed_packet.request_id}: {user_message!r} -> {completed_packet.response!r}")
             if completed_packet.metrics:
                 print(f"[{model_name} LLM Worker] Metrics: {completed_packet.metrics}")
 
@@ -241,7 +231,7 @@ class Worker_ModelManager:
             model_queue.task_done()
 
     @staticmethod
-    async def inference_worker_image(model_name: str, model_queue: asyncio.Queue, image_generator: OVGenAI_Image2Text):
+    async def queue_worker_vlm(model_name: str, model_queue: asyncio.Queue, vlm_model: OVGenAI_VLM):
         """Image model inference worker that processes packets from queue"""
         print(f"[{model_name} VLM Worker] Started, waiting for packets...")
         while True:
@@ -250,25 +240,8 @@ class Worker_ModelManager:
                 print(f"[{model_name} VLM Worker] Shutdown signal received.")
                 break
 
-            completed_packet = await Worker_QueueHandler.generator_worker_image(packet, image_generator)
+            completed_packet = await InferWorker.infer_vlm(packet, vlm_model)
 
-            # Extract text parts from multimodal messages for logging
-            user_message = ""
-            for msg in packet.gen_config.messages:
-                if msg.get("role") == "user":
-                    content = msg.get("content", "")
-                    if isinstance(content, str):
-                        user_message = content
-                    elif isinstance(content, list):
-                        text_parts = [
-                            c.get("text", "")
-                            for c in content
-                            if isinstance(c, dict) and c.get("type") == "text"
-                        ]
-                        user_message = " ".join([t for t in text_parts if isinstance(t, str)])
-                    break
-
-            print(f"[{model_name} VLM Worker] Request {completed_packet.request_id}: {user_message!r} -> {completed_packet.response!r}")
             if completed_packet.metrics:
                 print(f"[{model_name} VLM Worker] Metrics: {completed_packet.metrics}")
 
@@ -278,7 +251,7 @@ class Worker_ModelManager:
             model_queue.task_done()
 
     @staticmethod
-    async def inference_worker_whisper(model_name: str, model_queue: asyncio.Queue, whisper_generator: OVGenAI_Whisper):
+    async def queue_worker_whisper(model_name: str, model_queue: asyncio.Queue, whisper_model: OVGenAI_Whisper):
         """Whisper model inference worker that processes packets from queue"""
         print(f"[{model_name} Whisper Worker] Started, waiting for packets...")
         while True:
@@ -287,10 +260,8 @@ class Worker_ModelManager:
                 print(f"[{model_name} Whisper Worker] Shutdown signal received.")
                 break
 
-            completed_packet = await Worker_QueueHandler.generator_worker_whisper(packet, whisper_generator)
+            completed_packet = await InferWorker.infer_whisper(packet, whisper_model)
 
-            # Log a short preview; audio requests don't have a textual user prompt
-            print(f"[{model_name} Whisper Worker] Request {completed_packet.request_id}: -> {completed_packet.response!r}")
             if completed_packet.metrics:
                 print(f"[{model_name} Whisper Worker] Metrics: {completed_packet.metrics}")
 
@@ -300,7 +271,7 @@ class Worker_ModelManager:
             model_queue.task_done()
 
     @staticmethod
-    async def inference_worker_kokoro(model_name: str, model_queue: asyncio.Queue, kokoro_generator: OV_Kokoro):
+    async def queue_worker_kokoro(model_name: str, model_queue: asyncio.Queue, kokoro_model: OV_Kokoro):
         """Kokoro model inference worker that processes packets from queue"""
         print(f"[{model_name} Kokoro Worker] Started, waiting for packets...")
         while True:
@@ -309,11 +280,10 @@ class Worker_ModelManager:
                 print(f"[{model_name} Kokoro Worker] Shutdown signal received.")
                 break
 
-            completed_packet = await Worker_QueueHandler.generator_worker_kokoro(packet, kokoro_generator)
+            completed_packet = await InferWorker.infer_kokoro(packet, kokoro_model)
 
             # Log the text that was converted to speech
-            text_preview = packet.gen_config.kokoro_message[:50] + "..." if len(packet.gen_config.kokoro_message) > 50 else packet.gen_config.kokoro_message
-            print(f"[{model_name} Kokoro Worker] Request {completed_packet.request_id}: '{text_preview}' -> audio ({len(completed_packet.response) if completed_packet.response else 0} chars base64)")
+            
             if completed_packet.metrics:
                 print(f"[{model_name} Kokoro Worker] Metrics: {completed_packet.metrics}")
 
@@ -346,8 +316,8 @@ class WorkerRegistry:
     - Graceful shutdown and resource cleanup
     
     Data Structures:
-    - _model_queues_text/image: Per-model asyncio queues for request routing
-    - _model_tasks_text/image: Per-model asyncio tasks for worker management
+    - _model_queues_llm/image: Per-model asyncio queues for request routing
+    - _model_tasks_llm/image: Per-model asyncio tasks for worker management
     
     Public API:
     - generate(): Non-streaming text generation
@@ -362,11 +332,11 @@ class WorkerRegistry:
         self._model_registry = model_registry
 
         # Separate queues/tasks per type for explicit control and future policies
-        self._model_queues_text: Dict[str, asyncio.Queue] = {}
-        self._model_tasks_text: Dict[str, asyncio.Task] = {}
+        self._model_queues_llm: Dict[str, asyncio.Queue] = {}
+        self._model_tasks_llm: Dict[str, asyncio.Task] = {}
 
-        self._model_queues_image: Dict[str, asyncio.Queue] = {}
-        self._model_tasks_image: Dict[str, asyncio.Task] = {}
+        self._model_queues_vlm: Dict[str, asyncio.Queue] = {}
+        self._model_tasks_vlm: Dict[str, asyncio.Task] = {}
 
         self._model_queues_whisper: Dict[str, asyncio.Queue] = {}
         self._model_tasks_whisper: Dict[str, asyncio.Task] = {}
@@ -396,32 +366,32 @@ class WorkerRegistry:
         instance = record.model_instance
 
         async with self._lock:
-            if mt == TaskType.TEXT_TO_TEXT and isinstance(instance, OVGenAI_Text2Text):
-                if record.model_name not in self._model_queues_text:
+            if mt == TaskType.TEXT_TO_TEXT and isinstance(instance, OVGenAI_LLM):
+                if record.model_name not in self._model_queues_llm:
                     q: asyncio.Queue = asyncio.Queue()
-                    self._model_queues_text[record.model_name] = q
-                    task = asyncio.create_task(Worker_ModelManager.inference_worker_text(record.model_name, q, instance))
-                    self._model_tasks_text[record.model_name] = task
+                    self._model_queues_llm[record.model_name] = q
+                    task = asyncio.create_task(QueueWorker.queue_worker_llm(record.model_name, q, instance))
+                    self._model_tasks_llm[record.model_name] = task
 
-            elif mt == TaskType.IMAGE_TO_TEXT and isinstance(instance, OVGenAI_Image2Text):
-                if record.model_name not in self._model_queues_image:
+            elif mt == TaskType.IMAGE_TO_TEXT and isinstance(instance, OVGenAI_VLM):
+                if record.model_name not in self._model_queues_vlm:
                     q: asyncio.Queue = asyncio.Queue()
-                    self._model_queues_image[record.model_name] = q
-                    task = asyncio.create_task(Worker_ModelManager.inference_worker_image(record.model_name, q, instance))
-                    self._model_tasks_image[record.model_name] = task
+                    self._model_queues_vlm[record.model_name] = q
+                    task = asyncio.create_task(QueueWorker.queue_worker_vlm(record.model_name, q, instance))
+                    self._model_tasks_vlm[record.model_name] = task
 
             elif mt == TaskType.WHISPER and isinstance(instance, OVGenAI_Whisper):
                 if record.model_name not in self._model_queues_whisper:
                     q: asyncio.Queue = asyncio.Queue()
                     self._model_queues_whisper[record.model_name] = q
-                    task = asyncio.create_task(Worker_ModelManager.inference_worker_whisper(record.model_name, q, instance))
+                    task = asyncio.create_task(QueueWorker.queue_worker_whisper(record.model_name, q, instance))
                     self._model_tasks_whisper[record.model_name] = task
 
             elif mt == TaskType.KOKORO and isinstance(instance, OV_Kokoro):
                 if record.model_name not in self._model_queues_kokoro:
                     q: asyncio.Queue = asyncio.Queue()
                     self._model_queues_kokoro[record.model_name] = q
-                    task = asyncio.create_task(Worker_ModelManager.inference_worker_kokoro(record.model_name, q, instance))
+                    task = asyncio.create_task(QueueWorker.queue_worker_kokoro(record.model_name, q, instance))
                     self._model_tasks_kokoro[record.model_name] = task
 
             else:
@@ -430,16 +400,16 @@ class WorkerRegistry:
     async def _on_model_unloaded(self, record: ModelRecord) -> None:
         async with self._lock:
             # Try text dicts
-            q = self._model_queues_text.pop(record.model_name, None)
-            t = self._model_tasks_text.pop(record.model_name, None)
+            q = self._model_queues_llm.pop(record.model_name, None)
+            t = self._model_tasks_llm.pop(record.model_name, None)
             if q is not None:
                 await q.put(None)
             if t is not None and not t.done():
                 t.cancel()
 
             # Try image dicts
-            q = self._model_queues_image.pop(record.model_name, None)
-            t = self._model_tasks_image.pop(record.model_name, None)
+            q = self._model_queues_vlm.pop(record.model_name, None)
+            t = self._model_tasks_vlm.pop(record.model_name, None)
             if q is not None:
                 await q.put(None)
             if t is not None and not t.done():
@@ -462,10 +432,10 @@ class WorkerRegistry:
                 t.cancel()
 
     def _get_model_queue(self, model_name: str) -> asyncio.Queue:
-        q = self._model_queues_text.get(model_name)
+        q = self._model_queues_llm.get(model_name)
         if q is not None:
             return q
-        q = self._model_queues_image.get(model_name)
+        q = self._model_queues_vlm.get(model_name)
         if q is not None:
             return q
         raise ValueError(f"Model '{model_name}' is not loaded or no worker is available")
@@ -483,8 +453,7 @@ class WorkerRegistry:
         raise ValueError(f"Kokoro model '{model_name}' is not loaded or no worker is available")
 
     async def generate(self, model_name: str, gen_config: OVGenAI_GenConfig) -> Dict[str, Any]:
-        if gen_config.stream:
-            raise ValueError("Use stream_generate for streaming requests")
+        """Generate text without streaming."""
         request_id = uuid.uuid4().hex
         result_future: asyncio.Future = asyncio.get_running_loop().create_future()
         packet = WorkerPacket(
@@ -499,8 +468,7 @@ class WorkerRegistry:
         return {"text": completed.response or "", "metrics": completed.metrics or {}}
 
     async def stream_generate(self, model_name: str, gen_config: OVGenAI_GenConfig) -> AsyncIterator[Union[str, Dict[str, Any]]]:
-        if not gen_config.stream:
-            raise ValueError("Use generate for non-streaming requests")
+        """Generate text with streaming."""
         request_id = uuid.uuid4().hex
         stream_queue: asyncio.Queue = asyncio.Queue()
         result_future: asyncio.Future = asyncio.get_running_loop().create_future()
@@ -520,10 +488,8 @@ class WorkerRegistry:
             yield item
 
     async def transcribe_whisper(self, model_name: str, gen_config: OVGenAI_WhisperGenConfig) -> Dict[str, Any]:
-        """Transcribe audio using a loaded Whisper model asynchronously via worker queue.
+        """Transcribe audio using Whisper model."""
 
-        Returns a dict with text and optional metrics for consistency with other APIs.
-        """
         request_id = uuid.uuid4().hex
         result_future: asyncio.Future = asyncio.get_running_loop().create_future()
         packet = WorkerPacket(

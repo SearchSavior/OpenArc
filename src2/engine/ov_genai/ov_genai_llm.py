@@ -18,7 +18,7 @@ from src2.engine.ov_genai.streamers import ChunkStreamer
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-class OVGenAI_Text2Text:
+class OVGenAI_LLM:
     def __init__(self, load_config: ModelLoadConfig):
         self.model_path = None
         self.encoder_tokenizer = None
