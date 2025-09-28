@@ -2,15 +2,18 @@ import asyncio
 import base64
 import gc
 import io
+import librosa
 from typing import AsyncIterator, Dict, Any, Union
 
-from pydantic import BaseModel, Field
 
-import librosa
 import numpy as np
+
+
 from openvino_genai import WhisperPipeline
-from src2.server.model_registry import ModelRegistry, ModelLoadConfig
-from src2.server.models.ov_genai import OVGenAI_WhisperGenConfig
+
+from src.server.model_registry import ModelRegistry, ModelLoadConfig
+
+from src.server.models.ov_genai import OVGenAI_WhisperGenConfig
 
 
 model_path = "/mnt/Ironwolf-4TB/Models/OpenVINO/Whisper/distil-whisper-large-v3-int8-ov"
@@ -19,9 +22,7 @@ sample_audio_path = "/home/echo/Projects/OpenArc/src2/tests/john_steakly_armor_t
 
 class OVGenAI_Whisper:
     def __init__(self, load_config: ModelLoadConfig):
-        """
-        Do not initialize or store model/pipeline state here.
-        """
+        
         self.load_config = load_config
         pass
 

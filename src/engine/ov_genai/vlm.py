@@ -15,9 +15,9 @@ from openvino_genai import (
 from PIL import Image
 from transformers import AutoProcessor
 
-from src2.server.models.ov_genai import OVGenAI_GenConfig
-from src2.server.model_registry import ModelLoadConfig, ModelRegistry
-from src2.engine.ov_genai.streamers import ChunkStreamer
+from src.server.models.ov_genai import OVGenAI_GenConfig
+from src.server.model_registry import ModelLoadConfig, ModelRegistry
+from src.engine.ov_genai.streamers import ChunkStreamer
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

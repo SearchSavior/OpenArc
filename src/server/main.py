@@ -17,10 +17,10 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
-from src2.server.model_registry import ModelLoadConfig, ModelRegistry, ModelUnloadConfig
-from src2.server.models.openvino import OV_KokoroGenConfig
-from src2.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
-from src2.server.worker_registry import WorkerRegistry
+from src.server.model_registry import ModelLoadConfig, ModelRegistry, ModelUnloadConfig
+from src.server.models.openvino import OV_KokoroGenConfig
+from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
+from src.server.worker_registry import WorkerRegistry
 
 #===============================================================#
 # Logging

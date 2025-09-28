@@ -18,8 +18,8 @@ import torch
 from kokoro.model import KModel
 
 
-from src2.server.model_registry import ModelLoadConfig
-from src2.server.models.openvino import KokoroLanguage, KokoroVoice, OV_KokoroGenConfig
+from src.server.model_registry import ModelLoadConfig, ModelRegistry
+from src.server.models.openvino import KokoroLanguage, KokoroVoice, OV_KokoroGenConfig
 
 
 class StreamChunk(NamedTuple):
@@ -53,8 +53,17 @@ class OV_Kokoro(KModel):
         self.model = core.compile_model(self.model_path / "openvino_model.xml", self._device)
         return self.model
 
-    async def unload_model(self):
-        self.model = None
+    async def unload_model(self, registry: ModelRegistry, model_name: str) -> bool:
+        """Unregister model from registry and free memory resources.
+
+        Args:
+            registry: ModelRegistry to unregister from
+            model_id: Private model identifier returned by register_load
+
+        Returns:
+            True if the model was found and unregistered, else False.
+        """
+        removed = await registry.register_unload(model_name)
 
         gc.collect()
         return True
