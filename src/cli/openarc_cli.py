@@ -118,244 +118,98 @@ def cli():
 
 @cli.command()
 
-@click.option('--model', 
-              required=True, 
-              help="""
-              - Absolute path to model.
+@click.option('--m', 
+required=True, 
+help='Path to OpenVINO IR converted model.')
 
-              - The dir name which stores the openvino model files is used in the API to identify the model.
+@click.option('--mn',
+required=True,
+help="""
+Public facing name of the model. 
 
-              - The dir name is the same as the model name.
-              """)
+For example, calling /1/models returns model_name""")
 
-@click.option('--model-type', 
-              type=click.Choice(['TEXT', 'VISION']),
-              required=True, 
-              default='TEXT',
-              help="""
+@click.option('--eng',
+type=click.Choice(['ovgenai', 'openvino', 'optimum']),
+required=True,
+help="""
+Engine used to load the model
 
-              - Type of model.
+Options:
+- ov_genai: OpenVINO GenAI
+- openvino: OpenVINO engine i.e, using openvino directly
+- optimum: Optimum-Intel
+""")
 
-              """)
+@click.option('--mt',
+type=click.Choice(['text_to_text', 'image_to_text', 'whisper', 'kokoro']),
+required=True,
+help="""
+Model type to load the model.
 
-@click.option('--device', 
-              required=True, 
-              default='CPU', 
-              help="""
-              - Device: CPU, GPU.0, GPU.1, GPU.2, GPU.3, GPU.4, AUTO
+Options:
+- text_to_text: Text-to-text LLM models
+- image_to_text: Image-to-text VLM models
+- whisper: Whisper ASR models
+- kokoro: Kokoro TTS models
+""")
 
-              - GPU.0 is the first GPU, GPU.1 is the second GPU, etc.
+@click.option('--device',
+required=True,
+help="""
+Device(s) to load the model on.
 
-              - AUTO will automatically select the best device.
-              """)
+OpenVINO runtime passes error to the server based on what other options are set.
+""")
 
-@click.option('--use-cache/--no-use-cache',
-              required=True, 
-              default=True,
-              help="""
-              - Use cache for stateful models.
 
-              - Edge cases may require disabling cache, probably based on model architecture.
 
-              """)
 
-@click.option('--dynamic-shapes/--no-dynamic-shapes',
-              required=True, 
-              default=True,
-              help="""
-              - Use dynamic shapes.
-               
-              - If false, the model will be loaded with static shapes.
+@click.option(
+    "--rtc",
+    type=dict,
+    default={},
+    help="""OpenVINO performance hints.
 
-              - OpenVINO IR usually use dynamic shapes but for NPU it must be disabled.
+| key                         | value               |
+| --------------------------- | ------------------- |
+| "MODEL_DISTRIBUTION_POLICY" | "PIPELINE_PARALELL" |
+| "MODEL_DISTRIBUTION_POLICY" | "TENSOR_PARALELL"   |
+|                             |                     |
+| "PERFORMANCE_HINT"          | "LATENCY"           |
+| "PERFORMANCE_HINT"          | "THROUGHPUT"        |
+|                             |                     |
+| "INFERENCE_PRECISION_HINT"  | "fp16"              |
+| "INFERENCE_PRECISION_HINT"  | "fp32"              |
+| "INFERENCE_PRECISION_HINT"  | "bf16"              |
+| "INFERENCE_PRECISION_HINT"  | "dynamic"           |
 
-              """)
-
-@click.option('--pad-token-id', 
-              required=False, 
-              type=int, 
-              help="""
-              - (pad)pad token ID
-
-              - AutoTokenizers usually infers this from config.json but it's useful to configure explicitly.
-
-              """
-              )
-
-@click.option('--eos-token-id', 
-              required=False, 
-              type=int, 
-              help="""
-                - (eos)end of sequence token id
-
-                - AutoTokenizers usually infers this from config.json but it's useful to configure explicitly.  
-
-                - When the eos token is set to the *incorrect* token the model will continue to generate tokens.
-                
-                - Pairing this with a target max_length is a good way to test performance.
-                """
-              
-              )
-
-@click.option('--bos-token-id', 
-              required=False, 
-              type=int, 
-              help='beginning of sequence token ID')
-
-@click.option('--num-streams', 
-              required=False, 
-              type=int, 
-              default=None,
-              show_default=True,
-              help='Number of inference streams')
-
-@click.option('--performance-hint', 
-              required=False, 
-              type=click.Choice(['LATENCY', 'THROUGHPUT', 'CUMULATIVE_THROUGHPUT']),
-              default=None,
-              show_default=True,
-              help="""
-              ---
-
-              - High level performance hint.
-
-              - Usually I use 'LATENCY' which locks to one CPU or one CPU socket.
-
-              - It's best to use the documentation for this.
-
-              https://docs.openvino.ai/2025/openvino-workflow/running-inference/optimize-inference/high-level-performance-hints.html
-
-              ---
-
-              """
-              )
-
-@click.option('--inference-precision-hint', 
-              required=False, 
-              type=click.Choice(['fp32', 'f16', 'bf16', 'dynamic']),
-              default=None,
-              show_default=True,
-              help="""
-              ---
-
-              - Controls precision during inference, at inference time.
-
-                - Works on CPU and GPU.
-
-              - Target device specific features.
-
-              - Ex:'bf16' is probably best on CPUs which support AMX.
-              
-              """
-              )
-
-@click.option('--enable-hyper-threading', 
-              required=False, 
-              type=bool, 
-              default=None,
-              help="""
-              ---
-
-              - CPU ONLY --> Cannot be used with GPU.
-
-              - Enable hyper-threading 
-
-              - This is only relevant for Intel CPUs with hyperthreading i.e, two virtual cores per physical core.
-
-              """
-              )
-
-@click.option('--inference-num-threads', 
-              required=False, 
-              type=int, 
-              default=None,
-              show_default=True,
-              help="""
-              ---
-
-              - CPU ONLY --> Cannot be used with GPU.
-
-              - Number of inference threads
-
-              - More threads usually means faster inference. 
-
-              - Therefore this can be used to constrain the number of threads used for inference.
-              """
-              )
-
-@click.option('--scheduling-core-type', 
-              required=False, 
-              type=click.Choice(['ANY_CORE', 'PCORE_ONLY', 'ECORE_ONLY']),
-              default=None,
-              show_default=True,
-              help="""
-              ---
-
-              - Advanced option to target p-cores or e-cores on CPUs which support it.
-
-              - CPU ONLY --> Cannot be used with GPU.
-
-              - [ANY_CORE]: Any core, so default for 'older' Intel CPUs. Default for most chips but no need to set.
-
-              - [PCORE_ONLY]: Only run inference on threads which are performance cores.
-
-              - [ECORE_ONLY]: Only run inference on threads which are efficency cores.
-              ---
-                """
-              )
+These are not all of the options you can use."""
+)
 
 @click.pass_context
-def load(ctx, model, model_type, device, use_cache, dynamic_shapes,
-         pad_token_id, eos_token_id, bos_token_id, num_streams, performance_hint,
-         inference_precision_hint, enable_hyper_threading, inference_num_threads,
-         scheduling_core_type):
+def load(ctx, m, mn, eng, mt, device, rtc):
     """- Load a model."""
     cli_instance = OpenArcCLI()
     
-    # Build load_config from arguments
+    # Build load_config from arguments - align with server API expectations
     load_config = {
-        "id_model": model,
-        "architecture_type": model_type,
-        "use_cache": use_cache,
+        "model_name": mn,
+        "model_path": m,  
+        "task_type": mt,  
+        "engine": eng,    
         "device": device,
-        "dynamic_shapes": dynamic_shapes,
+        "runtime_config": rtc if rtc else {}
     }
     
-    # Add optional token IDs if provided
-    if pad_token_id is not None:
-        load_config["pad_token_id"] = pad_token_id
-    if eos_token_id is not None:
-        load_config["eos_token_id"] = eos_token_id
-    if bos_token_id is not None:
-        load_config["bos_token_id"] = bos_token_id
-    
-    # Build ov_config from arguments
-    ov_config = {}
-    if performance_hint is not None:
-        ov_config["PERFORMANCE_HINT"] = performance_hint
-    if inference_precision_hint is not None:
-        ov_config["INFERENCE_PRECISION_HINT"] = inference_precision_hint
-    if enable_hyper_threading is not None:
-        ov_config["ENABLE_HYPER_THREADING"] = enable_hyper_threading
-    if inference_num_threads not in (None, False):
-        ov_config["INFERENCE_NUM_THREADS"] = inference_num_threads
-    if scheduling_core_type is not None:
-        ov_config["SCHEDULING_CORE_TYPE"] = scheduling_core_type
-    if num_streams is not None:
-        ov_config["NUM_STREAMS"] = num_streams
-    
-    # Prepare payload
-    payload = {
-        "load_config": load_config,
-        "ov_config": ov_config if ov_config else {}
-    }
-    
+
+
     # Make API request
-    url = f"{cli_instance.base_url}/optimum/model/load"
+    url = f"{cli_instance.base_url}/openarc/load"
     
     try:
-        console.print(f"🚀 [blue]Loading model:[/blue] {model}")
-        response = requests.post(url, json=payload, headers=cli_instance.get_headers())
+        console.print(f"🚀 [blue]Loading model:[/blue] {mn}")
+        response = requests.post(url, json=load_config, headers=cli_instance.get_headers())
         
         if response.status_code == 200:
             console.print("✅ [green]Model loaded successfully![/green]")
@@ -369,25 +223,26 @@ def load(ctx, model, model_type, device, use_cache, dynamic_shapes,
         ctx.exit(1)
 
 @cli.command()
-@click.option('--model-id', required=True, help='Model ID to unload')
+@click.option('--mn', required=True, help='Model name to unload')
 @click.pass_context
-def unload(ctx, model_id):
+def unload(ctx, mn):
     """
-    - DELETE a model from memory. 
+    - POST Delete a model from registry. 
     """
     cli_instance = OpenArcCLI()
 
-    # Make API request
-    url = f"{cli_instance.base_url}/optimum/model/unload"
-    params = {"model_id": model_id}
+    url = f"{cli_instance.base_url}/openarc/unload"
+    payload = {"model_name": mn}
     
     try:
-        console.print(f"🗑️  [blue]Unloading model:[/blue] {model_id}")
-        response = requests.delete(url, params=params, headers=cli_instance.get_headers())
+        console.print(f"🗑️  [blue]Unloading model:[/blue] {mn}")
+        response = requests.post(url, json=payload, headers=cli_instance.get_headers())
         
         if response.status_code == 200:
             result = response.json()
-            console.print(f"✅ [green]{result['message']}[/green]")
+            # Handle different possible response formats
+            message = result.get('message', f"Model '{mn}' unloaded successfully")
+            console.print(f"✅ [green]{message}[/green]")
         else:
             console.print(f"❌ [red]Error unloading model: {response.status_code}[/red]")
             console.print(f"[red]Response:[/red] {response.text}")
@@ -403,7 +258,7 @@ def status(ctx):
     """- GET Status of loaded models."""
     cli_instance = OpenArcCLI()
     
-    url = f"{cli_instance.base_url}/optimum/status"
+    url = f"{cli_instance.base_url}/openarc/status"
     
     try:
         console.print("📊 [blue]Getting model status...[/blue]")
@@ -488,7 +343,7 @@ def tool(ctx):
     """- Utility scripts."""
     pass
 
-@tool.command('device-properties')
+@tool.command('dev-props')
 @click.pass_context
 def device_properties(ctx):
     """
@@ -525,7 +380,7 @@ def device_properties(ctx):
         console.print(f"❌ [red]Error querying device data:[/red] {e}")
         ctx.exit(1)
 
-@tool.command('device-detect')
+@tool.command('dev-detect')
 @click.pass_context
 def device_detect(ctx):
     """

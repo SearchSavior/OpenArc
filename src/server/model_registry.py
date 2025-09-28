@@ -24,7 +24,7 @@ class ModelLoadConfig(BaseModel):
         - model_name is decoupled from last segment of model_path, though in practice you should use that value.
         """
         )
-    task_type: TaskType = Field(...)
+    task_type: ModelType = Field(...)
     engine: EngineType = Field(...)
     device: str = Field(
         ...,
@@ -51,7 +51,7 @@ class ModelStatus(str, Enum):
     LOADED = "loaded"
     FAILED = "failed"
 
-class TaskType(str, Enum):
+class ModelType(str, Enum):
     """Internal routing to the correct inference pipeline.
 
     - llm: Text-to-text LLM models
@@ -256,21 +256,21 @@ class ModelRegistry:
 async def create_model_instance(load_config: ModelLoadConfig) -> Any:
     """Factory function to create the appropriate model instance based on engine type."""
     if load_config.engine == EngineType.OV_GENAI:
-        if load_config.task_type == TaskType.TEXT_TO_TEXT:
+        if load_config.task_type == ModelType.TEXT_TO_TEXT:
             # Import here to avoid circular imports
             from src.engine.ov_genai.llm import OVGenAI_LLM
             
             model_instance = OVGenAI_LLM(load_config)
             await asyncio.to_thread(model_instance.load_model, load_config)
             return model_instance
-        elif load_config.task_type == TaskType.IMAGE_TO_TEXT:
+        elif load_config.task_type == ModelType.IMAGE_TO_TEXT:
             # Import here to avoid circular imports
             from src.engine.ov_genai.vlm import OVGenAI_VLM
             
             model_instance = OVGenAI_VLM(load_config)
             await asyncio.to_thread(model_instance.load_model, load_config)
             return model_instance
-        elif load_config.task_type == TaskType.WHISPER:
+        elif load_config.task_type == ModelType.WHISPER:
 
             from src.engine.ov_genai.whisper import OVGenAI_Whisper
 
@@ -281,7 +281,7 @@ async def create_model_instance(load_config: ModelLoadConfig) -> Any:
         else:
             raise ValueError(f"Model type '{load_config.task_type}' not supported with engine '{load_config.engine}'")
     elif load_config.engine == EngineType.OPENVINO:
-        if load_config.task_type == TaskType.KOKORO:
+        if load_config.task_type == ModelType.KOKORO:
             # Import here to avoid circular imports
             from src.engine.openvino.kokoro import OV_Kokoro
 

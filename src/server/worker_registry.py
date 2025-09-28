@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any, AsyncIterator, Dict, Optional, Union
 
 
-from src.server.model_registry import ModelRecord, ModelRegistry, TaskType
+from src.server.model_registry import ModelRecord, ModelRegistry, ModelType
 
 from src.server.models.openvino import OV_KokoroGenConfig
 from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
@@ -317,7 +317,7 @@ class WorkerRegistry:
     
     Key Features:
     - Automatic worker lifecycle management (spawn on load, cleanup on unload)
-    - Type-safe model handling with explicit TaskType routing
+    - Type-safe model handling with explicit ModelType routing
     - Concurrent processing via per-model asyncio queues
     - Support for both streaming and non-streaming generation
     - Graceful shutdown and resource cleanup
@@ -356,11 +356,11 @@ class WorkerRegistry:
         self._model_registry.add_on_loaded(self._on_model_loaded)
         self._model_registry.add_on_unloaded(self._on_model_unloaded)
 
-    def _normalize_task_type(self, mt) -> Optional[TaskType]:
-        if isinstance(mt, TaskType):
+    def _normalize_task_type(self, mt) -> Optional[ModelType]:
+        if isinstance(mt, ModelType):
             return mt
         try:
-            return TaskType(mt)
+            return ModelType(mt)
         except Exception:
             return None
 
@@ -373,28 +373,28 @@ class WorkerRegistry:
         instance = record.model_instance
 
         async with self._lock:
-            if mt == TaskType.TEXT_TO_TEXT and isinstance(instance, OVGenAI_LLM):
+            if mt == ModelType.TEXT_TO_TEXT and isinstance(instance, OVGenAI_LLM):
                 if record.model_name not in self._model_queues_llm:
                     q: asyncio.Queue = asyncio.Queue()
                     self._model_queues_llm[record.model_name] = q
                     task = asyncio.create_task(QueueWorker.queue_worker_llm(record.model_name, q, instance))
                     self._model_tasks_llm[record.model_name] = task
 
-            elif mt == TaskType.IMAGE_TO_TEXT and isinstance(instance, OVGenAI_VLM):
+            elif mt == ModelType.IMAGE_TO_TEXT and isinstance(instance, OVGenAI_VLM):
                 if record.model_name not in self._model_queues_vlm:
                     q: asyncio.Queue = asyncio.Queue()
                     self._model_queues_vlm[record.model_name] = q
                     task = asyncio.create_task(QueueWorker.queue_worker_vlm(record.model_name, q, instance))
                     self._model_tasks_vlm[record.model_name] = task
 
-            elif mt == TaskType.WHISPER and isinstance(instance, OVGenAI_Whisper):
+            elif mt == ModelType.WHISPER and isinstance(instance, OVGenAI_Whisper):
                 if record.model_name not in self._model_queues_whisper:
                     q: asyncio.Queue = asyncio.Queue()
                     self._model_queues_whisper[record.model_name] = q
                     task = asyncio.create_task(QueueWorker.queue_worker_whisper(record.model_name, q, instance))
                     self._model_tasks_whisper[record.model_name] = task
 
-            elif mt == TaskType.KOKORO and isinstance(instance, OV_Kokoro):
+            elif mt == ModelType.KOKORO and isinstance(instance, OV_Kokoro):
                 if record.model_name not in self._model_queues_kokoro:
                     q: asyncio.Queue = asyncio.Queue()
                     self._model_queues_kokoro[record.model_name] = q
