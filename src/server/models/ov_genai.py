@@ -42,6 +42,5 @@ class OVGenAI_GenConfig(BaseModel):
         description="Stream chunk size in tokens. Must be greater than 0. If set > 1, stream output in chunks of this many tokens using ChunkStreamer."
     )
 
-
 class OVGenAI_WhisperGenConfig(BaseModel):
     audio_base64: str = Field(..., description="Base64 encoded audio")

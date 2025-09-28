@@ -2,23 +2,19 @@
 """
 OpenArc CLI Tool - Command-line interface for OpenArc server operations.
 """
-import json
 import os
-import sys
-import traceback
-import requests
-import yaml
 from pathlib import Path
 
+import requests
 import rich_click as click
-from rich import print as rprint
+import yaml
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from api.launcher import start_server
-from cli.device_query import DeviceDataQuery, DeviceDiagnosticQuery
+from src.server.launch import start_server
+from src.cli.device_query import DeviceDataQuery, DeviceDiagnosticQuery
 
 click.rich_click.STYLE_OPTIONS_TABLE_LEADING = 1
 click.rich_click.STYLE_OPTIONS_TABLE_BOX = "SIMPLE"

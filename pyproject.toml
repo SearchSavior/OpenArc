@@ -16,7 +16,7 @@ dependencies = [
     "librosa>=0.11.0",
     "misaki[en]>=0.9.4",
     "openai>=1.109.1",
-    "openvino-genai>=2025.2.0.0",
+    "openvino-genai>=2025.3.0.0",
     "optimum[openvino]>=1.26.1",
     "pydantic>=2.11.7",
     "pyyaml>=6.0.2",
@@ -33,7 +33,7 @@ build-backend = "setuptools.build_meta"
 packages = ["src"]
 
 [project.scripts]
-openarc = "srccli.openarc_cli:cli"
+openarc = "src.cli.openarc_cli:cli"
 
 [tool.uv]
 dev-dependencies = []

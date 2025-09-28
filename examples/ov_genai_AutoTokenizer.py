@@ -2,24 +2,22 @@ import openvino as ov
 from openvino_genai import GenerationConfig, LLMPipeline
 from transformers import AutoTokenizer
 
-model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Qwen3-1.7B-int8_asym-ov"
+model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Qwen3-32B-Instruct-int4_sym-awq-ov"
 
 pipe = LLMPipeline(
     model_dir,       # Path to the model directory. Remember this will not pull from hub like in transformers
-    device="GPU.1"
-   #device="HETERO:GPU.0,GPU.2",
-   #properties="PIPELINE_PARALELL"
-   #device="HETERO:GPU.0,CPU",    
-   #device="HETERO:GPU.1,GPU.2",
-   
-   #**{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}
+    device="CPU",   
+    **{#"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL",
+       #"PERFORMANCE_HINT": "LATENCY"
+       #"INFERENCE_NUM_THREADS": 20
+    }
 
 )
 
 tokenizer = AutoTokenizer.from_pretrained(model_dir)
 
 generation_config = GenerationConfig(
-    max_new_tokens=32000
+    max_new_tokens=128
 )
 
 prompt = "You're the fastest Llama this side of the equator. What's your favorite food? tell me now"

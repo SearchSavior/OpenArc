@@ -356,7 +356,7 @@ class WorkerRegistry:
         self._model_registry.add_on_loaded(self._on_model_loaded)
         self._model_registry.add_on_unloaded(self._on_model_unloaded)
 
-    def _normalize_model_type(self, mt) -> Optional[TaskType]:
+    def _normalize_task_type(self, mt) -> Optional[TaskType]:
         if isinstance(mt, TaskType):
             return mt
         try:
@@ -365,9 +365,9 @@ class WorkerRegistry:
             return None
 
     async def _on_model_loaded(self, record: ModelRecord) -> None:
-        mt = self._normalize_model_type(record.model_type)
+        mt = self._normalize_task_type(record.task_type)
         if mt is None:
-            print(f"[WorkerRegistry] Unknown model_type for {record.model_name}: {record.model_type}")
+            print(f"[WorkerRegistry] Unknown task_type for {record.model_name}: {record.task_type}")
             return
 
         instance = record.model_instance
@@ -402,7 +402,7 @@ class WorkerRegistry:
                     self._model_tasks_kokoro[record.model_name] = task
 
             else:
-                print(f"[WorkerRegistry] Model type/instance mismatch for {record.model_name}: {record.model_type}, {type(instance)}")
+                print(f"[WorkerRegistry] Model type/instance mismatch for {record.model_name}: {record.task_type}, {type(instance)}")
 
     async def _on_model_unloaded(self, record: ModelRecord) -> None:
         async with self._lock:

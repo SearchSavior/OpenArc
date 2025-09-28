@@ -327,6 +327,3 @@ async def openai_audio_speech(request: KokoroRequest):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Speech synthesis failed: {str(exc)}")
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
