@@ -1,0 +1,18 @@
+{
+  "models": {
+    "Qwen4B-22507": {
+      "model_name": "Qwen4B-22507",
+      "model_path": "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Qwen3-4B-Instruct-2507-OpenVINO/Qwen3-4B-Instruct-2507-int4_asym-awq-ov",
+      "task_type": "text_to_text",
+      "engine": "ovgenai",
+      "device": "GPU.2",
+      "runtime_config": {}
+    }
+  },
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8000
+  },
+  "created_by": "openarc-cli",
+  "version": "1.0"
+}

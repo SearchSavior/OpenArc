@@ -3,11 +3,11 @@
 OpenArc CLI Tool - Command-line interface for OpenArc server operations.
 """
 import os
+import json
 from pathlib import Path
 
 import requests
 import rich_click as click
-import yaml
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -30,34 +30,78 @@ console = Console()
 
 # Configuration handling - use project root directory
 PROJECT_ROOT = Path(__file__).parent
-CONFIG_FILE = PROJECT_ROOT / "openarc-cli-config.yaml"
+CONFIG_FILE = PROJECT_ROOT / "openarc-cli-config.json"
 
 def save_cli_config(host: str, port: int):
-    """Save server configuration to YAML config file."""
-    config = {
+    """Save server configuration to JSON config file."""
+    config = load_full_config()  # Load existing config first
+    config.update({
         "server": {
             "host": host,
             "port": port
         },
         "created_by": "openarc-cli",
         "version": "1.0"
-    }
+    })
     
     with open(CONFIG_FILE, "w") as f:
-        yaml.dump(config, f, default_flow_style=False, indent=2)
+        json.dump(config, f, indent=2)
     
     console.print(f"📝 [dim]Configuration saved to: {CONFIG_FILE}[/dim]")
 
-def load_cli_config():
-    """Load server configuration from YAML config file."""
+def save_model_config(model_name: str, load_config: dict):
+    """Save model configuration to JSON config file."""
+    config = load_full_config()
+    
+    if "models" not in config:
+        config["models"] = {}
+    
+    config["models"][model_name] = load_config
+    
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(config, f, indent=2)
+    
+    console.print(f"💾 [green]Model configuration saved:[/green] {model_name}")
+
+def load_full_config():
+    """Load full configuration from JSON config file."""
     if CONFIG_FILE.exists():
         try:
             with open(CONFIG_FILE, "r") as f:
-                config = yaml.safe_load(f)
-                if config and "server" in config:
-                    return config["server"]
-        except (yaml.YAMLError, FileNotFoundError, KeyError):
+                config = json.load(f)
+                return config if config else {}
+        except (json.JSONDecodeError, FileNotFoundError):
             console.print(f"[yellow]Warning: Could not read config file {CONFIG_FILE}[/yellow]")
+    
+    return {}
+
+def get_model_config(model_name: str):
+    """Get model configuration by name."""
+    config = load_full_config()
+    models = config.get("models", {})
+    return models.get(model_name)
+
+def remove_model_config(model_name: str):
+    """Remove model configuration by name."""
+    config = load_full_config()
+    models = config.get("models", {})
+    
+    if model_name not in models:
+        return False
+    
+    del models[model_name]
+    config["models"] = models
+    
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(config, f, indent=2)
+    
+    return True
+
+def load_cli_config():
+    """Load server configuration from YAML config file."""
+    config = load_full_config()
+    if config and "server" in config:
+        return config["server"]
     
     return {"host": "localhost", "port": 8000}  # defaults
 
@@ -119,92 +163,138 @@ def cli():
 @cli.command()
 
 @click.option('--m', 
-required=True, 
-help='Path to OpenVINO IR converted model.')
+    required=False, 
+    help='Path to OpenVINO IR converted model.')
 
 @click.option('--mn',
-required=True,
-help="""
-Public facing name of the model. 
+    required=True,
+    help="""
+    Public facing name of the model. 
 
-For example, calling /1/models returns model_name""")
+    For example, calling /1/models returns model_name""")
 
 @click.option('--eng',
-type=click.Choice(['ovgenai', 'openvino', 'optimum']),
-required=True,
-help="""
-Engine used to load the model
+    type=click.Choice(['ovgenai', 'openvino', 'optimum']),
+    required=False,
+    help="""
+    Engine used to load the model
 
-Options:
-- ov_genai: OpenVINO GenAI
-- openvino: OpenVINO engine i.e, using openvino directly
-- optimum: Optimum-Intel
-""")
+    Options:
+    - ov_genai: OpenVINO GenAI
+    - openvino: OpenVINO engine i.e, using openvino directly
+    - optimum: Optimum-Intel
+    """)
 
 @click.option('--mt',
-type=click.Choice(['text_to_text', 'image_to_text', 'whisper', 'kokoro']),
-required=True,
-help="""
-Model type to load the model.
+    type=click.Choice(['text_to_text', 'image_to_text', 'whisper', 'kokoro']),
+    required=False,
+    help="""
+    Model type to load the model.
 
-Options:
-- text_to_text: Text-to-text LLM models
-- image_to_text: Image-to-text VLM models
-- whisper: Whisper ASR models
-- kokoro: Kokoro TTS models
+    Options:
+    - text_to_text: Text-to-text LLM models
+    - image_to_text: Image-to-text VLM models
+    - whisper: Whisper ASR models
+    - kokoro: Kokoro TTS models
 """)
 
 @click.option('--device',
-required=True,
-help="""
-Device(s) to load the model on.
+    required=False,
+    help="""
+    Device(s) to load the model on.
 
-OpenVINO runtime passes error to the server based on what other options are set.
+    OpenVINO runtime passes error to the server based on what other options are set.
 """)
 
-
-
-
-@click.option(
-    "--rtc",
+@click.option("--rtc",
     type=dict,
     default={},
     help="""OpenVINO performance hints.
 
-| key                         | value               |
-| --------------------------- | ------------------- |
-| "MODEL_DISTRIBUTION_POLICY" | "PIPELINE_PARALELL" |
-| "MODEL_DISTRIBUTION_POLICY" | "TENSOR_PARALELL"   |
-|                             |                     |
-| "PERFORMANCE_HINT"          | "LATENCY"           |
-| "PERFORMANCE_HINT"          | "THROUGHPUT"        |
-|                             |                     |
-| "INFERENCE_PRECISION_HINT"  | "fp16"              |
-| "INFERENCE_PRECISION_HINT"  | "fp32"              |
-| "INFERENCE_PRECISION_HINT"  | "bf16"              |
-| "INFERENCE_PRECISION_HINT"  | "dynamic"           |
+    "MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALELL" | "TENSOR_PARALELL"
+    "PERFORMANCE_HINT": "LATENCY" | "THROUGHPUT"
+    "INFERENCE_PRECISION_HINT": "fp16" | "fp32" | "bf16" | "dynamic"
 
-These are not all of the options you can use."""
+    Example: --rtc '{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALELL}'
+
+    These are not all of the options you can use."""
 )
 
+@click.option('-a', '--add-config',
+    is_flag=True,
+    help='Save model configuration to config file without loading the model.')
+
 @click.pass_context
-def load(ctx, m, mn, eng, mt, device, rtc):
+def load(ctx, m, mn, eng, mt, device, rtc, add_config):
     """- Load a model."""
     cli_instance = OpenArcCLI()
     
-    # Build load_config from arguments - align with server API expectations
-    load_config = {
-        "model_name": mn,
-        "model_path": m,  
-        "task_type": mt,  
-        "engine": eng,    
-        "device": device,
-        "runtime_config": rtc if rtc else {}
-    }
+    # Check if we should load from saved config
+    saved_config = get_model_config(mn)
     
-
-
-    # Make API request
+    # If -a flag is used, only save configuration
+    if add_config:
+        # Validate required parameters for saving config
+        if not m or not eng or not mt or not device:
+            missing = []
+            if not m:
+                missing.append("--m (model path)")
+            if not eng:
+                missing.append("--eng (engine)")
+            if not mt:
+                missing.append("--mt (model type)")
+            if not device:
+                missing.append("--device")
+            
+            console.print("❌ [red]Missing required parameters for saving configuration:[/red] " + ", ".join(missing))
+            console.print("[yellow]All parameters are required when using -a flag to save configuration.[/yellow]")
+            ctx.exit(1)
+        
+        # Build and save configuration
+        load_config = {
+            "model_name": mn,
+            "model_path": m,  
+            "task_type": mt,  
+            "engine": eng,    
+            "device": device,
+            "runtime_config": rtc if rtc else {}
+        }
+        
+        save_model_config(mn, load_config)
+        console.print(f"✅ [green]Saved configuration for :[/green] {mn}")
+        console.print("[dim]Use 'openarc load --mn {mn}' to load with saved configuration.[/dim]".format(mn=mn))
+        return
+    
+    if not m and not eng and not mt and not device and saved_config:
+        console.print(f"📋 [blue]Model found in config...!:[/blue] {mn}")
+        load_config = saved_config.copy()
+    else:
+        if not m or not eng or not mt or not device:
+            missing = []
+            if not m:
+                missing.append("--m (model path)")
+            if not eng:
+                missing.append("--eng (engine)")
+            if not mt:
+                missing.append("--mt (model type)")
+            if not device:
+                missing.append("--device")
+            
+            console.print("❌ [red]Missing required parameters:[/red] " + ", ".join(missing))
+            console.print("[yellow]Tip: Use 'openarc list' to see saved configurations, or provide all required parameters.[/yellow]")
+            ctx.exit(1)
+        
+        # Build load_config from arguments - align with server API expectations
+        load_config = {
+            "model_name": mn,
+            "model_path": m,  
+            "task_type": mt,  
+            "engine": eng,    
+            "device": device,
+            "runtime_config": rtc if rtc else {}
+        }
+    
+    # Make API request to load the model
     url = f"{cli_instance.base_url}/openarc/load"
     
     try:
@@ -253,6 +343,73 @@ def unload(ctx, mn):
         ctx.exit(1)
 
 @cli.command()
+@click.option('--mn', help='Model name to remove (used with --rm).')
+@click.option('--rm', is_flag=True, help='Remove a model configuration.')
+@click.pass_context
+def list(ctx, rm, mn):
+    """- List saved model configurations."""
+    
+    # Handle remove functionality
+    if rm:
+        if not mn:
+            console.print("❌ [red]Error:[/red] --mn (model name) is required when using --rm")
+            console.print("[yellow]Usage: openarc list --rm --mn <model_name>[/yellow]")
+            ctx.exit(1)
+        
+        # Check if model exists before trying to remove
+        existing_config = get_model_config(mn)
+        if not existing_config:
+            console.print(f"❌ [red]Model configuration not found:[/red] {mn}")
+            console.print("[yellow]Use 'openarc list' to see available configurations.[/yellow]")
+            ctx.exit(1)
+        
+        # Remove the configuration
+        if remove_model_config(mn):
+            console.print(f"🗑️  [green]Model configuration removed:[/green] {mn}")
+        else:
+            console.print(f"❌ [red]Failed to remove model configuration:[/red] {mn}")
+            ctx.exit(1)
+        return
+    
+    config = load_full_config()
+    models = config.get("models", {})
+    
+    if not models:
+        console.print("[yellow]No model configurations found.[/yellow]")
+        console.print("[dim]Use 'openarc load --help' to see how to save configurations with the -a flag.[/dim]")
+        return
+    
+    console.print(f"📋 [blue]Saved Model Configurations ({len(models)}):[/blue]\n")
+    
+    for model_name, model_config in models.items():
+        # Create a table for each model configuration
+        config_table = Table(show_header=False, box=None, pad_edge=False)
+        
+
+        config_table.add_row("model_name", f"[cyan]{model_name}[/cyan]")
+        config_table.add_row("device", f"[blue]{model_config.get('device', 'N/A')}[/blue]")
+        config_table.add_row("engine", f"[green]{model_config.get('engine', 'N/A')}[/green]")
+        config_table.add_row("task_type", f"[magenta]{model_config.get('task_type', 'N/A')}[/magenta]")
+        config_table.add_row("model_path", f"[yellow]{model_config.get('model_path', 'N/A')}[/yellow]")
+        
+        rtc = model_config.get('runtime_config', {})
+        if rtc:
+            config_table.add_row("", "")
+            config_table.add_row(Text("runtime_config", style="bold underline yellow"), "")
+            for key, value in rtc.items():
+                config_table.add_row(f"  {key}", f"[dim]{value}[/dim]")
+        
+        panel = Panel(
+            config_table,
+            title=f"🔧 {model_name}",
+            border_style="green"
+        )
+        console.print(panel)
+    
+    console.print("\n[dim]To load a saved configuration: openarc load --mn <model_name>[/dim]")
+    console.print("[dim]To remove a configuration: openarc list --rm --mn <model_name>[/dim]")
+
+@cli.command()
 @click.pass_context
 def status(ctx):
     """- GET Status of loaded models."""
@@ -266,66 +423,44 @@ def status(ctx):
         
         if response.status_code == 200:
             result = response.json()
-            loaded_models = result.get("loaded_models", {})
-            total_models = result.get("total_models_loaded", 0)
+            models = result.get("models", [])
+            total_models = result.get("total_loaded_models", 0)
             
-            if not loaded_models:
+            if not models:
                 console.print("[yellow]No models currently loaded.[/yellow]")
             else:
-                for model_id, model_info in loaded_models.items():
-                    device = model_info.get("device", "unknown")
-                    status_val = model_info.get("status", "unknown")
-                    metadata = model_info.get("model_metadata", {})
-                    model_type = metadata.get("architecture_type", "unknown")
-                    use_cache = str(metadata.get("use_cache", "-"))
-                    dynamic_shapes = str(metadata.get("dynamic_shapes", "-"))
-                    pad_token_id = str(metadata.get("pad_token_id", "-"))
-                    eos_token_id = str(metadata.get("eos_token_id", "-"))
-                    bos_token_id = str(metadata.get("bos_token_id", "-"))
-                    num_streams = str(metadata.get("NUM_STREAMS", "-"))
-                    precision = str(metadata.get("INFERENCE_PRECISION_HINT", "-"))
-                    perf_hint = str(metadata.get("PERFORMANCE_HINT", "-"))
-                    inf_num_threads = str(metadata.get("INFERENCE_NUM_THREADS", "-"))
-                    enable_ht = str(metadata.get("ENABLE_HYPER_THREADING", "-"))
-                    sched_core_type = str(metadata.get("SCHEDULING_CORE_TYPE", "-"))
+                # Create a table for all models
+                status_table = Table(title=f"📊 Loaded Models ({total_models})")
+                status_table.add_column("model_name", style="cyan", width=20)
+                status_table.add_column("device", style="blue", width=10)
+                status_table.add_column("task_type", style="magenta", width=15)
+                status_table.add_column("engine", style="green", width=10)
+                status_table.add_column("status", style="yellow", width=10)
+                status_table.add_column("time_loaded", style="dim", width=20)
+                
+                for model in models:
+                    model_name = model.get("model_name", "N/A")
+                    device = model.get("device", "N/A")
+                    task_type = model.get("task_type", "N/A")
+                    engine = model.get("engine", "N/A")
+                    status = model.get("status", "N/A")
+                    time_loaded = model.get("time_loaded", "N/A")
+                    
+                    if time_loaded != "N/A" and "." in time_loaded:
+                        time_loaded = time_loaded.split(".")[0].replace("T", " ")
+                    
 
-                    model_table = Table(show_header=False, box=None, pad_edge=False)
-
-                    model_table.add_row(Text("Model Info", style="bold underline cyan"), "")
-                    model_table.add_row("Model ID", f"[cyan]{model_id}[/cyan]")
-                    model_table.add_row("Type", f"[yellow]{model_type}[/yellow]")
-                    model_table.add_row("Status", f"[green]{status_val}[/green]" if status_val == "loaded" else f"[red]{status_val}[/red]")
-                    model_table.add_row("", "")
-
-                    # Device Info Section
-                    model_table.add_row(Text("Device Info", style="bold underline magenta"), "")
-                    model_table.add_row("Device", f"[magenta]{device}[/magenta]")
-                    model_table.add_row("Use Cache", use_cache)
-                    model_table.add_row("Dynamic Shapes", dynamic_shapes)
-                    model_table.add_row("", "")
-
-                    # Token IDs Section
-                    model_table.add_row(Text("Token IDs", style="bold underline yellow"), "")
-                    model_table.add_row("Pad Token ID", pad_token_id)
-                    model_table.add_row("EOS Token ID", eos_token_id)
-                    model_table.add_row("BOS Token ID", bos_token_id)
-                    model_table.add_row("", "")
-
-                    # Performance Settings Section
-                    model_table.add_row(Text("Performance Settings", style="bold underline green"), "")
-                    model_table.add_row("NUM_STREAMS", num_streams)
-                    model_table.add_row("INFERENCE_PRECISION_HINT", precision)
-                    model_table.add_row("PERFORMANCE_HINT", perf_hint)
-                    model_table.add_row("INFERENCE_NUM_THREADS", inf_num_threads)
-                    model_table.add_row("ENABLE_HYPER_THREADING", enable_ht)
-                    model_table.add_row("SCHEDULING_CORE_TYPE", sched_core_type)
-
-                    panel = Panel(
-                        model_table,
-                        title=f"🧩 Model: [bold]{model_id}[/bold]",
-                        border_style="blue" if status_val == "loaded" else "red"
+                    
+                    status_table.add_row(
+                        model_name,
+                        device,
+                        task_type,
+                        engine,
+                        status,
+                        time_loaded
                     )
-                    console.print(panel)
+                
+                console.print(status_table)
                 console.print(f"\n[green]Total models loaded: {total_models}[/green]")
             
         else:
