@@ -14,17 +14,15 @@
 
 ## What's new?
 
-OpenArc started as a collection of scripts; 2.0 represents a signifigant evolution into an engine capable of powering different types of prediction workloads, drawing on ideas from projects like llama.cpp, vLLM, transformers and OpenVINO Model Server.
+Drawing on ideas from llama.cpp, vLLM, transformers and OpenVINO Model Server, Ray and others, OpenArc has evolved into a backyard prediction engine built on a cocktail of popular techniques, outside any of the constraints those projects face. 
 
 ### 3 Layers
 
-FastAPI Layer:
+Building an inference engine is an engineering problem, not an ML problem. 
 
-All the OpenAI compatiblity logic lives here.
+2.0 can be framed as an answer to one question; "How do you manage a synchronos process in python, asynchronosly?"
 
-Model Registry layer:
 
-Here's where the 
 
 
 
