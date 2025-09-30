@@ -28,9 +28,9 @@ click.rich_click.STYLE_COMMANDS_TABLE_ROW_STYLES = ["magenta", "yellow", "cyan",
 
 console = Console()
 
-# Configuration handling - use project root directory
-PROJECT_ROOT = Path(__file__).parent
-CONFIG_FILE = PROJECT_ROOT / "openarc-cli-config.json"
+
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+CONFIG_FILE = PROJECT_ROOT / "openarc-config.json"
 
 def save_cli_config(host: str, port: int):
     """Save server configuration to JSON config file."""

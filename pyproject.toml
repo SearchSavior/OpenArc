@@ -12,6 +12,7 @@ requires-python = ">=3.11"
 dependencies = [
     "click>=8.2.1",
     "fastapi>=0.116.1",
+    "huggingface-hub[cli]>=0.33.4",
     "kokoro>=0.9.4",
     "librosa>=0.11.0",
     "misaki[en]>=0.9.4",
@@ -21,6 +22,7 @@ dependencies = [
     "pydantic>=2.11.7",
     "pyyaml>=6.0.2",
     "rich-click>=1.8.9",
+    "torch>=2.6.0",
     "torchvision>=0.23.0",
     "uvicorn>=0.35.0",
 ]
@@ -38,3 +40,14 @@ openarc = "src.cli.openarc_cli:cli"
 [tool.uv]
 dev-dependencies = []
 package = true
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }
+
+
