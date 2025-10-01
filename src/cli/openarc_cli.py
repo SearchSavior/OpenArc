@@ -18,16 +18,11 @@ from src.cli.device_query import DeviceDataQuery, DeviceDiagnosticQuery
 
 click.rich_click.STYLE_OPTIONS_TABLE_LEADING = 1
 click.rich_click.STYLE_OPTIONS_TABLE_BOX = "SIMPLE"
-
-# click.rich_click.STYLE_OPTIONS_TABLE_ROW_STYLES = ["bold", ""]
 click.rich_click.STYLE_COMMANDS_TABLE_SHOW_LINES = True
-# click.rich_click.STYLE_COMMANDS_TABLE_PAD_EDGE = True
-#click.rich_click.STYLE_COMMANDS_TABLE_BOX = "DOUBLE"
 click.rich_click.STYLE_COMMANDS_TABLE_BORDER_STYLE = "red"
 click.rich_click.STYLE_COMMANDS_TABLE_ROW_STYLES = ["magenta", "yellow", "cyan", "green"]
 
 console = Console()
-
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 CONFIG_FILE = PROJECT_ROOT / "openarc-config.json"
@@ -143,10 +138,12 @@ def cli():
     Use this application to interface with the OpenArc server.
     
     Features:
-    
+
     • Start the OpenArc server.
     
     • Load models into the OpenArc server.
+    
+    • List models from saved configurations.
 
     • Check the status of loaded models.
 
@@ -161,12 +158,12 @@ def cli():
     """
 
 @cli.command()
-@click.option('--model-path', '--m',
-    required=True, 
-    help='Path to OpenVINO IR converted model.')
 @click.option('--model-name', '--mn',
     required=True,
     help='Public facing name of the model.')
+@click.option('--model-path', '--m',
+    required=True, 
+    help='Path to OpenVINO IR converted model.')
 @click.option('--engine', '--en',
     type=click.Choice(['ovgenai', 'openvino', 'optimum']),
     required=True,
