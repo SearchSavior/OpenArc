@@ -8,7 +8,7 @@ import asyncio
 import gc
 import json
 import re
-from enum import Enum
+
 from pathlib import Path
 from typing import AsyncIterator, NamedTuple
 
@@ -58,15 +58,23 @@ class OV_Kokoro(KModel):
 
         Args:
             registry: ModelRegistry to unregister from
-            model_id: Private model identifier returned by register_load
+            model_name: Model identifier to unload
 
         Returns:
             True if the model was found and unregistered, else False.
         """
+        # Clean up model resources
+        if self.model is not None:
+            del self.model
+            self.model = None
+        
+        # Unregister from registry
         removed = await registry.register_unload(model_name)
-
+        
+        # Force garbage collection to free memory
         gc.collect()
-        return True
+        
+        return removed
 
 
     def make_chunks(self, text: str, chunk_size: int) -> list[str]:

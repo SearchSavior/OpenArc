@@ -10,8 +10,8 @@ def transcribe_example():
         print("OPENARC_API_KEY is not set. Export it before running this test.")
         return
 
-    model_name = "distil-whisper-large-v3-int8-ov"
-    audio_path = "/home/echo/Projects/OpenArc/src2/tests/john_steakly_armor_the_drop.wav"
+    model_name = "whisper-gpu1"
+    audio_path = "/home/echo/Projects/OpenArc/src/tests/john_steakly_armor_the_drop.wav"
 
     try:
         with open(audio_path, "rb") as f:

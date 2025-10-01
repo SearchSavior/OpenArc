@@ -14,15 +14,13 @@
 
 ## What's new?
 
-Drawing on ideas from llama.cpp, vLLM, transformers and OpenVINO Model Server, Ray and others, OpenArc has evolved into a backyard prediction engine built on a cocktail of popular techniques, outside any of the constraints those projects face. 
+Drawing on ideas from llama.cpp, vLLM, transformers and OpenVINO Model Server, Ray and others, OpenArc has evolved into a backyard prediction engine inspired by a cocktail of popular techniques, without any of the constraints those projects face.
 
 ### 3 Layers
 
-Building an inference engine is an engineering problem, not an ML problem. 
+2.0 can be framed as my answer to one question; "How do you manage a synchronos process in python, asynchronosly?"
 
-2.0 can be framed as an answer to one question; "How do you manage a synchronos process in python, asynchronosly?"
-
-
+Getting there wasn't easy.
 
 
 
@@ -36,9 +34,9 @@ Building an inference engine is an engineering problem, not an ML problem.
 
 
 
-OpenArc currently supports **text generation** and **text generation with vision** over OpenAI API endpoints. 
 
-Support for speculative decoding, generating embeddings, speech tasks, image generation, PaddleOCR, and others are planned. PRs for these features are welcome, and the model loading API has been designed for extension deeper into Transformers without to much OpenVINO. 
+
+
 
 > [!NOTE]
 > Interested in contributing? Please open an issue before submitting a PR!

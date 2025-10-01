@@ -161,144 +161,70 @@ def cli():
     """
 
 @cli.command()
-
-@click.option('--m', 
-    required=False, 
+@click.option('--model-path', '--m',
+    required=True, 
     help='Path to OpenVINO IR converted model.')
-
-@click.option('--mn',
+@click.option('--model-name', '--mn',
     required=True,
-    help="""
-    Public facing name of the model. 
-
-    For example, calling /1/models returns model_name""")
-
-@click.option('--eng',
+    help='Public facing name of the model.')
+@click.option('--engine', '--en',
     type=click.Choice(['ovgenai', 'openvino', 'optimum']),
-    required=False,
-    help="""
-    Engine used to load the model
-
-    Options:
-    - ov_genai: OpenVINO GenAI
-    - openvino: OpenVINO engine i.e, using openvino directly
-    - optimum: Optimum-Intel
-    """)
-
-@click.option('--mt',
+    required=True,
+    help='Engine used to load the model (ovgenai, openvino, optimum)')
+@click.option('--model-type', '--mt',
     type=click.Choice(['text_to_text', 'image_to_text', 'whisper', 'kokoro']),
-    required=False,
-    help="""
-    Model type to load the model.
-
-    Options:
-    - text_to_text: Text-to-text LLM models
-    - image_to_text: Image-to-text VLM models
-    - whisper: Whisper ASR models
-    - kokoro: Kokoro TTS models
-""")
-
-@click.option('--device',
-    required=False,
-    help="""
-    Device(s) to load the model on.
-
-    OpenVINO runtime passes error to the server based on what other options are set.
-""")
-
-@click.option("--rtc",
+    required=True,
+    help='Model type (text_to_text, image_to_text, whisper, kokoro)')
+@click.option('--device', '--d',
+    required=True,
+    help='Device(s) to load the model on.')
+@click.option("--runtime-config", "--rtc",
     type=dict,
     default={},
-    help="""OpenVINO performance hints.
-
-    "MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALELL" | "TENSOR_PARALELL"
-    "PERFORMANCE_HINT": "LATENCY" | "THROUGHPUT"
-    "INFERENCE_PRECISION_HINT": "fp16" | "fp32" | "bf16" | "dynamic"
-
-    Example: --rtc '{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALELL}'
-
-    These are not all of the options you can use."""
-)
-
-@click.option('-a', '--add-config',
-    is_flag=True,
-    help='Save model configuration to config file without loading the model.')
-
+    help='OpenVINO runtime configuration (e.g., performance hints)')
 @click.pass_context
-def load(ctx, m, mn, eng, mt, device, rtc, add_config):
-    """- Load a model."""
+def add(ctx, model_path, model_name, engine, model_type, device, runtime_config):
+    """- Add a model configuration to the config file."""
+    
+    # Build and save configuration
+    load_config = {
+        "model_name": model_name,
+        "model_path": model_path,  
+        "task_type": model_type,  
+        "engine": engine,    
+        "device": device,
+        "runtime_config": runtime_config if runtime_config else {}
+    }
+    
+    save_model_config(model_name, load_config)
+    console.print(f"✅ [green]Saved configuration for:[/green] {model_name}")
+    console.print(f"[dim]Use 'openarc load --mn {model_name}' to load this model.[/dim]")
+
+@cli.command()
+@click.option('--model-name', '--mn',
+    required=True,
+    help='Model name to load from saved configuration.')
+@click.pass_context
+def load(ctx, model_name):
+    """- Load a model from saved configuration."""
     cli_instance = OpenArcCLI()
     
-    # Check if we should load from saved config
-    saved_config = get_model_config(mn)
+    # Get saved configuration
+    saved_config = get_model_config(model_name)
     
-    # If -a flag is used, only save configuration
-    if add_config:
-        # Validate required parameters for saving config
-        if not m or not eng or not mt or not device:
-            missing = []
-            if not m:
-                missing.append("--m (model path)")
-            if not eng:
-                missing.append("--eng (engine)")
-            if not mt:
-                missing.append("--mt (model type)")
-            if not device:
-                missing.append("--device")
-            
-            console.print("❌ [red]Missing required parameters for saving configuration:[/red] " + ", ".join(missing))
-            console.print("[yellow]All parameters are required when using -a flag to save configuration.[/yellow]")
-            ctx.exit(1)
-        
-        # Build and save configuration
-        load_config = {
-            "model_name": mn,
-            "model_path": m,  
-            "task_type": mt,  
-            "engine": eng,    
-            "device": device,
-            "runtime_config": rtc if rtc else {}
-        }
-        
-        save_model_config(mn, load_config)
-        console.print(f"✅ [green]Saved configuration for :[/green] {mn}")
-        console.print("[dim]Use 'openarc load --mn {mn}' to load with saved configuration.[/dim]".format(mn=mn))
-        return
+    if not saved_config:
+        console.print(f"❌ [red]Model configuration not found:[/red] {model_name}")
+        console.print("[yellow]Tip: Use 'openarc list' to see saved configurations, or 'openarc add' to create a new one.[/yellow]")
+        ctx.exit(1)
     
-    if not m and not eng and not mt and not device and saved_config:
-        console.print(f"📋 [blue]Model found in config...!:[/blue] {mn}")
-        load_config = saved_config.copy()
-    else:
-        if not m or not eng or not mt or not device:
-            missing = []
-            if not m:
-                missing.append("--m (model path)")
-            if not eng:
-                missing.append("--eng (engine)")
-            if not mt:
-                missing.append("--mt (model type)")
-            if not device:
-                missing.append("--device")
-            
-            console.print("❌ [red]Missing required parameters:[/red] " + ", ".join(missing))
-            console.print("[yellow]Tip: Use 'openarc list' to see saved configurations, or provide all required parameters.[/yellow]")
-            ctx.exit(1)
-        
-        # Build load_config from arguments - align with server API expectations
-        load_config = {
-            "model_name": mn,
-            "model_path": m,  
-            "task_type": mt,  
-            "engine": eng,    
-            "device": device,
-            "runtime_config": rtc if rtc else {}
-        }
+    console.print(f"📋 [blue]Loading model from saved config:[/blue] {model_name}")
+    load_config = saved_config.copy()
     
     # Make API request to load the model
     url = f"{cli_instance.base_url}/openarc/load"
     
     try:
-        console.print(f"🚀 [blue]Loading model:[/blue] {mn}")
+        console.print(f"🚀 [blue]Loading model:[/blue] {model_name}")
         response = requests.post(url, json=load_config, headers=cli_instance.get_headers())
         
         if response.status_code == 200:
@@ -313,25 +239,25 @@ def load(ctx, m, mn, eng, mt, device, rtc, add_config):
         ctx.exit(1)
 
 @cli.command()
-@click.option('--mn', required=True, help='Model name to unload')
+@click.option('--model-name', '--mn', required=True, help='Model name to unload')
 @click.pass_context
-def unload(ctx, mn):
+def unload(ctx, model_name):
     """
     - POST Delete a model from registry. 
     """
     cli_instance = OpenArcCLI()
 
     url = f"{cli_instance.base_url}/openarc/unload"
-    payload = {"model_name": mn}
+    payload = {"model_name": model_name}
     
     try:
-        console.print(f"🗑️  [blue]Unloading model:[/blue] {mn}")
+        console.print(f"🗑️  [blue]Unloading model:[/blue] {model_name}")
         response = requests.post(url, json=payload, headers=cli_instance.get_headers())
         
         if response.status_code == 200:
             result = response.json()
             # Handle different possible response formats
-            message = result.get('message', f"Model '{mn}' unloaded successfully")
+            message = result.get('message', f"Model '{model_name}' unloaded successfully")
             console.print(f"✅ [green]{message}[/green]")
         else:
             console.print(f"❌ [red]Error unloading model: {response.status_code}[/red]")
@@ -352,8 +278,8 @@ def list(ctx, rm, mn):
     # Handle remove functionality
     if rm:
         if not mn:
-            console.print("❌ [red]Error:[/red] --mn (model name) is required when using --rm")
-            console.print("[yellow]Usage: openarc list --rm --mn <model_name>[/yellow]")
+            console.print("❌ [red]Error:[/red] --mn is required when using --rm")
+
             ctx.exit(1)
         
         # Check if model exists before trying to remove
@@ -376,7 +302,7 @@ def list(ctx, rm, mn):
     
     if not models:
         console.print("[yellow]No model configurations found.[/yellow]")
-        console.print("[dim]Use 'openarc load --help' to see how to save configurations with the -a flag.[/dim]")
+        console.print("[dim]Use 'openarc add --help' to see how to save configurations.[/dim]")
         return
     
     console.print(f"📋 [blue]Saved Model Configurations ({len(models)}):[/blue]\n")
@@ -387,10 +313,10 @@ def list(ctx, rm, mn):
         
 
         config_table.add_row("model_name", f"[cyan]{model_name}[/cyan]")
-        config_table.add_row("device", f"[blue]{model_config.get('device', 'N/A')}[/blue]")
-        config_table.add_row("engine", f"[green]{model_config.get('engine', 'N/A')}[/green]")
-        config_table.add_row("task_type", f"[magenta]{model_config.get('task_type', 'N/A')}[/magenta]")
-        config_table.add_row("model_path", f"[yellow]{model_config.get('model_path', 'N/A')}[/yellow]")
+        config_table.add_row("device", f"[blue]{model_config.get('device')}[/blue]")
+        config_table.add_row("engine", f"[green]{model_config.get('engine')}[/green]")
+        config_table.add_row("task_type", f"[magenta]{model_config.get('task_type')}[/magenta]")
+        
         
         rtc = model_config.get('runtime_config', {})
         if rtc:
@@ -401,13 +327,12 @@ def list(ctx, rm, mn):
         
         panel = Panel(
             config_table,
-            title=f"🔧 {model_name}",
             border_style="green"
         )
         console.print(panel)
     
-    console.print("\n[dim]To load a saved configuration: openarc load --mn <model_name>[/dim]")
-    console.print("[dim]To remove a configuration: openarc list --rm --mn <model_name>[/dim]")
+    console.print("\n[dim]To load a saved configuration: openarc load --model-name <model_name>[/dim]")
+    console.print("[dim]To remove a configuration: openarc list --remove --model-name <model_name>[/dim]")
 
 @cli.command()
 @click.pass_context
@@ -439,17 +364,12 @@ def status(ctx):
                 status_table.add_column("time_loaded", style="dim", width=20)
                 
                 for model in models:
-                    model_name = model.get("model_name", "N/A")
-                    device = model.get("device", "N/A")
-                    task_type = model.get("task_type", "N/A")
-                    engine = model.get("engine", "N/A")
-                    status = model.get("status", "N/A")
-                    time_loaded = model.get("time_loaded", "N/A")
-                    
-                    if time_loaded != "N/A" and "." in time_loaded:
-                        time_loaded = time_loaded.split(".")[0].replace("T", " ")
-                    
-
+                    model_name = model.get("model_name")
+                    device = model.get("device")
+                    task_type = model.get("task_type")
+                    engine = model.get("engine")
+                    status = model.get("status")
+                    time_loaded = model.get("time_loaded")
                     
                     status_table.add_row(
                         model_name,
@@ -482,7 +402,7 @@ def tool(ctx):
 @click.pass_context
 def device_properties(ctx):
     """
-    - Query device properties for all devices.
+    - Query OpenVINO device properties for all available devices.
     """
     
     try:
@@ -527,22 +447,22 @@ def device_detect(ctx):
         diagnostic = DeviceDiagnosticQuery()
         available_devices = diagnostic.get_available_devices()
         
-        table = Table(title="📋 Available Devices")
-        table.add_column("#", style="cyan", width=4)
+        table = Table()
+        table.add_column("Index", style="cyan", width=2)
         table.add_column("Device", style="green")
         
         if not available_devices:
-            console.print("❌ [red]No OpenVINO devices found![/red]")
+            console.print("❌ [red] Sanity test failed: No OpenVINO devices found! Maybe check your drivers?[/red]")
             ctx.exit(1)
         
         for i, device in enumerate(available_devices, 1):
             table.add_row(str(i), device)
         
         console.print(table)
-        console.print(f"\n✅ [green]OpenVINO runtime found {len(available_devices)} device(s)[/green]")
+        console.print(f"\n✅ [green] Sanity test passed: found {len(available_devices)} device(s)[/green]")
             
     except Exception as e:
-        console.print(f"❌ [red]Error during device diagnosis:[/red] {e}")
+        console.print(f"❌ [red]Sanity test failed: No OpenVINO devices found! Maybe check your drivers?[/red] {e}")
         ctx.exit(1)
 
 @cli.group()
@@ -553,12 +473,10 @@ def serve():
     pass
 
 @serve.command("start")
-
 @click.option("--host", type=str, default="0.0.0.0", show_default=True,
               help="""
               - Host to bind the server to
               """)
-
 @click.option("--openarc-port", 
               type=int, 
               default=8000, 
@@ -569,7 +487,7 @@ def serve():
 
 def start(host, openarc_port):
     """
-    - 'start' reads --host and --openarc-port and saves them to the config file. Then it starts the server and will read
+    - 'start' reads --host and --openarc-port from config or defaults to 0.0.0.0:8000
     """
     # Save server configuration for other CLI commands to use
     save_cli_config(host, openarc_port)

@@ -3,17 +3,14 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Dict, Optional, Union
 
-
-from src.server.model_registry import ModelRecord, ModelRegistry, ModelType
-
-from src.server.models.openvino import OV_KokoroGenConfig
-from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
-
 from src.engine.ov_genai.llm import OVGenAI_LLM
 from src.engine.ov_genai.vlm import OVGenAI_VLM
 from src.engine.ov_genai.whisper import OVGenAI_Whisper
-
 from src.engine.openvino.kokoro import OV_Kokoro
+
+from src.server.models.openvino import OV_KokoroGenConfig
+from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
+from src.server.model_registry import ModelRecord, ModelRegistry, ModelType
 
 
 
