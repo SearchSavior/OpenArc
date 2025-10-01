@@ -24,7 +24,7 @@ class ModelLoadConfig(BaseModel):
         - model_name is decoupled from last segment of model_path, though in practice you should use that value.
         """
         )
-    task_type: ModelType = Field(...)
+    model_type: ModelType = Field(...)
     engine: EngineType = Field(...)
     device: str = Field(
         ...,
@@ -53,14 +53,16 @@ class ModelStatus(str, Enum):
 
 class ModelType(str, Enum):
     """Internal routing to the correct inference pipeline.
-
-    - llm: Text-to-text LLM models
-    - image_to_text: Image-to-text VLM models
-    - whisper: Whisper ASR models
-    - kokoro: Kokoro TTS models"""
     
-    TEXT_TO_TEXT = "text_to_text"
-    IMAGE_TO_TEXT = "image_to_text"
+    Options:
+    - llm: Text-to-text LLM models
+    - vlm: Image-to-text VLM models
+    - whisper: Whisper ASR models
+    - kokoro: Kokoro TTS models
+"""
+    
+    LLM = "llm"
+    VLM = "vlm"
     WHISPER = "whisper"
     KOKORO = "kokoro"
 
@@ -88,7 +90,7 @@ class ModelRecord:
     # Public fields
     model_path: str = ""
     model_name: str = ""
-    task_type: str = ""
+    model_type: str = ""
     engine: str = ""
     device: str = ""
     runtime_config: Dict[str, Any] = field(default_factory=dict)
@@ -98,7 +100,7 @@ class ModelRecord:
         """Return only public fields as JSON-serializable dict."""
         result = {
             "model_name": self.model_name,
-            "task_type": self.task_type,
+            "model_type": self.model_type,
             "engine": self.engine,
             "device": self.device,
             "runtime_config": self.runtime_config,
@@ -136,7 +138,7 @@ class ModelRegistry:
         record = ModelRecord(
             model_path=loader.model_path,
             model_name=loader.model_name,
-            task_type=loader.task_type,
+            model_type=loader.model_type,
             engine=loader.engine,
             device=loader.device,
             runtime_config=loader.runtime_config,
@@ -256,21 +258,21 @@ class ModelRegistry:
 async def create_model_instance(load_config: ModelLoadConfig) -> Any:
     """Factory function to create the appropriate model instance based on engine type."""
     if load_config.engine == EngineType.OV_GENAI:
-        if load_config.task_type == ModelType.TEXT_TO_TEXT:
+        if load_config.model_type == ModelType.LLM:
             # Import here to avoid circular imports
             from src.engine.ov_genai.llm import OVGenAI_LLM
             
             model_instance = OVGenAI_LLM(load_config)
             await asyncio.to_thread(model_instance.load_model, load_config)
             return model_instance
-        elif load_config.task_type == ModelType.IMAGE_TO_TEXT:
+        elif load_config.model_type == ModelType.VLM:
             # Import here to avoid circular imports
             from src.engine.ov_genai.vlm import OVGenAI_VLM
             
             model_instance = OVGenAI_VLM(load_config)
             await asyncio.to_thread(model_instance.load_model, load_config)
             return model_instance
-        elif load_config.task_type == ModelType.WHISPER:
+        elif load_config.model_type == ModelType.WHISPER:
 
             from src.engine.ov_genai.whisper import OVGenAI_Whisper
 
@@ -279,9 +281,9 @@ async def create_model_instance(load_config: ModelLoadConfig) -> Any:
             return model_instance
             
         else:
-            raise ValueError(f"Model type '{load_config.task_type}' not supported with engine '{load_config.engine}'")
+            raise ValueError(f"Model type '{load_config.model_type}' not supported with engine '{load_config.engine}'")
     elif load_config.engine == EngineType.OPENVINO:
-        if load_config.task_type == ModelType.KOKORO:
+        if load_config.model_type == ModelType.KOKORO:
             # Import here to avoid circular imports
             from src.engine.openvino.kokoro import OV_Kokoro
 
@@ -289,7 +291,7 @@ async def create_model_instance(load_config: ModelLoadConfig) -> Any:
             await asyncio.to_thread(model_instance.load_model, load_config)
             return model_instance
         else:
-            raise ValueError(f"Model type '{load_config.task_type}' not supported with engine '{load_config.engine}'")
+            raise ValueError(f"Model type '{load_config.model_type}' not supported with engine '{load_config.engine}'")
     elif load_config.engine == EngineType.OV_OPTIMUM:
         raise ValueError(f"Engine '{load_config.engine}' not yet implemented")
 

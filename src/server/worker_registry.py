@@ -353,7 +353,7 @@ class WorkerRegistry:
         self._model_registry.add_on_loaded(self._on_model_loaded)
         self._model_registry.add_on_unloaded(self._on_model_unloaded)
 
-    def _normalize_task_type(self, mt) -> Optional[ModelType]:
+    def _normalize_model_type(self, mt) -> Optional[ModelType]:
         if isinstance(mt, ModelType):
             return mt
         try:
@@ -362,22 +362,22 @@ class WorkerRegistry:
             return None
 
     async def _on_model_loaded(self, record: ModelRecord) -> None:
-        mt = self._normalize_task_type(record.task_type)
+        mt = self._normalize_model_type(record.model_type)
         if mt is None:
-            print(f"[WorkerRegistry] Unknown task_type for {record.model_name}: {record.task_type}")
+            print(f"[WorkerRegistry] Unknown model_type for {record.model_name}: {record.model_type}")
             return
 
         instance = record.model_instance
 
         async with self._lock:
-            if mt == ModelType.TEXT_TO_TEXT and isinstance(instance, OVGenAI_LLM):
+            if mt == ModelType.LLM and isinstance(instance, OVGenAI_LLM):
                 if record.model_name not in self._model_queues_llm:
                     q: asyncio.Queue = asyncio.Queue()
                     self._model_queues_llm[record.model_name] = q
                     task = asyncio.create_task(QueueWorker.queue_worker_llm(record.model_name, q, instance))
                     self._model_tasks_llm[record.model_name] = task
 
-            elif mt == ModelType.IMAGE_TO_TEXT and isinstance(instance, OVGenAI_VLM):
+            elif mt == ModelType.VLM and isinstance(instance, OVGenAI_VLM):
                 if record.model_name not in self._model_queues_vlm:
                     q: asyncio.Queue = asyncio.Queue()
                     self._model_queues_vlm[record.model_name] = q
@@ -399,7 +399,7 @@ class WorkerRegistry:
                     self._model_tasks_kokoro[record.model_name] = task
 
             else:
-                print(f"[WorkerRegistry] Model type/instance mismatch for {record.model_name}: {record.task_type}, {type(instance)}")
+                print(f"[WorkerRegistry] Model type/instance mismatch for {record.model_name}: {record.model_type}, {type(instance)}")
 
     async def _on_model_unloaded(self, record: ModelRecord) -> None:
         async with self._lock:

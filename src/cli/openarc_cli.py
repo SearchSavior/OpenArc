@@ -172,9 +172,9 @@ def cli():
     required=True,
     help='Engine used to load the model (ovgenai, openvino, optimum)')
 @click.option('--model-type', '--mt',
-    type=click.Choice(['text_to_text', 'image_to_text', 'whisper', 'kokoro']),
+    type=click.Choice(['llm', 'vlm', 'whisper', 'kokoro']),
     required=True,
-    help='Model type (text_to_text, image_to_text, whisper, kokoro)')
+    help='Model type (llm, vlm, whisper, kokoro)')
 @click.option('--device', '--d',
     required=True,
     help='Device(s) to load the model on.')
@@ -190,7 +190,7 @@ def add(ctx, model_path, model_name, engine, model_type, device, runtime_config)
     load_config = {
         "model_name": model_name,
         "model_path": model_path,  
-        "task_type": model_type,  
+        "model_type": model_type,  
         "engine": engine,    
         "device": device,
         "runtime_config": runtime_config if runtime_config else {}
@@ -315,7 +315,7 @@ def list(ctx, rm, mn):
         config_table.add_row("model_name", f"[cyan]{model_name}[/cyan]")
         config_table.add_row("device", f"[blue]{model_config.get('device')}[/blue]")
         config_table.add_row("engine", f"[green]{model_config.get('engine')}[/green]")
-        config_table.add_row("task_type", f"[magenta]{model_config.get('task_type')}[/magenta]")
+        config_table.add_row("model_type", f"[magenta]{model_config.get('model_type')}[/magenta]")
         
         
         rtc = model_config.get('runtime_config', {})
@@ -358,7 +358,7 @@ def status(ctx):
                 status_table = Table(title=f"📊 Loaded Models ({total_models})")
                 status_table.add_column("model_name", style="cyan", width=20)
                 status_table.add_column("device", style="blue", width=10)
-                status_table.add_column("task_type", style="magenta", width=15)
+                status_table.add_column("model_type", style="magenta", width=15)
                 status_table.add_column("engine", style="green", width=10)
                 status_table.add_column("status", style="yellow", width=10)
                 status_table.add_column("time_loaded", style="dim", width=20)
@@ -366,7 +366,7 @@ def status(ctx):
                 for model in models:
                     model_name = model.get("model_name")
                     device = model.get("device")
-                    task_type = model.get("task_type")
+                    model_type = model.get("model_type")
                     engine = model.get("engine")
                     status = model.get("status")
                     time_loaded = model.get("time_loaded")
@@ -374,7 +374,7 @@ def status(ctx):
                     status_table.add_row(
                         model_name,
                         device,
-                        task_type,
+                        model_type,
                         engine,
                         status,
                         time_loaded

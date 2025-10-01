@@ -38,7 +38,7 @@ def load_models():
         {
             "model_path": "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Hermes-4-14B-int4_sym-ov",
             "model_name": "Hermes-4-14B-int4_sym-ov",
-            "model_type": "text_to_text",
+            "model_type": "llm",
             "engine": "ovgenai",
             "device": "GPU.1",
             "runtime_config": {}

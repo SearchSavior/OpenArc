@@ -25,7 +25,7 @@ def chat_completion_vision_non_streaming_example():
         return
 
     # Encode the image
-    image_path = "/home/echo/Projects/OpenArc/src2/tests/dedication.png"
+    image_path = "/home/echo/Projects/OpenArc/src/tests/dedication.png"
     base64_image = encode_image_to_base64(image_path)
     if not base64_image:
         print("Failed to encode image. Exiting.")
@@ -80,7 +80,7 @@ def chat_completion_vision_streaming_example():
         return
 
     # Encode the image
-    image_path = "/home/echo/Projects/OpenArc/src2/tests/dedication.png"
+    image_path = "/home/echo/Projects/OpenArc/src/tests/dedication.png"
     base64_image = encode_image_to_base64(image_path)
     if not base64_image:
         print("Failed to encode image. Exiting.")
