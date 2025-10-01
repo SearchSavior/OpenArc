@@ -36,7 +36,7 @@ def load_models():
             "runtime_config": {}
         },
         {
-            "model_path": "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Hermes-4-14B-int4_sym-ov",
+            "model_path": "/mnt/Ironwolf-4TB/Models/OpenVINO/Mistral/Rocinante-12B-v1.1-int4_sym-awq-se-ov",
             "model_name": "Hermes-4-14B-int4_sym-ov",
             "model_type": "llm",
             "engine": "ovgenai",
@@ -186,7 +186,7 @@ def chat_completion(transcribed_text):
         
         # Create a more interesting prompt based on the transcribed text
         system_prompt = "You are a helpful assistant. Respond thoughtfully and conversationally to the user's input."
-        user_prompt = f"I just said: '{transcribed_text}'. Please respond to this in a natural, conversational way."
+        user_prompt = f"{transcribed_text}"
         
         resp = client.chat.completions.create(
             model="Hermes-4-14B-int4_sym-ov",
@@ -254,7 +254,7 @@ def main():
     print("=== OpenArc Whisper -> LLM -> Kokoro Chain Test ===\n")
     
     # Configuration
-    sample_input_audio = "/home/echo/Projects/OpenArc/src2/tests/litany_against_fear_dune.wav"
+    sample_input_audio = "/home/echo/Projects/OpenArc/src/tests/litany_against_fear_dune.wav"
     output_audio_path = Path(__file__).parent / "whisper_llm_kokoro_output.wav"
     
     # Step 1: Load all models

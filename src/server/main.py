@@ -10,12 +10,12 @@ import time
 import uuid
 from typing import Any, AsyncIterator, List, Optional
 
+from pydantic import BaseModel
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel
 
 from src.server.model_registry import ModelLoadConfig, ModelRegistry, ModelUnloadConfig
 from src.server.models.openvino import OV_KokoroGenConfig
