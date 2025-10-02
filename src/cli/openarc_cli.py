@@ -272,7 +272,6 @@ def unload(ctx, model_name):
 def list(ctx, rm, mn):
     """- List saved model configurations."""
     
-    # Handle remove functionality
     if rm:
         if not mn:
             console.print("❌ [red]Error:[/red] --mn is required when using --rm")
