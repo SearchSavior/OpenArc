@@ -215,8 +215,6 @@ class OVGenAI_VLM:
         except Exception as e:
             logger.error(f"[{loader.model_name}] Failed to initialize VLMPipeline: {e}", exc_info=True)
 
-
-
     async def unload_model(self, registry: ModelRegistry, model_name: str) -> bool:
         """
         Unregister model from registry and free memory resources.

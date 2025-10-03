@@ -1,11 +1,71 @@
 import uvicorn
 import logging
+from pathlib import Path
 
 # Configure logging
+log_file = Path(__file__).parent.parent.parent / "openarc.log"
+
+# Create a custom logging configuration for uvicorn
+LOG_CONFIG = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "default": {
+            "format": "%(asctime)s - %(levelname)s - %(message)s",
+        },
+        "access": {
+            "format": "%(asctime)s - %(levelname)s - %(message)s",
+        },
+    },
+    "handlers": {
+        "default": {
+            "formatter": "default",
+            "class": "logging.StreamHandler",
+            "stream": "ext://sys.stderr",
+        },
+        "file": {
+            "formatter": "default",
+            "class": "logging.FileHandler",
+            "filename": str(log_file),
+        },
+        "access": {
+            "formatter": "access",
+            "class": "logging.StreamHandler",
+            "stream": "ext://sys.stdout",
+        },
+        "access_file": {
+            "formatter": "access",
+            "class": "logging.FileHandler",
+            "filename": str(log_file),
+        },
+    },
+    "loggers": {
+        "uvicorn": {
+            "handlers": ["default", "file"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "uvicorn.error": {
+            "level": "INFO",
+            "handlers": ["default", "file"],
+            "propagate": False,
+        },
+        "uvicorn.access": {
+            "handlers": ["access", "access_file"],
+            "level": "INFO",
+            "propagate": False,
+        },
+    },
+}
+
+# Configure root logger
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler()]
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(log_file)
+    ]
 )
 
 logger = logging.getLogger("OpenArc")
@@ -37,5 +97,6 @@ def start_server(host: str = "0.0.0.0", openarc_port: int = 8001, reload: bool =
         host=host,
         port=openarc_port,
         log_level="info",
+        log_config=LOG_CONFIG,
         reload=reload
     )

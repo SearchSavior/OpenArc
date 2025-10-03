@@ -4,9 +4,7 @@
 import datetime
 import json
 import logging
-import logging.config
 import os
-import sys
 import time
 import uuid
 from typing import Any, AsyncIterator, List, Optional
@@ -19,9 +17,9 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from src.server.model_registry import ModelLoadConfig, ModelRegistry, ModelUnloadConfig
+from src.server.worker_registry import WorkerRegistry
 from src.server.models.openvino import OV_KokoroGenConfig
 from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
-from src.server.worker_registry import WorkerRegistry
 
 #===============================================================#
 # Logging
@@ -30,9 +28,6 @@ from src.server.worker_registry import WorkerRegistry
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
-
-
 
 
 #===============================================================#
@@ -125,7 +120,7 @@ async def get_status():
 # OpenAI-compatible endpoints
 #===============================================================#
 
-class ChatCompletionRequest(BaseModel):
+class OpenAIChatCompletionRequest(BaseModel):
     messages: Any
     model: str
     temperature: Optional[float] = None
@@ -138,6 +133,18 @@ class ChatCompletionRequest(BaseModel):
     do_sample: Optional[bool] = None
     num_return_sequences: Optional[int] = None
 
+class OpenAIWhisperRequest(BaseModel):
+    model: str
+    audio_base64: str
+
+
+class OpenAIKokoroRequest(BaseModel):
+    model: str
+    input: str
+    voice: Optional[str] = None
+    speed: Optional[float] = None
+    language: Optional[str] = None
+    response_format: Optional[str] = "wav"
 
 
 @app.get("/v1/models", dependencies=[Depends(verify_api_key)])
@@ -165,7 +172,7 @@ async def openai_list_models():
 
 
 @app.post("/v1/chat/completions", dependencies=[Depends(verify_api_key)])
-async def openai_chat_completions(request: ChatCompletionRequest):
+async def openai_chat_completions(request: OpenAIChatCompletionRequest):
     try:
         config_kwargs = {
             "messages": request.messages,
@@ -271,21 +278,10 @@ async def openai_chat_completions(request: ChatCompletionRequest):
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(exc)}")
 
 
-class WhisperRequest(BaseModel):
-    model: str
-    audio_base64: str
-
-class KokoroRequest(BaseModel):
-    model: str
-    input: str
-    voice: Optional[str] = None
-    speed: Optional[float] = None
-    language: Optional[str] = None
-    response_format: Optional[str] = "wav"
 
 
 @app.post("/v1/audio/transcriptions", dependencies=[Depends(verify_api_key)])
-async def openai_audio_transcriptions(request: WhisperRequest):
+async def openai_audio_transcriptions(request: OpenAIWhisperRequest):
     try:
         gen_config = OVGenAI_WhisperGenConfig(audio_base64=request.audio_base64)
         result = await _workers.transcribe_whisper(request.model, gen_config)
@@ -297,7 +293,7 @@ async def openai_audio_transcriptions(request: WhisperRequest):
 
 
 @app.post("/v1/audio/speech", dependencies=[Depends(verify_api_key)])
-async def openai_audio_speech(request: KokoroRequest):
+async def openai_audio_speech(request: OpenAIKokoroRequest):
     """OpenAI-compatible endpoint for text-to-speech using Kokoro models.
 
     Returns a WAV file containing the synthesized speech.

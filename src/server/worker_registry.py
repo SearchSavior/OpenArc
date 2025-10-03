@@ -1,3 +1,4 @@
+import logging
 import asyncio
 import uuid
 from dataclasses import dataclass
@@ -12,7 +13,8 @@ from src.server.models.openvino import OV_KokoroGenConfig
 from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
 from src.server.model_registry import ModelRecord, ModelRegistry, ModelType
 
-
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 @dataclass
 class WorkerPacket:
@@ -217,17 +219,17 @@ class QueueWorker:
     @staticmethod
     async def queue_worker_llm(model_name: str, model_queue: asyncio.Queue, llm_model: OVGenAI_LLM):
         """Text model inference worker that processes packets from queue"""
-        print(f"[{model_name} LLM Worker] Started, waiting for packets...")
+        logger.info(f"[{model_name} LLM Worker] Started, waiting for packets...")
         while True:
             packet = await model_queue.get()
             if packet is None:
-                print(f"[{model_name} LLM Worker] Shutdown signal received.")
+                logger.info(f"[{model_name} LLM Worker] Shutdown signal received.")
                 break
 
             completed_packet = await InferWorker.infer_llm(packet, llm_model)
 
             if completed_packet.metrics:
-                print(f"[{model_name} LLM Worker] Metrics: {completed_packet.metrics}")
+                logger.info(f"[{model_name} LLM Worker] Metrics: {completed_packet.metrics}")
 
             if packet.result_future is not None and not packet.result_future.done():
                 packet.result_future.set_result(completed_packet)
@@ -237,17 +239,17 @@ class QueueWorker:
     @staticmethod
     async def queue_worker_vlm(model_name: str, model_queue: asyncio.Queue, vlm_model: OVGenAI_VLM):
         """Image model inference worker that processes packets from queue"""
-        print(f"[{model_name} VLM Worker] Started, waiting for packets...")
+        logger.info(f"[{model_name} VLM Worker] Started, waiting for packets...")
         while True:
             packet = await model_queue.get()
             if packet is None:
-                print(f"[{model_name} VLM Worker] Shutdown signal received.")
+                logger.info(f"[{model_name} VLM Worker] Shutdown signal received.")
                 break
 
             completed_packet = await InferWorker.infer_vlm(packet, vlm_model)
 
             if completed_packet.metrics:
-                print(f"[{model_name} VLM Worker] Metrics: {completed_packet.metrics}")
+                logger.info(f"[{model_name} VLM Worker] Metrics: {completed_packet.metrics}")
 
             if packet.result_future is not None and not packet.result_future.done():
                 packet.result_future.set_result(completed_packet)
@@ -257,17 +259,17 @@ class QueueWorker:
     @staticmethod
     async def queue_worker_whisper(model_name: str, model_queue: asyncio.Queue, whisper_model: OVGenAI_Whisper):
         """Whisper model inference worker that processes packets from queue"""
-        print(f"[{model_name} Whisper Worker] Started, waiting for packets...")
+        logger.info(f"[{model_name} Whisper Worker] Started, waiting for packets...")
         while True:
             packet = await model_queue.get()
             if packet is None:
-                print(f"[{model_name} Whisper Worker] Shutdown signal received.")
+                logger.info(f"[{model_name} Whisper Worker] Shutdown signal received.")
                 break
 
             completed_packet = await InferWorker.infer_whisper(packet, whisper_model)
 
             if completed_packet.metrics:
-                print(f"[{model_name} Whisper Worker] Metrics: {completed_packet.metrics}")
+                logger.info(f"[{model_name} Whisper Worker] Metrics: {completed_packet.metrics}")
 
             if packet.result_future is not None and not packet.result_future.done():
                 packet.result_future.set_result(completed_packet)
@@ -277,11 +279,11 @@ class QueueWorker:
     @staticmethod
     async def queue_worker_kokoro(model_name: str, model_queue: asyncio.Queue, kokoro_model: OV_Kokoro):
         """Kokoro model inference worker that processes packets from queue"""
-        print(f"[{model_name} Kokoro Worker] Started, waiting for packets...")
+        logger.info(f"[{model_name} Kokoro Worker] Started, waiting for packets...")
         while True:
             packet = await model_queue.get()
             if packet is None:
-                print(f"[{model_name} Kokoro Worker] Shutdown signal received.")
+                logger.info(f"[{model_name} Kokoro Worker] Shutdown signal received.")
                 break
 
             completed_packet = await InferWorker.infer_kokoro(packet, kokoro_model)
@@ -289,7 +291,7 @@ class QueueWorker:
             # Log the text that was converted to speech
             
             if completed_packet.metrics:
-                print(f"[{model_name} Kokoro Worker] Metrics: {completed_packet.metrics}")
+                logger.info(f"[{model_name} Kokoro Worker] Metrics: {completed_packet.metrics}")
 
             if packet.result_future is not None and not packet.result_future.done():
                 packet.result_future.set_result(completed_packet)
@@ -364,7 +366,7 @@ class WorkerRegistry:
     async def _on_model_loaded(self, record: ModelRecord) -> None:
         mt = self._normalize_model_type(record.model_type)
         if mt is None:
-            print(f"[WorkerRegistry] Unknown model_type for {record.model_name}: {record.model_type}")
+            logger.info(f"[WorkerRegistry] Unknown model_type for {record.model_name}: {record.model_type}")
             return
 
         instance = record.model_instance
@@ -399,7 +401,7 @@ class WorkerRegistry:
                     self._model_tasks_kokoro[record.model_name] = task
 
             else:
-                print(f"[WorkerRegistry] Model type/instance mismatch for {record.model_name}: {record.model_type}, {type(instance)}")
+                logger.info(f"[WorkerRegistry] Model type/instance mismatch for {record.model_name}: {record.model_type}, {type(instance)}")
 
     async def _on_model_unloaded(self, record: ModelRecord) -> None:
         async with self._lock:

@@ -2,22 +2,18 @@ import asyncio
 import base64
 import gc
 import io
+import logging
+from typing import Any, AsyncIterator, Dict, Union
+
 import librosa
-from typing import AsyncIterator, Dict, Any, Union
-
-
 import numpy as np
-
-
 from openvino_genai import WhisperPipeline
 
-from src.server.model_registry import ModelRegistry, ModelLoadConfig
-
+from src.server.model_registry import ModelLoadConfig, ModelRegistry
 from src.server.models.ov_genai import OVGenAI_WhisperGenConfig
 
-
-model_path = "/mnt/Ironwolf-4TB/Models/OpenVINO/Whisper/distil-whisper-large-v3-int8-ov"
-sample_audio_path = "/home/echo/Projects/OpenArc/src2/tests/john_steakly_armor_the_drop.wav"
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class OVGenAI_Whisper:
@@ -30,25 +26,21 @@ class OVGenAI_Whisper:
         """
         Prepare audio inputs from base64 string for the Whisper pipeline.
         """
-        # Decode base64 to bytes
+
         audio_bytes = base64.b64decode(gen_config.audio_base64)
         
-        # Create a BytesIO object to simulate a file
         audio_buffer = io.BytesIO(audio_bytes)
         
-        # Load audio -> float32 mono at 16kHz
         audio, sr = librosa.load(audio_buffer, sr=16000, mono=True)
-        # Return as a Python list[float] (float32 -> float) for pybind compatibility
+
         return audio.astype(np.float32).tolist()
 
     async def transcribe(self, gen_config: OVGenAI_WhisperGenConfig) -> AsyncIterator[Union[Dict[str, Any], str]]:
         """
         Run transcription on a given base64 encoded audio and return texts with metrics.
-        If `language` is provided in config, it will be used; otherwise autodetection applies.
         
         Yields in order: metrics (dict), transcribed_text (str).
         """
-        # Prepare audio inputs from base64 in a worker thread
         audio_list = await asyncio.to_thread(self.prepare_audio, gen_config)
 
         result = await asyncio.to_thread(self.whisper_model.generate, audio_list)
@@ -58,10 +50,8 @@ class OVGenAI_Whisper:
         perf_metrics = getattr(result, "perf_metrics", None)
         metrics_dict = self.collect_metrics(perf_metrics) if perf_metrics is not None else {}
 
-        # transcription is the complete result from WhisperPipeline (not streaming chunks)
         final_text = transcription
 
-        # Yield metrics first, then text (following the pattern of generate_text methods)
         yield metrics_dict
         yield final_text
 
@@ -107,6 +97,6 @@ class OVGenAI_Whisper:
             self.whisper_model = None
 
         gc.collect()
-        print(f"[{self.load_config.model_name}] weights and tokenizer unloaded and memory cleaned up")
+        logger.info(f"[{self.load_config.model_name}] weights and tokenizer unloaded and memory cleaned up")
         return removed
 

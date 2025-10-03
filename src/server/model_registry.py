@@ -7,8 +7,11 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, Optional, Callable, Awaitable, List
-
+import logging
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 class ModelLoadConfig(BaseModel):
     model_path: str = Field(
@@ -52,14 +55,14 @@ class ModelStatus(str, Enum):
     FAILED = "failed"
 
 class ModelType(str, Enum):
-    """Internal routing to the correct inference pipeline.
+    """
+    Internal routing to the correct inference pipeline.
     
     Options:
     - llm: Text-to-text LLM models
     - vlm: Image-to-text VLM models
     - whisper: Whisper ASR models
-    - kokoro: Kokoro TTS models
-"""
+    - kokoro: Kokoro TTS models"""    
     
     LLM = "llm"
     VLM = "vlm"
@@ -243,7 +246,7 @@ class ModelRegistry:
                     asyncio.create_task(cb(removed_record))
                     
         except Exception as e:
-            print(f"Error during model unload: {e}")
+            logger.info(f"Error during model unload: {e}")
 
     async def status(self) -> dict:
         """Return registry status: total count and list of loaded models (public view)."""
