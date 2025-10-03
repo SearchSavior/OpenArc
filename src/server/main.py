@@ -6,6 +6,7 @@ import json
 import logging
 import logging.config
 import os
+import sys
 import time
 import uuid
 from typing import Any, AsyncIterator, List, Optional
@@ -25,6 +26,7 @@ from src.server.worker_registry import WorkerRegistry
 #===============================================================#
 # Logging
 #===============================================================#
+
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

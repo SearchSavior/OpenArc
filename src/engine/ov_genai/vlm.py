@@ -1,7 +1,7 @@
 import asyncio
 import base64
 import gc
-import json
+
 import logging
 from io import BytesIO
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
@@ -25,7 +25,7 @@ logger.setLevel(logging.INFO)
 
 class OVGenAI_VLM:
     def __init__(self, load_config: ModelLoadConfig):
-        self.model_path
+        self.model_path = None
         self.processor: Optional[AutoProcessor] = None
         self.load_config = load_config
 
@@ -96,27 +96,35 @@ class OVGenAI_VLM:
         Async non-streaming generation for VLM.
         Yields in order: metrics (dict), new_text (str).
         """
-        generation_kwargs = GenerationConfig(
-            max_new_tokens=gen_config.max_new_tokens,
-            temperature=gen_config.temperature,
-            top_k=gen_config.top_k,
-            top_p=gen_config.top_p,
-            repetition_penalty=gen_config.repetition_penalty,
-        )
+        try:
+            logger.info(f"[{self.load_config.model_name}] Starting non-streaming generation")
+            generation_kwargs = GenerationConfig(
+                max_new_tokens=gen_config.max_new_tokens,
+                temperature=gen_config.temperature,
+                top_k=gen_config.top_k,
+                top_p=gen_config.top_p,
+                repetition_penalty=gen_config.repetition_penalty,
+            )
 
-        prompt, ov_images = self.prepare_inputs(gen_config.messages)
-        if ov_images is not None:
-            result = await asyncio.to_thread(self.model_path.generate, prompt, ov_images, generation_kwargs)
-        else:
-            result = await asyncio.to_thread(self.model_path.generate, prompt, generation_config=generation_kwargs)
+            prompt, ov_images = self.prepare_inputs(gen_config.messages)
+            
+            logger.debug(f"[{self.load_config.model_name}] Calling VLMPipeline.generate")
+            if ov_images is not None:
+                result = await asyncio.to_thread(self.model_path.generate, prompt, ov_images, generation_kwargs)
+            else:
+                result = await asyncio.to_thread(self.model_path.generate, prompt, generation_config=generation_kwargs)
 
-        perf_metrics = result.perf_metrics
+            perf_metrics = result.perf_metrics
 
-        text = result.texts[0] if getattr(result, "texts", None) else ""
+            text = result.texts[0] if getattr(result, "texts", None) else ""
+            logger.info(f"[{self.load_config.model_name}] Generation completed, generated {len(text)} characters")
 
-        metrics_dict = self.collect_metrics(gen_config, perf_metrics)
-        yield metrics_dict
-        yield text
+            metrics_dict = self.collect_metrics(gen_config, perf_metrics)
+            yield metrics_dict
+            yield text
+        except Exception as e:
+            logger.error(f"[{self.load_config.model_name}] Error during non-streaming generation: {e}", exc_info=True)
+            raise
 
     async def generate_stream(self, gen_config: OVGenAI_GenConfig) -> AsyncIterator[Union[str, Dict[str, Any]]]:
         """
@@ -194,15 +202,20 @@ class OVGenAI_VLM:
         """
         Load model using a ModelLoadConfig configuration and cache the AutoProcessor.
         """
+        try:
+            logger.info(f"[{loader.model_name}] Device: {loader.device}, Runtime config: {loader.runtime_config}")
+            
+            self.model_path = VLMPipeline(
+                loader.model_path,
+                loader.device,
+                **(loader.runtime_config or {})
+            )
+            logger.info(f"[{loader.model_name}] VLMPipeline initialized successfully")
 
-        self.model_path = VLMPipeline(
-            loader.model_path,
-            loader.device,
-            **(loader.runtime_config or {})
-        )
+        except Exception as e:
+            logger.error(f"[{loader.model_name}] Failed to initialize VLMPipeline: {e}", exc_info=True)
 
-        self.processor = AutoProcessor.from_pretrained(loader.model_path)
-        logger.info(f"Model loaded successfully: {loader.model_name}")
+
 
     async def unload_model(self, registry: ModelRegistry, model_name: str) -> bool:
         """
