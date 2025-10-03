@@ -139,6 +139,7 @@ class OVGenAI_LLM:
             metrics: Dict[str, Any]
             """
         # Compute prefill throughput = input tokens / ttft (in seconds)
+        # Inspired by section 2.2 (https://arxiv.org/pdf/2404.14294v3)
         ttft_seconds = perf_metrics.get_ttft().mean / 1000
         input_tokens = perf_metrics.get_num_input_tokens()
         prefill_throughput = round(input_tokens / ttft_seconds, 2) if ttft_seconds > 0 else 0
