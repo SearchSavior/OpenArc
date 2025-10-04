@@ -7,7 +7,7 @@ import logging
 import os
 import time
 import uuid
-from typing import Any, AsyncIterator, List, Optional
+from typing import Any, AsyncIterator, List, Optional, Dict
 
 from pydantic import BaseModel
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -132,6 +132,7 @@ class OpenAIChatCompletionRequest(BaseModel):
     repetition_penalty: Optional[float] = None
     do_sample: Optional[bool] = None
     num_return_sequences: Optional[int] = None
+    tools: Optional[List[Dict[str, Any]]] = None
 
 class OpenAIWhisperRequest(BaseModel):
     model: str
@@ -174,6 +175,8 @@ async def openai_list_models():
 @app.post("/v1/chat/completions", dependencies=[Depends(verify_api_key)])
 async def openai_chat_completions(request: OpenAIChatCompletionRequest):
     try:
+        logger.info(f"[chat/completions] Received tools: {request.tools}")
+        
         config_kwargs = {
             "messages": request.messages,
             "temperature": request.temperature,
@@ -184,11 +187,15 @@ async def openai_chat_completions(request: OpenAIChatCompletionRequest):
             "do_sample": request.do_sample,
             "num_return_sequences": request.num_return_sequences,
             "stream": request.stream,
+            "tools": request.tools,
         }
         # Remove keys with value None
         config_kwargs = {k: v for k, v in config_kwargs.items() if v is not None}
+        
+        logger.info(f"[chat/completions] config_kwargs tools: {config_kwargs.get('tools', 'NOT PRESENT')}")
 
         generation_config = OVGenAI_GenConfig(**config_kwargs)
+        logger.info(f"[chat/completions] generation_config.tools: {generation_config.tools}")
 
         model_name = request.model
         created_ts = int(time.time())

@@ -23,7 +23,7 @@ class OVGenAI_LLM:
         self.encoder_tokenizer = None
         self.load_config = load_config
 
-    def prepare_inputs(self, messages: List[Dict[str, str]]) -> ov.Tensor:
+    def prepare_inputs(self, messages: List[Dict[str, str]], tools: List[Dict[str, Any]] = []) -> ov.Tensor:
         """
         Convert a messages (list of {role, content}) into ov.Tensor using the cached AutoTokenizer
         and its chat template.
@@ -33,12 +33,14 @@ class OVGenAI_LLM:
 
         Args:
             messages: List[Dict[str, str]]
+            tools: List[Dict[str, Any]] - List of tools/functions available to the model
 
         returns:
             prompt_token_ids: 
         """
         prompt_token_ids = self.encoder_tokenizer.apply_chat_template(
             messages, 
+            tools=tools if tools else None,
             add_generation_prompt=True,
             skip_special_tokens=True,
             return_tensors="np"
@@ -75,7 +77,7 @@ class OVGenAI_LLM:
             repetition_penalty=gen_config.repetition_penalty,
         )
 
-        prompt_token_ids = self.prepare_inputs(gen_config.messages)
+        prompt_token_ids = self.prepare_inputs(gen_config.messages, gen_config.tools)
         result = await asyncio.to_thread(self.model.generate, prompt_token_ids, generation_kwargs)
         
         perf_metrics = result.perf_metrics
@@ -101,7 +103,7 @@ class OVGenAI_LLM:
 
         decoder_tokenizer = self.model.get_tokenizer()
         streamer = ChunkStreamer(decoder_tokenizer, gen_config)
-        prompt_token_ids = self.prepare_inputs(gen_config.messages)
+        prompt_token_ids = self.prepare_inputs(gen_config.messages, gen_config.tools)
 
         async def _run_generation():
             return await asyncio.to_thread(

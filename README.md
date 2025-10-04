@@ -7,14 +7,30 @@
 > [!NOTE]
 > OpenArc is under active development.
 
-**OpenArc** is an inference engine for Intel devices. Serve LLMs, VLMs, Whisper and Kokoro-TTS over OpenAI compatible endpoints. 
+**OpenArc** is an inference engine for Intel devices. Serve LLMs, VLMs, Whisper and Kokoro-TTS over OpenAI compatible endpoints.
 
-**OpenArc 2.0** arrives on the local AI scene guns-blazing with more endpoints, better UX, and more low level features to make using Intel devices as accelerators easier.
+**OpenArc 2.0** arrives with more endpoints, better UX, pipeline paralell, NPU support and much more!
+
+New Features:
+  - Multi GPU Pipeline Paralell
+  - NPU device 
+    - [Help wanted!]().
+  - CPU offload
+  - OpenAI compatible Kokoro-TTS OpenVINO implementation
+  - 
+  - Extendable multi engine, multi task architecture
+  - Performance metrics on every request
+    - prefill throughput
+    - decode throupout 
+    - ttft
+    - tpot 
+
+
 
 
 ## What's new?
 
-Drawing on ideas from llama.cpp, vLLM, transformers and OpenVINO Model Server, Ray and others, OpenArc has evolved into a backyard prediction engine inspired by a cocktail of popular techniques, without any of the constraints those projects face.
+Drawing on ideas from llama.cpp, vLLM, transformers and OpenVINO Model Server, Ray and others, OpenArc has evolved into a backyard prediction engine inspired by a cocktail of popular techniques I have had fun building.
 
 ### 3 Layers
 

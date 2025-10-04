@@ -66,9 +66,6 @@ class InferWorker:
     - infer_whisper: Process audio transcription requests
     - infer_kokoro: Process speech generation requests
 
-    
-    Note: All methods are static as they operate on provided packets and generators
-    without maintaining internal state.
     """
     
     @staticmethod
