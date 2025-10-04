@@ -190,7 +190,7 @@ class ModelRegistry:
                 if model_id in self._models:
                     record = self._models[model_id]
                     record.model_instance = model_instance
-                    record.status = ModelStatus.LOADING
+                    record.status = ModelStatus.LOADED
                     record.loading_task = None
                 else:
                     return

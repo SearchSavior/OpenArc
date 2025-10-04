@@ -23,7 +23,9 @@ class OVGenAI_LLM:
         self.encoder_tokenizer = None
         self.load_config = load_config
 
-    def prepare_inputs(self, messages: List[Dict[str, str]], tools: List[Dict[str, Any]] = []) -> ov.Tensor:
+    def prepare_inputs(self, 
+        messages: List[Dict[str, str]], 
+        tools: List[Dict[str, Any]] = []) -> ov.Tensor:
         """
         Convert a messages (list of {role, content}) into ov.Tensor using the cached AutoTokenizer
         and its chat template.

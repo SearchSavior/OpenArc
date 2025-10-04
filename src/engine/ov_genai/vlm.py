@@ -29,7 +29,10 @@ class OVGenAI_VLM:
         self.processor: Optional[AutoProcessor] = None
         self.load_config = load_config
 
-    def prepare_inputs(self, messages: List[Dict[str, Any]]) -> Tuple[str, Optional[Union[ov.Tensor, List[ov.Tensor]]]]:
+    def prepare_inputs(self, 
+        messages: List[Dict[str, Any]], 
+        tools: List[Dict[str, Any]] = []) -> Tuple[str, 
+        Optional[Union[ov.Tensor, List[ov.Tensor]]]]:
         """
         Convert chat-style messages (with optional raw base64 images in data URLs) into:
         - a prompt string (using model tokenizer chat template on text-only content)
@@ -71,7 +74,13 @@ class OVGenAI_VLM:
 
         # Build prompt from text-only conversation using GenAI tokenizer's chat template
         tokenizer = self.model_path.get_tokenizer()
-        prompt: str = tokenizer.apply_chat_template(text_conversation, add_generation_prompt=True)
+        prompt: str = tokenizer.apply_chat_template(
+            text_conversation,
+            tools=tools if tools else None,
+            add_generation_prompt=True,
+            skip_special_tokens=True,
+            return_tensors="np"
+            )
 
         # Convert PIL images to ov.Tensor(s). If none, return None for images.
         ov_images: Optional[Union[ov.Tensor, List[ov.Tensor]]] = None
@@ -106,7 +115,7 @@ class OVGenAI_VLM:
                 repetition_penalty=gen_config.repetition_penalty,
             )
 
-            prompt, ov_images = self.prepare_inputs(gen_config.messages)
+            prompt, ov_images = self.prepare_inputs(gen_config.messages, gen_config.tools)
             
             logger.debug(f"[{self.load_config.model_name}] Calling VLMPipeline.generate")
             if ov_images is not None:
@@ -126,7 +135,8 @@ class OVGenAI_VLM:
             logger.error(f"[{self.load_config.model_name}] Error during non-streaming generation: {e}", exc_info=True)
             raise
 
-    async def generate_stream(self, gen_config: OVGenAI_GenConfig) -> AsyncIterator[Union[str, Dict[str, Any]]]:
+    async def generate_stream(self, 
+    gen_config: OVGenAI_GenConfig) -> AsyncIterator[Union[str, Dict[str, Any]]]:
         """
         Async streaming generation for VLM.
         Yields token chunks (str) as they arrive, then metrics (dict).
@@ -141,7 +151,7 @@ class OVGenAI_VLM:
 
         decoder_tokenizer = self.model_path.get_tokenizer()
         streamer = ChunkStreamer(decoder_tokenizer, gen_config)
-        prompt, ov_images = self.prepare_inputs(gen_config.messages)
+        prompt, ov_images = self.prepare_inputs(gen_config.messages, gen_config.tools)
 
         async def _run_generation():
             if ov_images is not None:

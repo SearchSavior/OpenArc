@@ -121,18 +121,19 @@ async def get_status():
 #===============================================================#
 
 class OpenAIChatCompletionRequest(BaseModel):
-    messages: Any
     model: str
+    messages: Any
+    tools: Optional[List[Dict[str, Any]]] = None
+    stream: Optional[bool] = None
+    
     temperature: Optional[float] = None
     max_tokens: Optional[int] = None
-    stream: Optional[bool] = None
     stop: Optional[List[str]] = None
     top_p: Optional[float] = None
     top_k: Optional[int] = None
     repetition_penalty: Optional[float] = None
     do_sample: Optional[bool] = None
     num_return_sequences: Optional[int] = None
-    tools: Optional[List[Dict[str, Any]]] = None
 
 class OpenAIWhisperRequest(BaseModel):
     model: str
