@@ -13,12 +13,11 @@
 
 New Features:
   - Multi GPU Pipeline Paralell
+  - CPU offload
   - NPU device 
     - [Help wanted!]().
-  - CPU offload
-  - OpenAI compatible Kokoro-TTS OpenVINO implementation
-  - 
-  - Extendable multi engine, multi task architecture
+  - OpenAI compatible Kokoro-TTS OpenVINO implementation 
+  - Fully async multi engine, multi task architecture
   - Performance metrics on every request
     - prefill throughput
     - decode throupout 
@@ -74,7 +73,7 @@ Getting there wasn't easy.
   - Built with click and rich-click
   - OpenArc's server has been thoroughly documented there. Much cleaner!
   - Coupled with officual documentation this makes learning OpenVINO easier. 
-  
+
 ### Performance metrics on every completion
    - ttft: time to generate first token
    - generation_time : time to generate the whole response
@@ -82,70 +81,94 @@ Getting there wasn't easy.
    - tokens per second: measures throughput.
    - average token latency: helpful for optimizing zero or few shot tasks
  	  
-## Command Line Application
+## Usage
 
-OpenArc has a command line application for interfacing with the server! 
 
-To get started run
+### ```openarc add``` 
 
+Add a model to openarc-config.json for easy loading with ```openarc load```.
+> [!NOTE]
+> **For vision language models, use `vlm` instead of `llm` for the `--model-type`.**
+
+Single device
 ```
-openarc --help
-```
-
-Which gives:
-
-![CLI Help Screen](assets/cli_main_help.png)
-
-![NOTE] Whenever you get stuck simply add --help to see documentation. 
-
-### Launch Server
-
-To launch the server:
-
-```
-openarc serve start
+openarc add --model-name <model-name> --model-path <path/to/model> --engine ovgenai --model-type llm --device <target-device>
 ```
 
-For a more granular networking setup:
+CPU Offload
+- It's not clear if the same intuition from llama.cpp applies in cpu offload scenario.
 
 ```
-openarc serve start --start --openarc-port (your-port)
+openarc add --model-name <model-name> -model-path <path/to/model> --engine ovgenai --model-type llm --device <HETERO:GPU.0,CPU> --runtime-config {"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}
 ```
+Note: According to documentation you can also add NPU
 
-![CLI serve Screen](assets/cli_serve_start.png)
-
-We save the host/port configuration to 'openarc-cli-config.yaml' file. 
-
-The CLI always sends commands to the server wherever you start it from laying groundwork for easier containerization in the future
-
-### Load a Model 
-
-To load a model open another temrinal:
+Multi-GPU
 
 ```
-openarc load --help
-```
-This menu gives a breakdown of how the many different optimzation parameters work and broadly how they can be used together. 
-
-
-![CLI Help Screen](assets/load.png)
-
-Here are some example commands with Qwen3 and Qwen2.5-VL on GPU
-
-
-To load a Qwen3 model:
-```
-openarc load --model path/to/model --model-type TEXT --device GPU.0
+openarc add --model-name <model-name> --model-path <path/to/model> --engine ovgenai --model-type llm --device <HETERO:GPU.0,GPU.1> --runtime-config {"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}
 ```
 
-To load a Qwen-2.5-VL model:
+Tensor Paralell (CPU only)
+
 ```
-openarc load --model path/to/model --model-type VISION --device GPU.0
+openarc add --model-name <model-name> --model-path <path/to/model> --engine ovgenai --model-type llm --device CPU --runtime-config {"MODEL_DISTRIBUTION_POLICY": "TENSOR_PARALLEL"}
+```
+---
+
+Whisper
+
+```
+openarc add --model-name <model-name> --model-path <path/to/whisper> --engine ovgenai --model-type whisper --device <target-device> 
 ```
 
-The CLI application will surface C++ errors from the OpenVINO runtime as you tinker; in practice this is works like print debugging your LLM optimizations directly from the engine, often leading you into the source code to understand things from the inside. 
+Kokoro (CPU only)
 
-Working this way can help you make sense of the sometimes vague documentation, especially for edge cases.
+```
+openarc add --model-name <model-name> --model-path <path/to/kokoro> --engine openvino --model-type kokoro --device CPU 
+```
+
+### ```runtime-config``` advanced usage
+
+`runtime-config` can accept many different options and option combinations to modify how ```openvino``` inferences a loaded model. 
+
+See OpenVINO documentation on [Inference Optimization](https://docs.openvino.ai/2025/openvino-workflow/running-inference/optimize-inference.html) to learn more.
+
+#### Some intuition
+
+```openvino``` runtime usually makes decisions in an automatic way based on characteristics of the target device; arguments passed to ```runtime-config``` act as overrides or are injected at compile time, _before_ inference time. 
+
+Documentation on these options can be difficult to understand and are not usually covered in tutorials. Fortunately, `openvino` complains effectively when these are misconfigured, so OpenArc displays these errors in the CLI tool and the server logs to promote experimentation, which is how I learned to apply them.  
+
+### ```openarc list```
+
+Reads added configurations from ```openarc-config.json```.
+
+
+Display all saved configurations:
+```
+openarc list
+```
+
+Remove a configuration:
+```
+openarc list --rm --model-name <model-name>
+```
+
+
+### ```openarc load```
+
+After using ```openarc add``` you can use ```openarc load``` r 
+
+```
+openarc load --model-name <model-name>
+```
+
+That's it!
+
+#### Behavior
+
+Metadata we use to load a model into the OpenArc server allows the engine to make routing decisions; think of it like you are querying for inference code. If an ```openarc load``` command fails, the CLI tool displays the full stack trace to help you figure out why.
 
 ## System Requirments 
 

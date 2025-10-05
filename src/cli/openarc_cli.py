@@ -267,30 +267,31 @@ def unload(ctx, model_name):
         ctx.exit(1)
 
 @cli.command()
-@click.option('--mn', help='Model name to remove (used with --rm).')
+@click.option('--model-name','--mn', help='Model name to remove (used with --rm).')
 @click.option('--rm', is_flag=True, help='Remove a model configuration.')
 @click.pass_context
-def list(ctx, rm, mn):
-    """- List saved model configurations."""
-    
+def list(ctx, rm, model_name):
+    """- List saved model configurations.
+       
+       - Remove a model configuration."""
     if rm:
-        if not mn:
-            console.print("❌ [red]Error:[/red] --mn is required when using --rm")
+        if not model_name:
+            console.print("❌ [red]Error:[/red] --model-name is required when using --rm")
 
             ctx.exit(1)
         
         # Check if model exists before trying to remove
-        existing_config = get_model_config(mn)
+        existing_config = get_model_config(model_name)
         if not existing_config:
-            console.print(f"❌ [red]Model configuration not found:[/red] {mn}")
+            console.print(f"❌ {model_name}[red] not found:[/red]")
             console.print("[yellow]Use 'openarc list' to see available configurations.[/yellow]")
             ctx.exit(1)
         
         # Remove the configuration
-        if remove_model_config(mn):
-            console.print(f"🗑️  [green]Model configuration removed:[/green] {mn}")
+        if remove_model_config(model_name):
+            console.print(f"🗑️  [green]Model configuration removed:[/green] {model_name}")
         else:
-            console.print(f"❌ [red]Failed to remove model configuration:[/red] {mn}")
+            console.print(f"❌ [red]Failed to remove model configuration:[/red] {model_name}")
             ctx.exit(1)
         return
     

@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import asyncio
-import uuid
+import importlib
 import inspect
+import logging
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Optional, Callable, Awaitable, List
-import logging
+from typing import Any, Awaitable, Callable, Dict, List, Optional
+
 from pydantic import BaseModel, Field
-import importlib
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -24,8 +25,7 @@ class ModelLoadConfig(BaseModel):
         ...,
         description="""
         - Public facing name of the loaded model attached to a private model_id
-        - Calling /v1/models will report model names from this list
-        - model_name is decoupled from last segment of model_path, though in practice you should use that value.
+        - Calling /v1/models will report loaded models by model_name.
         """
         )
     model_type: ModelType = Field(...)
@@ -296,7 +296,6 @@ async def create_model_instance(load_config: ModelLoadConfig) -> Any:
     key = (load_config.engine, load_config.model_type)
     
     if key not in MODEL_CLASS_REGISTRY:
-        # Generate helpful error message with available combinations
         available = [f"{engine.value}/{model.value}" for engine, model in MODEL_CLASS_REGISTRY.keys()]
         error_msg = (
             f"Combination '{load_config.engine.value}/{load_config.model_type.value}' "
