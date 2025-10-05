@@ -7,6 +7,7 @@ import logging
 import os
 import time
 import uuid
+import traceback
 from typing import Any, AsyncIterator, List, Optional, Dict
 
 from pydantic import BaseModel
@@ -26,8 +27,12 @@ from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConf
 #===============================================================#
 
 
+logging.basicConfig(
+    level=logging.ERROR,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+
 
 
 #===============================================================#
@@ -72,8 +77,6 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
-    # Log the full traceback with the original logger structure
-    import traceback
     logger.error(f"Full traceback:\n{''.join(traceback.format_tb(exc.__traceback__))}")
     return JSONResponse(
         status_code=500,

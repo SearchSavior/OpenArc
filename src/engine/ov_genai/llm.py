@@ -14,8 +14,12 @@ from src.server.models.ov_genai import OVGenAI_GenConfig
 from src.server.model_registry import ModelLoadConfig, ModelRegistry
 from src.engine.ov_genai.streamers import ChunkStreamer
 
+logging.basicConfig(
+    level=logging.ERROR,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+
 
 class OVGenAI_LLM:
     def __init__(self, load_config: ModelLoadConfig):

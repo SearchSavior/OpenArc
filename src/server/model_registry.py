@@ -131,11 +131,18 @@ class ModelRegistry:
         self._on_unloaded.append(callback)
 
     async def register_load(self, loader: ModelLoadConfig) -> str:
+        """Register and load a model, waiting for completion.
+        
+        Raises:
+            ValueError: If model name already exists
+            Exception: Any exception during loading is propagated to caller
+        """
         # Check if model name already exists before loading
         async with self._lock:
             for existing_record in self._models.values():
                 if existing_record.model_name == loader.model_name:
-                    raise ValueError(f"Model name '{loader.model_name}' already registered")
+                    logger.info(f"Load failed! model_name '{loader.model_name}' already exists")
+                    raise ValueError(f"model_name '{loader.model_name}' already registered")
         
         # Create a model record with LOADING status
         record = ModelRecord(
@@ -152,13 +159,26 @@ class ModelRegistry:
         async with self._lock:
             self._models[record.model_id] = record
         
-        # Start background loading task
+        # Start loading task
         loading_task = asyncio.create_task(self._load_task(record.model_id, loader))
         
         # Update the record with the task reference
         async with self._lock:
             if record.model_id in self._models:
                 self._models[record.model_id].loading_task = loading_task
+        
+        # Wait for loading to complete and propagate exceptions
+        try:
+            await loading_task
+            # Check if loading succeeded
+            async with self._lock:
+                if record.model_id in self._models:
+                    final_record = self._models[record.model_id]
+                    if final_record.status == ModelStatus.FAILED:
+                        error_msg = final_record.error_message or "Unknown error"
+                        raise RuntimeError(f"Model loading failed: {error_msg}")
+        except asyncio.CancelledError:
+            raise RuntimeError("Model loading was cancelled")
         
         return record.model_id
 
@@ -200,6 +220,10 @@ class ModelRegistry:
                 asyncio.create_task(cb(record))
                     
         except Exception as e:
+            # Log the full exception with traceback
+            logger.error(f"Model loading failed for {load_config.model_name}", exc_info=True)
+
+            
             # Update the record with failure status
             async with self._lock:
                 if model_id in self._models:
@@ -284,6 +308,8 @@ async def create_model_instance(load_config: ModelLoadConfig) -> Any:
             return model_instance
             
         else:
+            available_types = [mt.value for mt in ModelType if mt in [ModelType.LLM, ModelType.VLM, ModelType.WHISPER]]
+            logger.info(f"Model load failed: Invalid model_type '{load_config.model_type}' for engine '{load_config.engine}'. Available options: {available_types}")
             raise ValueError(f"Model type '{load_config.model_type}' not supported with engine '{load_config.engine}'")
     elif load_config.engine == EngineType.OPENVINO:
         if load_config.model_type == ModelType.KOKORO:
@@ -294,6 +320,8 @@ async def create_model_instance(load_config: ModelLoadConfig) -> Any:
             await asyncio.to_thread(model_instance.load_model, load_config)
             return model_instance
         else:
+            available_types = [ModelType.KOKORO.value]
+            logger.info(f"Model load failed: Invalid model_type '{load_config.model_type}' for engine '{load_config.engine}'. Available options: {available_types}")
             raise ValueError(f"Model type '{load_config.model_type}' not supported with engine '{load_config.engine}'")
     elif load_config.engine == EngineType.OV_OPTIMUM:
         raise ValueError(f"Engine '{load_config.engine}' not yet implemented")

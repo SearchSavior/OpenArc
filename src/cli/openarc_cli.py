@@ -214,20 +214,21 @@ def load(ctx, model_name):
         console.print("[yellow]Tip: Use 'openarc list' to see saved configurations, or 'openarc add' to create a new one.[/yellow]")
         ctx.exit(1)
     
-    console.print(f"📋 [blue]Loading model from saved config:[/blue] {model_name}")
     load_config = saved_config.copy()
     
     # Make API request to load the model
     url = f"{cli_instance.base_url}/openarc/load"
     
     try:
-        console.print(f"🚀 [blue]Loading model:[/blue] {model_name}")
+        console.print("🚀 [blue]working...[/blue]")
         response = requests.post(url, json=load_config, headers=cli_instance.get_headers())
         
         if response.status_code == 200:
-            console.print("✅ [green]Model loaded successfully![/green]")
+
+            console.print("[green]done[/green]")
+            console.print("[dim]Use 'openarc status' to check the status of loaded models.[/dim]")
         else:
-            console.print(f"❌ [red]Error loading model: {response.status_code}[/red]")
+            console.print(f"❌ [red]error: {response.status_code}[/red]")
             console.print(f"[red]Response:[/red] {response.text}")
             ctx.exit(1)
             

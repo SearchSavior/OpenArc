@@ -2,11 +2,11 @@ import openvino as ov
 from openvino_genai import GenerationConfig, LLMPipeline
 from transformers import AutoTokenizer
 
-model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Qwen3-32B-Instruct-int4_sym-awq-ov"
+model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Qwen3-14B-OpenVINO/Qwen3-14B-int4_asym-awq-se-ov"
 
 pipe = LLMPipeline(
     model_dir,       # Path to the model directory. Remember this will not pull from hub like in transformers
-    device="CPU",   
+    device="GPU.2",   
     **{#"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL",
        #"PERFORMANCE_HINT": "LATENCY"
        #"INFERENCE_NUM_THREADS": 20

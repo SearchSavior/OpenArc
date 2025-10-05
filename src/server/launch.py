@@ -96,7 +96,6 @@ def start_server(host: str = "0.0.0.0", openarc_port: int = 8001, reload: bool =
         "src.server.main:app",
         host=host,
         port=openarc_port,
-        log_level="info",
-        log_config=LOG_CONFIG,
+        #log_config=LOG_CONFIG,
         reload=reload
     )
