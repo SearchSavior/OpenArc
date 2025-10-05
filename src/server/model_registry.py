@@ -9,6 +9,7 @@ from enum import Enum
 from typing import Any, Dict, Optional, Callable, Awaitable, List
 import logging
 from pydantic import BaseModel, Field
+import importlib
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -282,48 +283,37 @@ class ModelRegistry:
                 "openai_model_names": [record.model_name for record in self._models.values()],
             }
 
+# Registry mapping (engine, model_type) to model class paths
+MODEL_CLASS_REGISTRY = {
+    (EngineType.OV_GENAI, ModelType.LLM): "src.engine.ov_genai.llm.OVGenAI_LLM",
+    (EngineType.OV_GENAI, ModelType.VLM): "src.engine.ov_genai.vlm.OVGenAI_VLM",
+    (EngineType.OV_GENAI, ModelType.WHISPER): "src.engine.ov_genai.whisper.OVGenAI_Whisper",
+    (EngineType.OPENVINO, ModelType.KOKORO): "src.engine.openvino.kokoro.OV_Kokoro",
+}
+
 async def create_model_instance(load_config: ModelLoadConfig) -> Any:
     """Factory function to create the appropriate model instance based on engine type."""
-    if load_config.engine == EngineType.OV_GENAI:
-        if load_config.model_type == ModelType.LLM:
-            # Import here to avoid circular imports
-            from src.engine.ov_genai.llm import OVGenAI_LLM
-            
-            model_instance = OVGenAI_LLM(load_config)
-            await asyncio.to_thread(model_instance.load_model, load_config)
-            return model_instance
-        elif load_config.model_type == ModelType.VLM:
-            # Import here to avoid circular imports
-            from src.engine.ov_genai.vlm import OVGenAI_VLM
-            
-            model_instance = OVGenAI_VLM(load_config)
-            await asyncio.to_thread(model_instance.load_model, load_config)
-            return model_instance
-        elif load_config.model_type == ModelType.WHISPER:
-
-            from src.engine.ov_genai.whisper import OVGenAI_Whisper
-
-            model_instance = OVGenAI_Whisper(load_config)
-            await asyncio.to_thread(model_instance.load_model, load_config)
-            return model_instance
-            
-        else:
-            available_types = [mt.value for mt in ModelType if mt in [ModelType.LLM, ModelType.VLM, ModelType.WHISPER]]
-            logger.info(f"Model load failed: Invalid model_type '{load_config.model_type}' for engine '{load_config.engine}'. Available options: {available_types}")
-            raise ValueError(f"Model type '{load_config.model_type}' not supported with engine '{load_config.engine}'")
-    elif load_config.engine == EngineType.OPENVINO:
-        if load_config.model_type == ModelType.KOKORO:
-            # Import here to avoid circular imports
-            from src.engine.openvino.kokoro import OV_Kokoro
-
-            model_instance = OV_Kokoro(load_config)
-            await asyncio.to_thread(model_instance.load_model, load_config)
-            return model_instance
-        else:
-            available_types = [ModelType.KOKORO.value]
-            logger.info(f"Model load failed: Invalid model_type '{load_config.model_type}' for engine '{load_config.engine}'. Available options: {available_types}")
-            raise ValueError(f"Model type '{load_config.model_type}' not supported with engine '{load_config.engine}'")
-    elif load_config.engine == EngineType.OV_OPTIMUM:
-        raise ValueError(f"Engine '{load_config.engine}' not yet implemented")
+    key = (load_config.engine, load_config.model_type)
+    
+    if key not in MODEL_CLASS_REGISTRY:
+        # Generate helpful error message with available combinations
+        available = [f"{engine.value}/{model.value}" for engine, model in MODEL_CLASS_REGISTRY.keys()]
+        error_msg = (
+            f"Combination '{load_config.engine.value}/{load_config.model_type.value}' "
+            f"not supported. Available: {', '.join(available)}"
+        )
+        logger.info(f"Model load failed: {error_msg}")
+        raise ValueError(error_msg)
+    
+    # Dynamic import and instantiation
+    class_path = MODEL_CLASS_REGISTRY[key]
+    module_path, class_name = class_path.rsplit('.', 1)
+    module = importlib.import_module(module_path)
+    model_class = getattr(module, class_name)
+    
+    # Create and load model instance
+    model_instance = model_class(load_config)
+    await asyncio.to_thread(model_instance.load_model, load_config)
+    return model_instance
 
             

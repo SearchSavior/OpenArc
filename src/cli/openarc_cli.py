@@ -128,7 +128,7 @@ class ColoredAsciiArtGroup(click.RichGroup):
         art.append("      | |                              \n", style="white")
         art.append("      |_|                              \n", style="white")
         art.append(" \n", style="white")
-        art.append("The CLI application   \n", style="white")
+        art.append(" The CLI application   \n", style="white")
         console.print(art)
         return super().get_help(ctx)
 
@@ -178,7 +178,7 @@ def cli():
 @click.option("--runtime-config", "--rtc",
     type=dict,
     default={},
-    help='OpenVINO runtime configuration (e.g., performance hints)')
+    help='OpenVINO runtime configuration (e.g., performance hints). These are checked serverside at runtime.')
 @click.pass_context
 def add(ctx, model_path, model_name, engine, model_type, device, runtime_config):
     """- Add a model configuration to the config file."""
@@ -220,12 +220,12 @@ def load(ctx, model_name):
     url = f"{cli_instance.base_url}/openarc/load"
     
     try:
-        console.print("🚀 [blue]working...[/blue]")
+        console.print("[cyan]working...[/cyan]")
         response = requests.post(url, json=load_config, headers=cli_instance.get_headers())
         
         if response.status_code == 200:
 
-            console.print("[green]done[/green]")
+            console.print("[green]Done![/green]")
             console.print("[dim]Use 'openarc status' to check the status of loaded models.[/dim]")
         else:
             console.print(f"❌ [red]error: {response.status_code}[/red]")
@@ -241,7 +241,7 @@ def load(ctx, model_name):
 @click.pass_context
 def unload(ctx, model_name):
     """
-    - POST Delete a model from registry. 
+    - POST Delete a model from registry and unload from memory.
     """
     cli_instance = OpenArcCLI()
 
