@@ -396,7 +396,7 @@ def tool(ctx):
     """- Utility scripts."""
     pass
 
-@tool.command('dev-props')
+@tool.command('device-props')
 @click.pass_context
 def device_properties(ctx):
     """
@@ -433,7 +433,7 @@ def device_properties(ctx):
         console.print(f"❌ [red]Error querying device data:[/red] {e}")
         ctx.exit(1)
 
-@tool.command('dev-detect')
+@tool.command('device-detect')
 @click.pass_context
 def device_detect(ctx):
     """
