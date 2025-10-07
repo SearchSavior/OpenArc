@@ -74,23 +74,34 @@ class InferWorker:
         metrics = None
         final_text = ""
 
-        async for item in llm_instance.generate_type(packet.gen_config):
-            if isinstance(item, dict):
-                metrics = item
-            else:
-                if packet.gen_config.stream:
-                    final_text += item
-                    if packet.stream_queue is not None:
-                        await packet.stream_queue.put(item)
+        try:
+            async for item in llm_instance.generate_type(packet.gen_config):
+                if isinstance(item, dict):
+                    metrics = item
                 else:
-                    final_text = item
+                    if packet.gen_config.stream:
+                        final_text += item
+                        if packet.stream_queue is not None:
+                            await packet.stream_queue.put(item)
+                    else:
+                        final_text = item
 
-        packet.response = final_text
-        packet.metrics = metrics
-        if packet.gen_config.stream and packet.stream_queue is not None:
-            if metrics is not None:
-                await packet.stream_queue.put({"metrics": metrics})
-            await packet.stream_queue.put(None)
+            packet.response = final_text
+            packet.metrics = metrics
+            if packet.gen_config.stream and packet.stream_queue is not None:
+                if metrics is not None:
+                    await packet.stream_queue.put({"metrics": metrics})
+                await packet.stream_queue.put(None)
+        except Exception as e:
+            # Log the full exception with traceback
+            logger.error("LLM inference failed!", exc_info=True)
+            # Store error in packet response
+            packet.response = f"Error: {str(e)}"
+            packet.metrics = None
+            # Signal error to stream if streaming
+            if packet.gen_config.stream and packet.stream_queue is not None:
+                await packet.stream_queue.put(None)
+                
         return packet
 
     @staticmethod
@@ -99,23 +110,34 @@ class InferWorker:
         metrics = None
         final_text = ""
 
-        async for item in vlm_model.generate_type(packet.gen_config):
-            if isinstance(item, dict):
-                metrics = item
-            else:
-                if packet.gen_config.stream:
-                    final_text += item
-                    if packet.stream_queue is not None:
-                        await packet.stream_queue.put(item)
+        try:
+            async for item in vlm_model.generate_type(packet.gen_config):
+                if isinstance(item, dict):
+                    metrics = item
                 else:
-                    final_text = item
+                    if packet.gen_config.stream:
+                        final_text += item
+                        if packet.stream_queue is not None:
+                            await packet.stream_queue.put(item)
+                    else:
+                        final_text = item
 
-        packet.response = final_text
-        packet.metrics = metrics
-        if packet.gen_config.stream and packet.stream_queue is not None:
-            if metrics is not None:
-                await packet.stream_queue.put({"metrics": metrics})
-            await packet.stream_queue.put(None)
+            packet.response = final_text
+            packet.metrics = metrics
+            if packet.gen_config.stream and packet.stream_queue is not None:
+                if metrics is not None:
+                    await packet.stream_queue.put({"metrics": metrics})
+                await packet.stream_queue.put(None)
+        except Exception as e:
+            # Log the full exception with traceback
+            logger.error("VLM inference failed!", exc_info=True)
+            # Store error in packet response
+            packet.response = f"Error: {str(e)}"
+            packet.metrics = None
+            # Signal error to stream if streaming
+            if packet.gen_config.stream and packet.stream_queue is not None:
+                await packet.stream_queue.put(None)
+                
         return packet
 
     @staticmethod
@@ -128,14 +150,22 @@ class InferWorker:
         metrics = None
         final_text = ""
 
-        async for item in whisper_model.transcribe(packet.gen_config):
-            if isinstance(item, dict):
-                metrics = item
-            else:
-                final_text = item
+        try:
+            async for item in whisper_model.transcribe(packet.gen_config):
+                if isinstance(item, dict):
+                    metrics = item
+                else:
+                    final_text = item
 
-        packet.response = final_text
-        packet.metrics = metrics
+            packet.response = final_text
+            packet.metrics = metrics
+        except Exception as e:
+            # Log the full exception with traceback
+            logger.error("Whisper inference failed!", exc_info=True)
+            # Store error in packet response
+            packet.response = f"Error: {str(e)}"
+            packet.metrics = None
+            
         return packet
 
     @staticmethod
@@ -153,32 +183,39 @@ class InferWorker:
         audio_chunks = []
         chunk_texts = []
 
-        async for chunk in kokoro_model.chunk_forward_pass(packet.gen_config):
-            audio_chunks.append(chunk.audio)
-            chunk_texts.append(chunk.chunk_text)
+        try:
+            async for chunk in kokoro_model.chunk_forward_pass(packet.gen_config):
+                audio_chunks.append(chunk.audio)
+                chunk_texts.append(chunk.chunk_text)
 
-        if audio_chunks:
-            # Concatenate all audio chunks
-            full_audio = torch.cat(audio_chunks, dim=0)
+            if audio_chunks:
+                # Concatenate all audio chunks
+                full_audio = torch.cat(audio_chunks, dim=0)
 
-            # Convert to WAV bytes
-            wav_buffer = io.BytesIO()
-            import soundfile as sf
-            sf.write(wav_buffer, full_audio.numpy(), samplerate=24000, format='WAV')
-            wav_bytes = wav_buffer.getvalue()
+                # Convert to WAV bytes
+                wav_buffer = io.BytesIO()
+                import soundfile as sf
+                sf.write(wav_buffer, full_audio.numpy(), samplerate=24000, format='WAV')
+                wav_bytes = wav_buffer.getvalue()
 
-            # Encode as base64 for JSON response
-            audio_base64 = base64.b64encode(wav_bytes).decode('utf-8')
-            packet.response = audio_base64
-        else:
-            packet.response = ""
+                # Encode as base64 for JSON response
+                audio_base64 = base64.b64encode(wav_bytes).decode('utf-8')
+                packet.response = audio_base64
+            else:
+                packet.response = ""
 
-        # Add some basic metrics
-        packet.metrics = {
-            "chunks_processed": len(audio_chunks),
-            "chunk_texts": chunk_texts,
-            "total_samples": sum(len(chunk) for chunk in audio_chunks) if audio_chunks else 0
-        }
+            # Add some basic metrics
+            packet.metrics = {
+                "chunks_processed": len(audio_chunks),
+                "chunk_texts": chunk_texts,
+                "total_samples": sum(len(chunk) for chunk in audio_chunks) if audio_chunks else 0
+            }
+        except Exception as e:
+            # Log the full exception with traceback
+            logger.error("Kokoro inference failed!", exc_info=True)
+            # Store error in packet response
+            packet.response = f"Error: {str(e)}"
+            packet.metrics = None
 
         return packet
 
@@ -214,7 +251,7 @@ class QueueWorker:
     """
     
     @staticmethod
-    async def queue_worker_llm(model_name: str, model_queue: asyncio.Queue, llm_model: OVGenAI_LLM):
+    async def queue_worker_llm(model_name: str, model_queue: asyncio.Queue, llm_model: OVGenAI_LLM, registry: ModelRegistry):
         """Text model inference worker that processes packets from queue"""
         logger.info(f"[{model_name} LLM Worker] Started, waiting for packets...")
         while True:
@@ -225,6 +262,12 @@ class QueueWorker:
 
             completed_packet = await InferWorker.infer_llm(packet, llm_model)
 
+            # Check if inference failed and trigger model unload
+            if completed_packet.response and completed_packet.response.startswith("Error:"):
+                logger.error(f"[{model_name} LLM Worker] Inference failed, triggering model unload...")
+                asyncio.create_task(registry.register_unload(model_name))
+                break
+
             if completed_packet.metrics:
                 logger.info(f"[{model_name} LLM Worker] Metrics: {completed_packet.metrics}")
 
@@ -234,7 +277,7 @@ class QueueWorker:
             model_queue.task_done()
 
     @staticmethod
-    async def queue_worker_vlm(model_name: str, model_queue: asyncio.Queue, vlm_model: OVGenAI_VLM):
+    async def queue_worker_vlm(model_name: str, model_queue: asyncio.Queue, vlm_model: OVGenAI_VLM, registry: ModelRegistry):
         """Image model inference worker that processes packets from queue"""
         logger.info(f"[{model_name} VLM Worker] Started, waiting for packets...")
         while True:
@@ -245,6 +288,12 @@ class QueueWorker:
 
             completed_packet = await InferWorker.infer_vlm(packet, vlm_model)
 
+            # Check if inference failed and trigger model unload
+            if completed_packet.response and completed_packet.response.startswith("Error:"):
+                logger.error(f"[{model_name} VLM Worker] Inference failed, triggering model unload...")
+                asyncio.create_task(registry.register_unload(model_name))
+                break
+
             if completed_packet.metrics:
                 logger.info(f"[{model_name} VLM Worker] Metrics: {completed_packet.metrics}")
 
@@ -254,7 +303,7 @@ class QueueWorker:
             model_queue.task_done()
 
     @staticmethod
-    async def queue_worker_whisper(model_name: str, model_queue: asyncio.Queue, whisper_model: OVGenAI_Whisper):
+    async def queue_worker_whisper(model_name: str, model_queue: asyncio.Queue, whisper_model: OVGenAI_Whisper, registry: ModelRegistry):
         """Whisper model inference worker that processes packets from queue"""
         logger.info(f"[{model_name} Whisper Worker] Started, waiting for packets...")
         while True:
@@ -265,6 +314,12 @@ class QueueWorker:
 
             completed_packet = await InferWorker.infer_whisper(packet, whisper_model)
 
+            # Check if inference failed and trigger model unload
+            if completed_packet.response and completed_packet.response.startswith("Error:"):
+                logger.error(f"[{model_name} Whisper Worker] Inference failed, triggering model unload...")
+                asyncio.create_task(registry.register_unload(model_name))
+                break
+
             if completed_packet.metrics:
                 logger.info(f"[{model_name} Whisper Worker] Metrics: {completed_packet.metrics}")
 
@@ -274,7 +329,7 @@ class QueueWorker:
             model_queue.task_done()
 
     @staticmethod
-    async def queue_worker_kokoro(model_name: str, model_queue: asyncio.Queue, kokoro_model: OV_Kokoro):
+    async def queue_worker_kokoro(model_name: str, model_queue: asyncio.Queue, kokoro_model: OV_Kokoro, registry: ModelRegistry):
         """Kokoro model inference worker that processes packets from queue"""
         logger.info(f"[{model_name} Kokoro Worker] Started, waiting for packets...")
         while True:
@@ -284,6 +339,12 @@ class QueueWorker:
                 break
 
             completed_packet = await InferWorker.infer_kokoro(packet, kokoro_model)
+
+            # Check if inference failed and trigger model unload
+            if completed_packet.response and completed_packet.response.startswith("Error:"):
+                logger.error(f"[{model_name} Kokoro Worker] Inference failed, triggering model unload...")
+                asyncio.create_task(registry.register_unload(model_name))
+                break
 
             # Log the text that was converted to speech
             
@@ -373,28 +434,28 @@ class WorkerRegistry:
                 if record.model_name not in self._model_queues_llm:
                     q: asyncio.Queue = asyncio.Queue()
                     self._model_queues_llm[record.model_name] = q
-                    task = asyncio.create_task(QueueWorker.queue_worker_llm(record.model_name, q, instance))
+                    task = asyncio.create_task(QueueWorker.queue_worker_llm(record.model_name, q, instance, self._model_registry))
                     self._model_tasks_llm[record.model_name] = task
 
             elif mt == ModelType.VLM and isinstance(instance, OVGenAI_VLM):
                 if record.model_name not in self._model_queues_vlm:
                     q: asyncio.Queue = asyncio.Queue()
                     self._model_queues_vlm[record.model_name] = q
-                    task = asyncio.create_task(QueueWorker.queue_worker_vlm(record.model_name, q, instance))
+                    task = asyncio.create_task(QueueWorker.queue_worker_vlm(record.model_name, q, instance, self._model_registry))
                     self._model_tasks_vlm[record.model_name] = task
 
             elif mt == ModelType.WHISPER and isinstance(instance, OVGenAI_Whisper):
                 if record.model_name not in self._model_queues_whisper:
                     q: asyncio.Queue = asyncio.Queue()
                     self._model_queues_whisper[record.model_name] = q
-                    task = asyncio.create_task(QueueWorker.queue_worker_whisper(record.model_name, q, instance))
+                    task = asyncio.create_task(QueueWorker.queue_worker_whisper(record.model_name, q, instance, self._model_registry))
                     self._model_tasks_whisper[record.model_name] = task
 
             elif mt == ModelType.KOKORO and isinstance(instance, OV_Kokoro):
                 if record.model_name not in self._model_queues_kokoro:
                     q: asyncio.Queue = asyncio.Queue()
                     self._model_queues_kokoro[record.model_name] = q
-                    task = asyncio.create_task(QueueWorker.queue_worker_kokoro(record.model_name, q, instance))
+                    task = asyncio.create_task(QueueWorker.queue_worker_kokoro(record.model_name, q, instance, self._model_registry))
                     self._model_tasks_kokoro[record.model_name] = task
 
             else:

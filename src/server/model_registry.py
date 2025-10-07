@@ -224,7 +224,6 @@ class ModelRegistry:
             # Log the full exception with traceback
             logger.error(f"Model loading failed for {load_config.model_name}", exc_info=True)
 
-            
             # Update the record with failure status
             async with self._lock:
                 if model_id in self._models:
