@@ -81,7 +81,7 @@ Getting there wasn't easy.
    - tokens per second: measures throughput.
    - average token latency: helpful for optimizing zero or few shot tasks
  	  
-# OpenArc Command Line Tool
+## OpenArc Command Line Tool
 
 ## ```openarc add``` 
 
@@ -176,7 +176,7 @@ openarc serve start --host --openarc-port
 
 ## ```openarc load```
 
-After using ```openarc add``` you can use ```openarc load``` r 
+After using ```openarc add``` you can use ```openarc load``` to read the added configuration and load the model onto the OpenArc server. 
 
 ```
 openarc load --model-name <model-name>
@@ -209,7 +209,7 @@ openarc status
 
 ## ```openarc tool```
 
-Utility scripts convient way.
+Utility scripts.
 
 To see OpenVINO properties your device supports use:
 
@@ -217,7 +217,7 @@ To see OpenVINO properties your device supports use:
 openarc tool device-props
 ```
 
-To see available devices use
+To see available devices use:
 
 ```
 openarc tool device-detect
@@ -258,13 +258,8 @@ source .venv/bin/activate
 
 Set your API key as an environment variable:
 
-	export OPENARC_API_KEY=<you-know-for-search>
+	export OPENARC_API_KEY=<api-key>
 
-Build Optimum-Intel from source to get the latest support:
-
-```
-uv pip install "optimum-intel[openvino] @ git+https://github.com/huggingface/optimum-intel"
-```
 
 </details>
 
@@ -281,11 +276,6 @@ uv pip install "optimum-intel[openvino] @ git+https://github.com/huggingface/opt
 Set your API key as an environment variable:
 ```
 setx OPENARC_API_KEY openarc-api-key
-```
-Build Optimum-Intel from source to get the latest support:
-
-```
-uv pip install "optimum-intel[openvino] @ git+https://github.com/huggingface/optimum-intel"
 ```
 
 > [!Tips]

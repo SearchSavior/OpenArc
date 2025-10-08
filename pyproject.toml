@@ -16,14 +16,14 @@ dependencies = [
     "kokoro>=0.9.4",
     "librosa>=0.11.0",
     "misaki[en]>=0.9.4",
-    "openai>=1.109.1",
-    "openvino-genai>=2025.3.0.0",
-    "optimum[openvino]>=1.26.1",
+    "openai>1.109.1",
+    "openvino-genai>2025.3.0.0",
+    "optimum[openvino]>1.26.1",
     "pydantic>=2.11.7",
     "pyyaml>=6.0.2",
     "rich-click>=1.8.9",
-    "torch>=2.6.0",
-    "torchvision>=0.23.0",
+    "torch>2.6.0",
+    "torchvision>0.23.0",
     "uvicorn>=0.35.0",
 ]
 
@@ -42,12 +42,13 @@ dev-dependencies = []
 package = true
 
 [[tool.uv.index]]
-name = "pytorch-cpu"
+name = "pytorch-cpu" 
 url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [tool.uv.sources]
 torch = { index = "pytorch-cpu" }
 torchvision = { index = "pytorch-cpu" }
+optimum-intel = { git = "https://github.com/huggingface/optimum-intel" }
 
 
