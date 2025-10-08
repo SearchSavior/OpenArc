@@ -69,7 +69,7 @@ Getting there wasn't easy.
 
 - Other [multimodal architectures](https://github.com/huggingface/optimum-intel/blob/dd622144bf49333fda5cbce670c841288a46bf16/optimum/intel/openvino/modeling_visual_language.py#L4352) which might work
 
-### Command Line Application
+## Command Line Application
   - Built with click and rich-click
   - OpenArc's server has been thoroughly documented there. Much cleaner!
   - Coupled with officual documentation this makes learning OpenVINO easier. 
@@ -81,48 +81,53 @@ Getting there wasn't easy.
    - tokens per second: measures throughput.
    - average token latency: helpful for optimizing zero or few shot tasks
  	  
-## Usage
+# OpenArc Command Line Tool
 
-
-### ```openarc add``` 
+## ```openarc add``` 
 
 Add a model to openarc-config.json for easy loading with ```openarc load```.
 > [!NOTE]
 > **For vision language models, use `vlm` instead of `llm` for the `--model-type`.**
 
-Single device
+#### Single device
+
 ```
 openarc add --model-name <model-name> --model-path <path/to/model> --engine ovgenai --model-type llm --device <target-device>
 ```
 
-CPU Offload
-- It's not clear if the same intuition from llama.cpp applies in cpu offload scenario.
+### HETERO device plugin 
+
+See [pipeline-paralellism preview](https://docs.openvino.ai/2025/openvino-workflow/running-inference/inference-devices-and-modes/hetero-execution.html#pipeline-parallelism-preview) to learn how to use HETERO device plugin. Some example commands are provided for a few difference scenarios.
+
+
+#### CPU Offload
 
 ```
 openarc add --model-name <model-name> -model-path <path/to/model> --engine ovgenai --model-type llm --device <HETERO:GPU.0,CPU> --runtime-config {"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}
 ```
-Note: According to documentation you can also add NPU
 
-Multi-GPU
+#### Multi-GPU
 
 ```
 openarc add --model-name <model-name> --model-path <path/to/model> --engine ovgenai --model-type llm --device <HETERO:GPU.0,GPU.1> --runtime-config {"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}
 ```
 
-Tensor Paralell (CPU only)
+#### Tensor Paralell (CPU only)
+
+```openvino``` Single NUMA node being more efficent due to intra-node communication bandwidth when using more than one socket within a single machine. 
 
 ```
 openarc add --model-name <model-name> --model-path <path/to/model> --engine ovgenai --model-type llm --device CPU --runtime-config {"MODEL_DISTRIBUTION_POLICY": "TENSOR_PARALLEL"}
 ```
 ---
 
-Whisper
+#### Whisper
 
 ```
 openarc add --model-name <model-name> --model-path <path/to/whisper> --engine ovgenai --model-type whisper --device <target-device> 
 ```
 
-Kokoro (CPU only)
+#### Kokoro (CPU only)
 
 ```
 openarc add --model-name <model-name> --model-path <path/to/kokoro> --engine openvino --model-type kokoro --device CPU 
@@ -130,7 +135,7 @@ openarc add --model-name <model-name> --model-path <path/to/kokoro> --engine ope
 
 ### ```runtime-config``` advanced usage
 
-`runtime-config` can accept many different options and option combinations to modify how ```openvino``` inferences a loaded model. 
+`runtime-config` can accept many options and option combinations to modify ```openvino``` runtime behavior for different scenarios. The devs a 
 
 See OpenVINO documentation on [Inference Optimization](https://docs.openvino.ai/2025/openvino-workflow/running-inference/optimize-inference.html) to learn more.
 
@@ -140,7 +145,7 @@ See OpenVINO documentation on [Inference Optimization](https://docs.openvino.ai/
 
 Documentation on these options can be difficult to understand and are not usually covered in tutorials. Fortunately, `openvino` complains effectively when these are misconfigured, so OpenArc displays these errors in the CLI tool and the server logs to promote experimentation, which is how I learned to apply them.  
 
-### ```openarc list```
+## ```openarc list```
 
 Reads added configurations from ```openarc-config.json```.
 
@@ -155,7 +160,21 @@ Remove a configuration:
 openarc list --rm --model-name <model-name>
 ```
 
-### ```openarc load```
+## ```openarc serve```
+
+Starts the server.
+
+```
+openarc serve start # defauls to 0.0.0.0:8000
+```
+
+Configure host and port
+
+```
+openarc serve start --host --openarc-port
+```
+
+## ```openarc load```
 
 After using ```openarc add``` you can use ```openarc load``` r 
 
@@ -163,17 +182,34 @@ After using ```openarc add``` you can use ```openarc load``` r
 openarc load --model-name <model-name>
 ```
 
-That's it!
-
-#### Behavior
+### Errors
 
 OpenArc uses arguments from ```openarc add``` as metadata to make routing decisions; think of it like you are querying for inference code. 
 
 When an ```openarc load``` command fails, the CLI tool displays the full stack trace to help you figure out why.
 
-### ```openarc tool```
+### Model concurrency
 
-Access utility scripts in a convient way.
+More than one model can be loaded into memory at once in a non blocking way. 
+
+Each model gets its own first in, first out queue, scheduling requests based on when they arrive. Inference of one model can fail without taking down the server, and many inferences can run at once.
+
+However, OpenArc *does not batch requests yet*. Paged attention-like continuous batching for ```llm``` and ```vlm``` will land in a future release.
+
+
+## ```openarc status```
+
+Calls /openarc/status endpoint and returns a report. Shows loaded models.
+
+```
+openarc status
+```
+
+![device-detect](assets/openarc_status.png)
+
+## ```openarc tool```
+
+Utility scripts convient way.
 
 To see OpenVINO properties your device supports use:
 
@@ -189,7 +225,7 @@ openarc tool device-detect
 
 ![device-detect](assets/cli_tool_device-detect.png)
 
-
+---
 
 ## System Requirments 
 

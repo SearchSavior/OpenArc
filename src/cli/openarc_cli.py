@@ -353,7 +353,7 @@ def status(ctx):
                 console.print("[yellow]No models currently loaded.[/yellow]")
             else:
                 # Create a table for all models
-                status_table = Table(title=f"📊 Loaded Models ({total_models})")
+                status_table = Table()
                 status_table.add_column("model_name", style="cyan", width=20)
                 status_table.add_column("device", style="blue", width=10)
                 status_table.add_column("model_type", style="magenta", width=15)
