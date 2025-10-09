@@ -8,9 +8,11 @@ from src.engine.ov_genai.llm import OVGenAI_LLM
 from src.engine.ov_genai.vlm import OVGenAI_VLM
 from src.engine.ov_genai.whisper import OVGenAI_Whisper
 from src.engine.openvino.kokoro import OV_Kokoro
+from src.engine.optimum.optimum_emb import Optimum_EMB
 
 from src.server.models.openvino import OV_KokoroGenConfig
 from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
+from src.server.models.optimum import TokenizerConfig
 from src.server.model_registry import ModelRecord, ModelRegistry, ModelType
 
 logger = logging.getLogger(__name__)
@@ -45,7 +47,7 @@ class WorkerPacket:
     """
     request_id: str
     id_model: str  # model_name
-    gen_config: Union[OVGenAI_GenConfig, OVGenAI_WhisperGenConfig, OV_KokoroGenConfig]
+    gen_config: Union[OVGenAI_GenConfig, OVGenAI_WhisperGenConfig, OV_KokoroGenConfig, TokenizerConfig]
     response: Optional[str] = None
     metrics: Optional[Dict[str, Any]] = None
     # Orchestration plumbing
@@ -65,6 +67,7 @@ class InferWorker:
     - infer_vlm: Process image-to-text generation requests
     - infer_whisper: Process audio transcription requests
     - infer_kokoro: Process speech generation requests
+    - infer_emb: Process embedding requests
 
     """
     
@@ -218,7 +221,35 @@ class InferWorker:
             packet.metrics = None
 
         return packet
+    
+    @staticmethod
+    async def infer_emb(packet: WorkerPacket, emb_instance: Optimum_EMB) -> WorkerPacket:
+        """Generate embeddings for a single packet using the optimum pipeline"""
+        metrics = None
+        final_data = None
 
+        try:
+            async for item in emb_instance.generate_embeddings(packet.gen_config):
+                if isinstance(item, dict):
+                    metrics = item
+                else:
+                    final_data = item
+
+            packet.response = final_data
+            packet.metrics = metrics
+            
+        except Exception as e:
+            # Log the full exception with traceback
+            logger.error("EMB inference failed!", exc_info=True)
+            # Store error in packet response
+            packet.response = f"Error: {str(e)}"
+            packet.metrics = None
+            # Signal error to stream if streaming
+            if packet.gen_config.stream and packet.stream_queue is not None:
+                await packet.stream_queue.put(None)
+                
+        return packet
+    
 class QueueWorker:
     """
     Manages inference worker loops for consuming and processing packets from model queues.
@@ -356,6 +387,28 @@ class QueueWorker:
 
             model_queue.task_done()
 
+    @staticmethod
+    async def queue_worker_emb(model_name: str, model_queue: asyncio.Queue, emb_model: Optimum_EMB, registry: ModelRegistry):
+        """EMB model inference worker that processes packets from queue"""
+        logger.info(f"[{model_name} EMB Worker] Started, waiting for packets...")
+        while True:
+            packet = await model_queue.get()
+            if packet is None:
+                logger.info(f"[{model_name} EMB Worker] Shutdown signal received.")
+                break
+
+            completed_packet = await InferWorker.infer_emb(packet, emb_model)
+            # Check if inference failed and trigger model unload
+            if not completed_packet.response:
+                logger.error(f"[{model_name} EMB Worker] Inference failed, triggering model unload...")
+                asyncio.create_task(registry.register_unload(model_name))
+                break
+            if completed_packet.metrics:
+                logger.info(f"[{model_name} LLM Worker] Metrics: {completed_packet.metrics}")
+            if packet.result_future is not None and not packet.result_future.done():
+                packet.result_future.set_result(completed_packet)
+            model_queue.task_done()
+
 class WorkerRegistry:
     """
     Central orchestrator for managing per-model inference workers and request routing.
@@ -407,6 +460,9 @@ class WorkerRegistry:
 
         self._model_queues_kokoro: Dict[str, asyncio.Queue] = {}
         self._model_tasks_kokoro: Dict[str, asyncio.Task] = {}
+        
+        self._model_queues_emb: Dict[str, asyncio.Queue] = {}
+        self._model_tasks_emb: Dict[str, asyncio.Task] = {}
 
         self._lock = asyncio.Lock()
 
@@ -458,6 +514,12 @@ class WorkerRegistry:
                     task = asyncio.create_task(QueueWorker.queue_worker_kokoro(record.model_name, q, instance, self._model_registry))
                     self._model_tasks_kokoro[record.model_name] = task
 
+            elif mt == ModelType.EMB and isinstance(instance, Optimum_EMB):
+                if record.model_name not in self._model_queues_emb:
+                    q: asyncio.Queue = asyncio.Queue()
+                    self._model_queues_emb[record.model_name] = q
+                    task = asyncio.create_task(QueueWorker.queue_worker_emb(record.model_name, q, instance, self._model_registry))
+                    self._model_tasks_emb[record.model_name] = task
             else:
                 logger.info(f"[WorkerRegistry] Model type/instance mismatch for {record.model_name}: {record.model_type}, {type(instance)}")
 
@@ -495,6 +557,14 @@ class WorkerRegistry:
             if t is not None and not t.done():
                 t.cancel()
 
+            # Try emb dicts
+            q = self._model_queues_emb.pop(record.model_name, None)
+            t = self._model_tasks_emb.pop(record.model_name, None)
+            if q is not None:
+                await q.put(None)
+            if t is not None and not t.done():
+                t.cancel()
+
     def _get_model_queue(self, model_name: str) -> asyncio.Queue:
         q = self._model_queues_llm.get(model_name)
         if q is not None:
@@ -516,6 +586,12 @@ class WorkerRegistry:
             return q
         raise ValueError(f"Kokoro model '{model_name}' is not loaded or no worker is available")
 
+    def _get_emb_queue(self, model_name: str) -> asyncio.Queue:
+        q = self._model_queues_emb.get(model_name)
+        if q is not None:
+            return q
+        raise ValueError(f"Embedding model '{model_name}' is not loaded or no worker is available")
+    
     async def generate(self, model_name: str, gen_config: OVGenAI_GenConfig) -> Dict[str, Any]:
         """Generate text without streaming."""
         request_id = uuid.uuid4().hex
@@ -584,3 +660,18 @@ class WorkerRegistry:
         await q.put(packet)
         completed = await result_future
         return {"audio_base64": completed.response or "", "metrics": completed.metrics or {}}
+    
+    async def embed(self, model_name: str, tok_config: TokenizerConfig) -> Dict[str, Any]:
+        """Create embeddings."""
+        request_id = uuid.uuid4().hex
+        result_future: asyncio.Future = asyncio.get_running_loop().create_future()
+        packet = WorkerPacket(
+            request_id=request_id,
+            id_model=model_name,
+            gen_config=tok_config,
+            result_future=result_future,
+        )
+        q = self._get_emb_queue(model_name)
+        await q.put(packet)
+        completed = await result_future
+        return {"data": completed.response, "metrics": completed.metrics or {}}
