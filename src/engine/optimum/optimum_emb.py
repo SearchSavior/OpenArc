@@ -12,9 +12,9 @@ from torch import Tensor
 from transformers import AutoTokenizer
 from optimum.intel import OVModelForFeatureExtraction
 
-from src.server.models.optimum import TokenizerConfig
+from src.server.models.optimum import PreTrainedTokenizerConfig
 
-from typing import Any, AsyncIterator, Dict, Optional
+from typing import Any, AsyncIterator, Dict
 
 from src.server.model_registry import ModelLoadConfig, ModelRegistry
 
@@ -36,28 +36,11 @@ class Optimum_EMB:
             sequence_lengths = attention_mask.sum(dim=1) - 1
             batch_size = last_hidden_states.shape[0]
             return last_hidden_states[torch.arange(batch_size, device=last_hidden_states.device), sequence_lengths]
-    
-    def generate_type(self, tok_config: TokenizerConfig):
-        """
-        Unified text generation method that routes to streaming or non-streaming
-        based on the stream flag in gen_config. Both paths return an async iterator.
-        
-        Args:
-            gen_config: Configuration containing the stream flag and other parameters
-            
-        Returns:
-            - Non-streaming: async iterator yielding [metrics: dict, new_text: str]
-            - Streaming: async iterator yielding token chunks (str)... then [metrics: dict, new_text: str]
-        """
-        return self.generate_embeddings(tok_config)
 
-    def prepare_inputs():
-        pass
-
-    async def generate_embeddings(self, tok_config: TokenizerConfig) -> AsyncIterator[Union[Dict[str, Any], str]]:
+    async def generate_embeddings(self, tok_config: PreTrainedTokenizerConfig) -> AsyncIterator[Union[Dict[str, Any], str]]:
         
         # Tokenize the input texts
-        batch_dict = self.encoder_tokenizer(
+        batch_dict = self.tokenizer(
             text=tok_config.text,
             text_pair=tok_config.text_pair,
             text_target=tok_config.text_target,
@@ -87,10 +70,7 @@ class Optimum_EMB:
             embeddings = F.normalize(embeddings, p=2, dim=1)
         yield embeddings.tolist()
 
-    async def generate_stream():
-        pass
-
-    def collect_metrics(self, tok_config: TokenizerConfig, perf_metrics) -> Dict[str, Any]:
+    def collect_metrics(self, tok_config: PreTrainedTokenizerConfig, perf_metrics) -> Dict[str, Any]:
         pass
 
     def load_model(self, loader: ModelLoadConfig):
@@ -104,7 +84,7 @@ class Optimum_EMB:
             device=loader.device, 
             export=False)
 
-        self.encoder_tokenizer = AutoTokenizer.from_pretrained(loader.model_path)
+        self.tokenizer = AutoTokenizer.from_pretrained(loader.model_path)
         logging.info(f"Model loaded successfully: {loader.model_name}")
 
     async def unload_model(self, registry: ModelRegistry, model_name: str) -> bool:
@@ -123,9 +103,9 @@ class Optimum_EMB:
             del self.model
             self.model = None
         
-        if self.encoder_tokenizer is not None:
-            del self.encoder_tokenizer
-            self.encoder_tokenizer = None
+        if self.tokenizer is not None:
+            del self.tokenizer
+            self.tokenizer = None
         
         gc.collect()
         logging.info(f"[{self.load_config.model_name}] weights and tokenizer unloaded and memory cleaned up")

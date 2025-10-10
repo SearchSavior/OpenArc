@@ -12,7 +12,7 @@ from src.engine.optimum.optimum_emb import Optimum_EMB
 
 from src.server.models.openvino import OV_KokoroGenConfig
 from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
-from src.server.models.optimum import TokenizerConfig
+from src.server.models.optimum import PreTrainedTokenizerConfig
 from src.server.model_registry import ModelRecord, ModelRegistry, ModelType
 
 logger = logging.getLogger(__name__)
@@ -47,7 +47,7 @@ class WorkerPacket:
     """
     request_id: str
     id_model: str  # model_name
-    gen_config: Union[OVGenAI_GenConfig, OVGenAI_WhisperGenConfig, OV_KokoroGenConfig, TokenizerConfig]
+    gen_config: Union[OVGenAI_GenConfig, OVGenAI_WhisperGenConfig, OV_KokoroGenConfig, PreTrainedTokenizerConfig]
     response: Optional[str] = None
     metrics: Optional[Dict[str, Any]] = None
     # Orchestration plumbing
@@ -661,7 +661,7 @@ class WorkerRegistry:
         completed = await result_future
         return {"audio_base64": completed.response or "", "metrics": completed.metrics or {}}
     
-    async def embed(self, model_name: str, tok_config: TokenizerConfig) -> Dict[str, Any]:
+    async def embed(self, model_name: str, tok_config: PreTrainedTokenizerConfig) -> Dict[str, Any]:
         """Create embeddings."""
         request_id = uuid.uuid4().hex
         result_future: asyncio.Future = asyncio.get_running_loop().create_future()

@@ -2,7 +2,7 @@ from typing import Dict, List, Union, Any
 from pydantic import BaseModel, Field
 
 # converted from https://huggingface.co/docs/transformers/main_classes/tokenizer
-class TokenizerConfig(BaseModel):
+class PreTrainedTokenizerConfig(BaseModel):
     """
     Configuration for tokenizer.
     """

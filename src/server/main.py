@@ -21,7 +21,7 @@ from src.server.model_registry import ModelLoadConfig, ModelRegistry, ModelUnloa
 from src.server.worker_registry import WorkerRegistry
 from src.server.models.openvino import OV_KokoroGenConfig
 from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
-from src.server.models.optimum import TokenizerConfig
+from src.server.models.optimum import PreTrainedTokenizerConfig
 
 #===============================================================#
 # Logging
@@ -160,7 +160,7 @@ class EmbeddingsRequest(BaseModel):
     encoding_format: Optional[str] = "float" #not implemented
     user: Optional[str] = None, #not implemented
     #end of openai api
-    config: Optional[TokenizerConfig] = None
+    config: Optional[PreTrainedTokenizerConfig] = None
 
 @app.get("/v1/models", dependencies=[Depends(verify_api_key)])
 async def openai_list_models():
@@ -351,7 +351,7 @@ async def embeddings(request: EmbeddingsRequest):
 
     try:
 
-        tok_config = TokenizerConfig(
+        tok_config = PreTrainedTokenizerConfig(
             text=request.input
         )
 
@@ -360,7 +360,7 @@ async def embeddings(request: EmbeddingsRequest):
             if not tok_config.text:
                 tok_config.text = request.input
 
-        if not tok_config.max_length and request.dimensions>0:
+        if not tok_config.max_length and request.dimensions:
             tok_config.max_length = request.dimensions
 
         model_name = request.model
@@ -374,25 +374,29 @@ async def embeddings(request: EmbeddingsRequest):
         prompt_tokens = metrics.get("input_token", 0)
         total_tokens = metrics.get("total_token", prompt_tokens)
 
+        embs = []
+        for i in range(len(data)):
+            embs.append({
+                "index":i,
+                "object":"embedding",
+                "embedding":data[i]
+            })
+
         response = {
             "id": request_id,
             "object": "list",
             "created": created_ts,
             "model": model_name,
-            "data": [
-                {
-                    "index": 0,
-                    "object": "embedding",
-                    "embedding": data
-                }
-            ],
+            "data": embs,
             "usage": {
                 "prompt_tokens": prompt_tokens,
                 "total_tokens": total_tokens,
             },
         }
+
         return response
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Embedding failed: {str(exc)}")
