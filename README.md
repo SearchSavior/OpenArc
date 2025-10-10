@@ -4,16 +4,16 @@
 [![Hugging Face](https://img.shields.io/badge/🤗%20Hugging%20Face-Echo9Zulu-yellow)](https://huggingface.co/Echo9Zulu)
 
 
-> [!NOTE]
+> [!]
 > OpenArc is under active development.
 
-**OpenArc** is an inference engine for Intel devices. Serve LLMs, VLMs, Whisper and Kokoro-TTS over OpenAI compatible endpoints, powered by OpenVINO with planned extension to other libraries, runtimes, tasks and models. See roadmap to learn more. 
+**OpenArc** is an inference engine for Intel devices. Serve LLMs, VLMs, Whisper, Kokoro-TTS and Embedding models over OpenAI compatible endpoints, powered by OpenVINO.
 
-**OpenArc 2.0** arrives with more endpoints, better UX, pipeline paralell, NPU support and much more after a rewrite to support 
+**OpenArc 2.0** arrives with more endpoints, better UX, pipeline paralell, NPU support and much more!
 
 ## What's new?
 
-Drawing on ideas from llama.cpp, vLLM, transformers, OpenVINO Model Server, Ray, Lemonade and other projects, OpenArc has evolved into a capable serving engine for OpenVINO powered inference workloads.
+Drawing on ideas from llama.cpp, vLLM, transformers, OpenVINO Model Server, Ray, Lemonade and other projects, OpenArc has evolved into a capable serving engine for AI workloads on Intel devices.
 
 New Features:
   - Multi GPU Pipeline Paralell
@@ -22,11 +22,12 @@ New Features:
   - OpenAI compatible endpoints
       - `/v1/models`
       - `/v1/chat/completions`: tool use, streaming
+      - `/v1/embeddings`: 
       - `/v1/audio/transcriptions`: Whisper only
       - `/v1/audio/speech`: Kokoro only       
   - `jinja` templating with AutoTokenizers
   - Fully async multi engine, multi task architecture
-  - Model concurrency: load `n` models at once. Seriously.
+  - Model concurrency: load and infer multiple models at once
   - Performance metrics on every request
     - prefill_throughput
     - ttft
@@ -37,22 +38,21 @@ New Features:
     - stream mode
   - More
 
-> [!NOTE]
-> Interested in contributing? Please open an issue before submitting a PR!
+> [!] Interested in contributing? Please open an issue before submitting a PR!
 
 ## Quickstart 
 
 <details>
   <summary>Linux</summary>
+<br>
 
-1.  OpenArc has been built on top of the OpenVINO runtime; as a result OpenArc    supports the same range of hardware **but requires device specifc drivers** this document will not cover in-depth.
+1. OpenVINO requires **device specifc drivers**.
  
-- See [OpenVINO System Requirments](https://docs.openvino.ai/2025/about-openvino/release-notes-openvino/system-requirements.html#cpu) to get the most updated information.
+- Visit [OpenVINO System Requirments](https://docs.openvino.ai/2025/about-openvino/release-notes-openvino/system-requirements.html#cpu) for the latest information on drivers.
 
-> [!NOTE]
-> Need help installing drivers? [Join our Discord](https://discord.gg/Bzz9hax9Jq) or open an issue.
+> [!] Need help installing drivers? [Join our Discord](https://discord.gg/Bzz9hax9Jq) or open an issue.
 
-2. Install uv from [here](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)
+2. Install uv from [astral](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)
 
 3. After cloning use:
 
@@ -71,24 +71,29 @@ source .venv/bin/activate
 
 	export OPENARC_API_KEY=<api-key>
 
-> [!Tips]
-> uv has a [pip interface](https://docs.astral.sh/uv/pip/) which is a drop in replacement for pip, but faster. Pretty cool, and a good place to start.
+> [!] uv has a [pip interface](https://docs.astral.sh/uv/pip/) which is a drop in replacement for pip, but faster. Pretty cool, and a good place to start.
 
+
+6. To get started, run:
+
+```
+openarc --help
+```
 
 </details>
 
 <details>
   <summary>Windows</summary>
 
-1. OpenArc has been built on top of the OpenVINO runtime; as a result OpenArc    supports the same range of hardware **but requires device specifc drivers**.
+1. OpenVINO requires **device specifc drivers**.
  
-- See [OpenVINO System Requirments](https://docs.openvino.ai/2025/about-openvino/release-notes-openvino/system-requirements.html#cpu) to get the most updated information.
+- Visit [OpenVINO System Requirments](https://docs.openvino.ai/2025/about-openvino/release-notes-openvino/system-requirements.html#cpu) to get the latest information on drivers.
 
-> [!NOTE]
+> [!]
 > Need help installing drivers? [Join our Discord](https://discord.gg/Bzz9hax9Jq) or open an issue.
 
 
-2. Install uv from [here](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)
+2. Install uv from [astral](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)
 
 3. Clone OpenArc, enter the directory and run:
   ```
@@ -100,23 +105,29 @@ source .venv/bin/activate
 setx OPENARC_API_KEY openarc-api-key
 ```
 
-> [!Tips]
-> uv has a [pip interface](https://docs.astral.sh/uv/pip/) which is a drop in replacement for pip, but faster. Pretty cool, and a good place to start.
+5. To get started, run:
+
+```
+openarc --help
+```
+
+> [!] uv has a [pip interface](https://docs.astral.sh/uv/pip/) which is a drop in replacement for pip, but faster. Pretty cool, and a good place to start.
 
 </details>
 
 ## OpenArc CLI
 
-### ```openarc add``` 
+<details>
+  <summary><code>openarc add</code></summary>
+<br>
 
 Add a model to openarc-config.json for easy loading with ```openarc load```.
-> [!NOTE]
-> **For vision language models, use `vlm` instead of `llm` for the `--model-type`.**
+> [!] For vision language models, use `vlm` instead of `llm` for `--model-type`.
 
 #### Single device
 
 ```
-openarc add --model-name <model-name> --model-path <path/to/model> --engine ovgenai --model-type llm --device <target-device>
+openarc add --model-name <model-name> --model-path <path/to/model> --engine <engine> --model-type <model-type> --device <target-device>
 ```
 
 #### Whisper
@@ -161,7 +172,11 @@ openarc add --model-name <model-name> --model-path <path/to/model> --engine ovge
 ```
 ---
 
-### ```openarc list```
+</details>
+
+<details>
+  <summary><code>openarc list</code></summary>
+<br>
 
 Reads added configurations from ```openarc-config.json```.
 
@@ -175,7 +190,12 @@ Remove a configuration:
 openarc list --rm --model-name <model-name>
 ```
 
-### ```openarc serve```
+</details>
+
+<details>
+  <summary><code>openarc serve</code></summary>
+<br>
+
 
 Starts the server.
 
@@ -189,7 +209,12 @@ Configure host and port
 openarc serve start --host --openarc-port
 ```
 
-### ```openarc load```
+</details>
+
+<details>
+  <summary><code>openarc load</code></summary>
+<br>
+
 
 After using ```openarc add``` you can use ```openarc load``` to read the added configuration and load the model onto the OpenArc server. 
 
@@ -201,7 +226,12 @@ OpenArc uses arguments from ```openarc add``` as metadata to make routing decisi
 
 When an ```openarc load``` command fails, the CLI tool displays the full stack trace to help you figure out why.
 
-### ```openarc status```
+</details>
+
+<details>
+  <summary><code>openarc status</code></summary>
+<br>
+
 
 Calls /openarc/status endpoint and returns a report. Shows loaded models.
 
@@ -211,7 +241,12 @@ openarc status
 
 ![device-detect](assets/openarc_status.png)
 
-### ```openarc tool```
+</details>
+
+<details>
+  <summary><code>openarc tool</code></summary>
+<br>
+
 
 Utility scripts.
 
@@ -231,14 +266,13 @@ openarc tool device-detect
 
 ---
 
-
-
-
-> [!Tips]
-- uv has a [pip interface](https://docs.astral.sh/uv/pip/) as an alternative to the uv interface which is a drop in replacement for pip, but faster. Pretty cool.
-
-
 </details>
+
+
+
+
+
+
 
 
 
