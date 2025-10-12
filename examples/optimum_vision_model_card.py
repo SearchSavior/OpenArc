@@ -4,16 +4,16 @@ from transformers import AutoProcessor, TextStreamer
 from optimum.intel.openvino import OVModelForVisualCausalLM
 
 
-model_id = "/mnt/Ironwolf-4TB/Models/OpenVINO/Gemma/gemma-3-4b-it-qat-int4-unquantized-OpenVINO/gemma-3-4b-it-qat-int4_asym-ov"
+model_id = "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Qwen2.5-VL-7B-Instruct-int4_sym-ov"
 
 ov_config = {"PERFORMANCE_HINT": "LATENCY"}
 
 print("Loading model...")
 start_load_time = time.time()
-model = OVModelForVisualCausalLM.from_pretrained(model_id, export=False, device="CPU", ov_config=ov_config)
+model = OVModelForVisualCausalLM.from_pretrained(model_id, export=False, device="GPU.2", ov_config=ov_config)
 processor = AutoProcessor.from_pretrained(model_id)
 
-image_path = r"/home/echo/Projects/OpenArc/scripts/examples/dedication.png"
+image_path = r"/home/echo/Projects/OpenArc/src/tests/dedication.png"
 image = Image.open(image_path)
 image = image.convert("RGB")
 

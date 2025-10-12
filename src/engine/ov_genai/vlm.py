@@ -74,13 +74,10 @@ class OVGenAI_VLM:
 
         # Build prompt from text-only conversation using GenAI tokenizer's chat template
         tokenizer = self.model_path.get_tokenizer()
+        # openvino_genai.Tokenizer.apply_chat_template requires (history, add_generation_prompt, chat_template='')
         prompt: str = tokenizer.apply_chat_template(
-            text_conversation,
-            tools=tools if tools else None,
-            add_generation_prompt=True,
-            skip_special_tokens=True,
-            return_tensors="np"
-            )
+            text_conversation
+        )
 
         # Convert PIL images to ov.Tensor(s). If none, return None for images.
         ov_images: Optional[Union[ov.Tensor, List[ov.Tensor]]] = None
@@ -242,5 +239,4 @@ class OVGenAI_VLM:
         gc.collect()
         logger.info(f"[{self.load_config.model_name}] weights and tokenizer unloaded and memory cleaned up")
         return removed
-
 

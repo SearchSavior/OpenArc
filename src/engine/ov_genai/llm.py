@@ -176,6 +176,9 @@ class OVGenAI_LLM:
         Args:
             loader: ModelLoadConfig containing model_path, device, engine, and runtime_config.
         """
+        
+        logger.info(f"{loader.model_name} loading...")
+        logger.info(f"ModelType: {loader.model_type}, Device: {loader.device}, Runtime config: {loader.runtime_config}")
 
         self.model = LLMPipeline(
             loader.model_path,

@@ -271,14 +271,11 @@ openarc tool device-detect
 
 
 
-
-
-
-
-
 ## Supported Models
 
 [OpenVINO IR](https://docs.openvino.ai/2025/documentation/openvino-ir-format.html) is an intermediate representation of a model from a variety of source frameworks.
+
+Based on the tasks we support models usually come from Pytorch, 
 
 There are a few sources of preconverted models which can be used with OpenArc;
 
@@ -301,22 +298,34 @@ There are a few sources of preconverted models which can be used with OpenArc;
 
 Here are some models to get started:
 
-| Models                                                                                                                                      | Compressed Weights |
+| Models                                                                           LLMs 
+
+| [Qwen3-4B-Instruct-2507-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Qwen3-4B-Instruct-2507-int4_asym-awq-ov) | 
+                             | Compressed Weights |
 | [Magistral-Small-2509-Text-Only-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Magistral-Small-2509-Text-Only-int4_asym-awq-ov)   |	
 | [Hermes-4-70B-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Hermes-4-70B-int4_asym-awq-ov) | 
-| [gemma-3-4b-it-int8_asym-ov](https://huggingface.co/Echo9Zulu/gemma-3-4b-it-int8_asym-ov) | 3.89 GB            |
+| 
 
 
-LLM
+VLMs
 
-VLM
+[gemma-3-4b-it-int8_asym-ov](https://huggingface.co/Echo9Zulu/gemma-3-4b-it-int8_asym-ov) | 3.89 GB            |
+
+
+
+
 
 Whisper 
 
+[distil-whisper-large-v3-int8-ov](https://huggingface.co/OpenVINO/distil-whisper-large-v3-int8-ov)
+
+Kokoro
+
 [Echo9Zulu/Kokoro-82M-FP16-OpenVINO](https://huggingface.co/Echo9Zulu/Kokoro-82M-FP16-OpenVINO)
 
+Embedding
 
-
+[Qwen3-Embedding-0.6B-int8_asym-ov](https://huggingface.co/Echo9Zulu/Qwen3-Embedding-0.6B-int8_asym-ov)
 
 ### Learning Resources
 ---
