@@ -244,9 +244,7 @@ class InferWorker:
             # Store error in packet response
             packet.response = f"Error: {str(e)}"
             packet.metrics = None
-            # Signal error to stream if streaming
-            if packet.gen_config.stream and packet.stream_queue is not None:
-                await packet.stream_queue.put(None)
+
                 
         return packet
     
