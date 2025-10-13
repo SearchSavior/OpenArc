@@ -63,12 +63,14 @@ class ModelType(str, Enum):
     - llm: Text-to-text LLM models
     - vlm: Image-to-text VLM models
     - whisper: Whisper ASR models
-    - kokoro: Kokoro TTS models"""    
+    - kokoro: Kokoro TTS models
+    - emb: Text-to-vector models"""    
     
     LLM = "llm"
     VLM = "vlm"
     WHISPER = "whisper"
     KOKORO = "kokoro"
+    EMB = "emb"
 
 class EngineType(str, Enum):
     """Engine used to load the model.
@@ -288,6 +290,7 @@ MODEL_CLASS_REGISTRY = {
     (EngineType.OV_GENAI, ModelType.VLM): "src.engine.ov_genai.vlm.OVGenAI_VLM",
     (EngineType.OV_GENAI, ModelType.WHISPER): "src.engine.ov_genai.whisper.OVGenAI_Whisper",
     (EngineType.OPENVINO, ModelType.KOKORO): "src.engine.openvino.kokoro.OV_Kokoro",
+    (EngineType.OV_OPTIMUM, ModelType.EMB): "src.engine.optimum.optimum_emb.Optimum_EMB",
 }
 
 async def create_model_instance(load_config: ModelLoadConfig) -> Any:

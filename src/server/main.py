@@ -8,7 +8,7 @@ import os
 import time
 import uuid
 import traceback
-from typing import Any, AsyncIterator, List, Optional, Dict
+from typing import Any, AsyncIterator, List, Optional, Dict, Union
 
 from pydantic import BaseModel
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -21,6 +21,7 @@ from src.server.model_registry import ModelLoadConfig, ModelRegistry, ModelUnloa
 from src.server.worker_registry import WorkerRegistry
 from src.server.models.openvino import OV_KokoroGenConfig
 from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
+from src.server.models.optimum import PreTrainedTokenizerConfig
 
 #===============================================================#
 # Logging
@@ -151,6 +152,15 @@ class OpenAIKokoroRequest(BaseModel):
     language: Optional[str] = None
     response_format: Optional[str] = "wav"
 
+# https://platform.openai.com/docs/api-reference/embeddings
+class EmbeddingsRequest(BaseModel):
+    model: str
+    input: Union[str, List[str], List[List[str]]]
+    dimensions: Optional[int] = None
+    encoding_format: Optional[str] = "float" #not implemented
+    user: Optional[str] = None, #not implemented
+    #end of openai api
+    config: Optional[PreTrainedTokenizerConfig] = None
 
 @app.get("/v1/models", dependencies=[Depends(verify_api_key)])
 async def openai_list_models():
@@ -336,3 +346,57 @@ async def openai_audio_speech(request: OpenAIKokoroRequest):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Speech synthesis failed: {str(exc)}")
 
+@app.post("/v1/embeddings", dependencies=[Depends(verify_api_key)])
+async def embeddings(request: EmbeddingsRequest):
+
+    try:
+
+        tok_config = PreTrainedTokenizerConfig(
+            text=request.input
+        )
+
+        if request.config:
+            tok_config = request.config
+            if not tok_config.text:
+                tok_config.text = request.input
+
+        if not tok_config.max_length and request.dimensions:
+            tok_config.max_length = request.dimensions
+
+        model_name = request.model
+        created_ts = int(time.time())
+        request_id = f"ov-{uuid.uuid4().hex[:24]}"
+
+        result = await _workers.embed(model_name, tok_config)
+        data = result.get("data", None)
+        metrics = result.get("metrics", {}) or {}
+
+        prompt_tokens = metrics.get("input_token", 0)
+        total_tokens = metrics.get("total_token", prompt_tokens)
+
+        embs = []
+        for i in range(len(data)):
+            embs.append({
+                "index":i,
+                "object":"embedding",
+                "embedding":data[i]
+            })
+
+        response = {
+            "id": request_id,
+            "object": "list",
+            "created": created_ts,
+            "model": model_name,
+            "data": embs,
+            "usage": {
+                "prompt_tokens": prompt_tokens,
+                "total_tokens": total_tokens,
+            },
+        }
+
+        return response
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Embedding failed: {str(exc)}")

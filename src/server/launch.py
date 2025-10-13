@@ -90,6 +90,7 @@ def start_server(host: str = "0.0.0.0", openarc_port: int = 8001, reload: bool =
     logger.info("  - POST   /v1/chat/completions")
     logger.info("  - POST   /v1/audio/transcriptions: Whisper only")
     logger.info("  - POST   /v1/audio/speech: Kokoro only")
+    logger.info("  - POST   /v1/embeddings")
     
 
     uvicorn.run(

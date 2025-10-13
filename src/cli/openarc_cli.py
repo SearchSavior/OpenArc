@@ -169,9 +169,9 @@ def cli():
     required=True,
     help='Engine used to load the model (ovgenai, openvino, optimum)')
 @click.option('--model-type', '--mt',
-    type=click.Choice(['llm', 'vlm', 'whisper', 'kokoro']),
+    type=click.Choice(['llm', 'vlm', 'whisper', 'kokoro', 'emb']),
     required=True,
-    help='Model type (llm, vlm, whisper, kokoro)')
+    help='Model type (llm, vlm, whisper, kokoro, emb)')
 @click.option('--device', '--d',
     required=True,
     help='Device(s) to load the model on.')
@@ -353,7 +353,7 @@ def status(ctx):
                 console.print("[yellow]No models currently loaded.[/yellow]")
             else:
                 # Create a table for all models
-                status_table = Table()
+                status_table = Table(title=f"📊 Loaded Models ({total_models})")
                 status_table.add_column("model_name", style="cyan", width=20)
                 status_table.add_column("device", style="blue", width=10)
                 status_table.add_column("model_type", style="magenta", width=15)
