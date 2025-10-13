@@ -1,24 +1,17 @@
 
 
-import asyncio
 import gc
 import logging
-from typing import Any, AsyncIterator, Dict, List, Union
+from typing import Any, AsyncIterator, Dict, Union
 
 import torch
 import torch.nn.functional as F
-from torch import Tensor
-
-from transformers import AutoTokenizer
 from optimum.intel import OVModelForFeatureExtraction
-
-from src.server.models.optimum import PreTrainedTokenizerConfig
-
-from typing import Any, AsyncIterator, Dict
+from torch import Tensor
+from transformers import AutoTokenizer
 
 from src.server.model_registry import ModelLoadConfig, ModelRegistry
-
-
+from src.server.models.optimum import PreTrainedTokenizerConfig
 
 
 class Optimum_EMB:
@@ -70,9 +63,6 @@ class Optimum_EMB:
             embeddings = F.normalize(embeddings, p=2, dim=1)
         yield embeddings.tolist()
 
-    def collect_metrics(self, tok_config: PreTrainedTokenizerConfig, perf_metrics) -> Dict[str, Any]:
-        pass
-
     def load_model(self, loader: ModelLoadConfig):
         """Load model using a ModelLoadConfig configuration and cache the tokenizer.
 
@@ -80,7 +70,8 @@ class Optimum_EMB:
             loader: ModelLoadConfig containing model_path, device, engine, and runtime_config.
         """
 
-        self.model = OVModelForFeatureExtraction.from_pretrained(loader.model_path, 
+        self.model = OVModelForFeatureExtraction.from_pretrained(
+            loader.model_path, 
             device=loader.device, 
             export=False)
 
