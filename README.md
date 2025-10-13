@@ -273,22 +273,84 @@ openarc tool device-detect
 
 ## Supported Models
 
-[OpenVINO IR](https://docs.openvino.ai/2025/documentation/openvino-ir-format.html) is an intermediate representation of a model from a variety of source frameworks.
 
-Based on the tasks we support models usually come from Pytorch, 
+<br>
+### OpenVINO Model Format: Intermediate Representation
+
+
+### What is an IR?
+
+[OpenVINO Intermediate Representation](https://docs.openvino.ai/2025/documentation/openvino-ir-format.html) describe a set of standarsization techniques to format the operations of a neural network into a computational graph topology that a compiler can understand, stored in `openvino_model.bin` and `openvino_model.xml`.  
+
+Each node and edge in the `openvino_model.xml` file maps opsets required for inference into xml trees which are parsed during model compilation, mapping supported `opsets` for a target device using OpenVINO's plugin system. 
+
+Using OpenArc does not require knowing anything deeply about writing an OpenVINO IR or choosing appropriate `opsets` to represent some target model for a given device. However, the rewrite does make it easier to deploy a custom model or a new task into a serving pattern.
+
+
+### Model Sources
+
+To use this project you have to use a model converted to OpenVINO IR. Based on the tasks we support models usually come from Pytorch. `bin` and `safetensor` both work.
 
 There are a few sources of preconverted models which can be used with OpenArc;
 
-- [OpenVINO LLM Collection on HuggingFace](https://huggingface.co/collections/OpenVINO/llm-6687aaa2abca3bbcec71a9bd)
+[OpenVINO on HuggingFace](https://huggingface.co/collections/OpenVINO/llm-6687aaa2abca3bbcec71a9bd)
 
-- [My HuggingFace repo](https://huggingface.co/Echo9Zulu)
-	- My repo contains preconverted models for a variety of architectures and usecases
-	- OpenArc supports almost all of them 
-  - Includes NSFW, ERP and "exotic" community finetunes that Intel doesn't host take advantage!
-  - **These get updated regularly so check back often!**
-  - If you read this here, *mention it on Discord* and I can quant a model you want to try. 
+[My HuggingFace repo](https://huggingface.co/Echo9Zulu)
 
-- [Optimum-CLI Conversion documentation](https://huggingface.co/docs/optimum/main/en/intel/openvino/export) to learn how you can convert models to OpenVINO IR from other formats.
+[LLMs optimized for NPU](https://huggingface.co/collections/OpenVINO/llms-optimized-for-npu-686e7f0bf7bc184bd71f8ba0)
+
+
+##### LLMs
+
+| Model                                                            |
+|------------------------------------------------------------------|
+| [Qwen3-4B-Instruct-2507-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Qwen3-4B-Instruct-2507-int4_asym-awq-ov) |
+| [Magistral-Small-2509-Text-Only-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Magistral-Small-2509-Text-Only-int4_asym-awq-ov) |
+| [Hermes-4-70B-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Hermes-4-70B-int4_asym-awq-ov) |
+
+
+##### VLMs
+
+| Model                                                              |
+|--------------------------------------------------------------------|
+| [gemma-3-4b-it-int8_asym-ov](https://huggingface.co/Echo9Zulu/gemma-3-4b-it-int8_asym-ov) |
+
+
+##### Whisper
+
+| Model                                                                  |
+|------------------------------------------------------------------------|
+| [distil-whisper-large-v3-int8-ov](https://huggingface.co/OpenVINO/distil-whisper-large-v3-int8-ov) |
+
+##### Kokoro
+
+| Model                                                              |
+|--------------------------------------------------------------------|
+| [Echo9Zulu/Kokoro-82M-FP16-OpenVINO](https://huggingface.co/Echo9Zulu/Kokoro-82M-FP16-OpenVINO) |
+
+##### Embedding
+
+| Model                                                                |
+|----------------------------------------------------------------------|
+| [Qwen3-Embedding-0.6B-int8_asym-ov](https://huggingface.co/Echo9Zulu/Qwen3-Embedding-0.6B-int8_asym-ov) |
+
+
+
+#### Converting Models to OpenVINO IR
+
+>[Note!] See [Supported Architectures](https://huggingface.co/docs/optimum/main/en/intel/openvino/models) to see what models can be converted to OpenVINO using the tools described in this section
+
+
+
+Intel provides a suite of tools you can use to apply different post training optimization techniques developed over at [Neural Network Compression Framwork](https://github.com/openvinotoolkit/nncf). 
+
+
+
+
+There are two main ways to obtain an OpenVINO IR.
+
+- Use the  [Optimum-CLI conversion tool](https://huggingface.co/docs/optimum/main/en/intel/openvino/export) to learn how you can convert models to OpenVINO IR from other formats.
+
 
 - [Supported Architectures](https://huggingface.co/docs/optimum/main/en/intel/openvino/models)List of models which can be converted to OpenVINO IR
 
@@ -298,13 +360,11 @@ There are a few sources of preconverted models which can be used with OpenArc;
 
 Here are some models to get started:
 
-| Models                                                                           LLMs 
-
-| [Qwen3-4B-Instruct-2507-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Qwen3-4B-Instruct-2507-int4_asym-awq-ov) | 
-                             | Compressed Weights |
-| [Magistral-Small-2509-Text-Only-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Magistral-Small-2509-Text-Only-int4_asym-awq-ov)   |	
-| [Hermes-4-70B-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Hermes-4-70B-int4_asym-awq-ov) | 
-| 
+| Model                                                            |
+|------------------------------------------------------------------|
+| [Qwen3-4B-Instruct-2507-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Qwen3-4B-Instruct-2507-int4_asym-awq-ov) |
+| [Magistral-Small-2509-Text-Only-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Magistral-Small-2509-Text-Only-int4_asym-awq-ov) |
+| [Hermes-4-70B-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Hermes-4-70B-int4_asym-awq-ov) |
 
 
 VLMs
