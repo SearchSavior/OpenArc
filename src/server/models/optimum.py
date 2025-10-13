@@ -1,13 +1,14 @@
 from typing import Dict, List, Union, Any
 from pydantic import BaseModel, Field
 
+
 # converted from https://huggingface.co/docs/transformers/main_classes/tokenizer
 class PreTrainedTokenizerConfig(BaseModel):
     """
     Configuration for tokenizer.
     """
 
-    text: Union[str, List[str], List[List[str]]] = Field(
+    text: Union[str, List[str], List[List[str]]] | None = Field(
         default=None,
         description=(
             "The sequence or batch of sequences to be encoded. Each sequence can be a string "
@@ -17,7 +18,7 @@ class PreTrainedTokenizerConfig(BaseModel):
         )
     )
 
-    text_pair: Union[str, List[str], List[List[str]]] = Field(
+    text_pair: Union[str, List[str], List[List[str]]] | None = Field(
         default=None,
         description=(
             "The sequence or batch of sequences to be encoded. Each sequence can be a string "
@@ -27,7 +28,7 @@ class PreTrainedTokenizerConfig(BaseModel):
         )
     )
 
-    text_target: Union[str, List[str], List[List[str]]] = Field(
+    text_target: Union[str, List[str], List[List[str]]] | None = Field(
         default=None,
         description=(
             "The sequence or batch of sequences to be encoded as target texts. Each sequence can be "
@@ -37,7 +38,7 @@ class PreTrainedTokenizerConfig(BaseModel):
         )
     )
 
-    text_pair_target: Union[str, List[str], List[List[str]]] = Field(
+    text_pair_target: Union[str, List[str], List[List[str]]] | None = Field(
         default=None,
         description=(
             "The sequence or batch of sequences to be encoded as target texts. Each sequence can be "
@@ -85,7 +86,7 @@ class PreTrainedTokenizerConfig(BaseModel):
         )
     )
 
-    max_length: int = Field(
+    max_length: int | None = Field(
         default=None,
         description=(
             "Controls the maximum length to use by one of the truncation/padding parameters. If left unset or set to "
@@ -113,7 +114,7 @@ class PreTrainedTokenizerConfig(BaseModel):
         )
     )
 
-    pad_to_multiple_of: int = Field(
+    pad_to_multiple_of: int | None = Field(
         default=None,
         description=(
             "If set will pad the sequence to a multiple of the provided value. Requires padding to be activated. "
@@ -122,7 +123,7 @@ class PreTrainedTokenizerConfig(BaseModel):
         )
     )
 
-    padding_side: str = Field(
+    padding_side: str | None = Field(
         default=None,
         description=(
             "The side on which the model should have padding applied. Should be selected between ['right', 'left']. "
@@ -138,7 +139,7 @@ class PreTrainedTokenizerConfig(BaseModel):
         )
     )
 
-    return_token_type_ids: bool = Field(
+    return_token_type_ids: bool | None  = Field(
         default=None,
         description=(
             "Whether to return token type IDs. If left to the default, will return the token type IDs according to the specific "
@@ -146,7 +147,7 @@ class PreTrainedTokenizerConfig(BaseModel):
         )
     )
 
-    return_attention_mask: bool = Field(
+    return_attention_mask: bool | None  = Field(
         default=None,
         description=(
             "Whether to return the attention mask. If left to the default, will return the attention mask according to the "
@@ -188,5 +189,42 @@ class PreTrainedTokenizerConfig(BaseModel):
         default=True,
         description=(
             "Whether or not to print more information and warnings."
+        )
+    )
+
+class RerankerConfig(PreTrainedTokenizerConfig):
+
+    query: str = Field(
+        default=None,
+        description=(
+            "Phrase to compare documents to."
+        )
+    )
+
+    documents:  List[str] = Field(
+        default=None,
+        description=(
+            "Documents to rank."
+        )
+    )
+
+    prefix: str = Field(
+        default='<|im_start|>system\nJudge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be "yes" or "no".<|im_end|>\n<|im_start|>user\n',
+        description=(
+            "Text to append to start of query. This is model specific."
+        )
+    )
+
+    suffix: str = Field(
+        default="<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+        description=(
+            "Text to append to end of query. This is model specific."
+        )
+    )
+
+    task: str = Field(
+        default="Given a search query, retrieve relevant passages that answer the query",
+        description=(
+            "Prompt command delivered to the model."
         )
     )

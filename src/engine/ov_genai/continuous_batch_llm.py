@@ -38,12 +38,13 @@ class OVGenAI_ContinuousBatchText:
         
     def load_model(self):
         """Load the model and initialize the continuous batching pipeline."""
+        print("starting autotokenizer")
         # Initialize HuggingFace AutoTokenizer with chat template
         self.encoder_tokenizer = AutoTokenizer.from_pretrained(
             self.model_dir,
             use_fast=True,
         )
-        
+        print("setting scheduler")
         # Configure scheduler using the Pydantic model values
         # SchedulerConfig does not take kwargs, so we need to set the values manually. Ugh. 
         scheduler_config = SchedulerConfig()
@@ -54,6 +55,7 @@ class OVGenAI_ContinuousBatchText:
         scheduler_config.enable_prefix_caching = self.batch_config.enable_prefix_caching
         scheduler_config.use_cache_eviction = self.batch_config.use_cache_eviction
         
+        print("initiating pipeline")
         # Initialize continuous batching pipeline
         self.pipeline = ContinuousBatchingPipeline(
             self.model_dir,

@@ -9,10 +9,11 @@ from src.engine.ov_genai.vlm import OVGenAI_VLM
 from src.engine.ov_genai.whisper import OVGenAI_Whisper
 from src.engine.openvino.kokoro import OV_Kokoro
 from src.engine.optimum.optimum_emb import Optimum_EMB
+from src.engine.optimum.optimum_rr import Optimum_RR
 
 from src.server.models.openvino import OV_KokoroGenConfig
 from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
-from src.server.models.optimum import PreTrainedTokenizerConfig
+from src.server.models.optimum import PreTrainedTokenizerConfig, RerankerConfig
 from src.server.model_registry import ModelRecord, ModelRegistry, ModelType
 
 logger = logging.getLogger(__name__)
@@ -47,7 +48,7 @@ class WorkerPacket:
     """
     request_id: str
     id_model: str  # model_name
-    gen_config: Union[OVGenAI_GenConfig, OVGenAI_WhisperGenConfig, OV_KokoroGenConfig, PreTrainedTokenizerConfig]
+    gen_config: Union[OVGenAI_GenConfig, OVGenAI_WhisperGenConfig, OV_KokoroGenConfig, PreTrainedTokenizerConfig,RerankerConfig]
     response: Optional[str] = None
     metrics: Optional[Dict[str, Any]] = None
     # Orchestration plumbing
@@ -249,7 +250,35 @@ class InferWorker:
                 await packet.stream_queue.put(None)
                 
         return packet
-    
+
+    @staticmethod
+    async def infer_rerank(packet: WorkerPacket, rerank_instance: Optimum_RR) -> WorkerPacket:
+        """Generate reranking for a single packet using the optimum pipeline"""
+        metrics = None
+        final_data = None
+
+        try:
+            async for item in rerank_instance.generate_rerankings(packet.gen_config):
+                if isinstance(item, dict):
+                    metrics = item
+                else:
+                    final_data = item
+
+            packet.response = final_data
+            packet.metrics = metrics
+            
+        except Exception as e:
+            # Log the full exception with traceback
+            logger.error("Reranking failed!", exc_info=True)
+            # Store error in packet response
+            packet.response = f"Error: {str(e)}"
+            packet.metrics = None
+            # Signal error to stream if streaming
+            if packet.gen_config.stream and packet.stream_queue is not None:
+                await packet.stream_queue.put(None)
+                
+        return packet
+       
 class QueueWorker:
     """
     Manages inference worker loops for consuming and processing packets from model queues.
@@ -404,7 +433,29 @@ class QueueWorker:
                 asyncio.create_task(registry.register_unload(model_name))
                 break
             if completed_packet.metrics:
-                logger.info(f"[{model_name} LLM Worker] Metrics: {completed_packet.metrics}")
+                logger.info(f"[{model_name} EMB Worker] Metrics: {completed_packet.metrics}")
+            if packet.result_future is not None and not packet.result_future.done():
+                packet.result_future.set_result(completed_packet)
+            model_queue.task_done()
+
+    @staticmethod
+    async def queue_worker_rr(model_name: str, model_queue: asyncio.Queue, rr_model: Optimum_RR, registry: ModelRegistry):
+        """Reranker model inference worker that processes packets from queue"""
+        logger.info(f"[{model_name} Reranker Worker] Started, waiting for packets...")
+        while True:
+            packet = await model_queue.get()
+            if packet is None:
+                logger.info(f"[{model_name} Reranker Worker] Shutdown signal received.")
+                break
+
+            completed_packet = await InferWorker.infer_rerank(packet, rr_model)
+            # Check if inference failed and trigger model unload
+            if not completed_packet.response:
+                logger.error(f"[{model_name} Reranker Worker] Inference failed, triggering model unload...")
+                asyncio.create_task(registry.register_unload(model_name))
+                break
+            if completed_packet.metrics:
+                logger.info(f"[{model_name} Reranker Worker] Metrics: {completed_packet.metrics}")
             if packet.result_future is not None and not packet.result_future.done():
                 packet.result_future.set_result(completed_packet)
             model_queue.task_done()
@@ -464,6 +515,9 @@ class WorkerRegistry:
         self._model_queues_emb: Dict[str, asyncio.Queue] = {}
         self._model_tasks_emb: Dict[str, asyncio.Task] = {}
 
+        self._model_queues_rerank: Dict[str, asyncio.Queue] = {}
+        self._model_tasks_rerank: Dict[str, asyncio.Task] = {}
+
         self._lock = asyncio.Lock()
 
         self._model_registry.add_on_loaded(self._on_model_loaded)
@@ -520,6 +574,13 @@ class WorkerRegistry:
                     self._model_queues_emb[record.model_name] = q
                     task = asyncio.create_task(QueueWorker.queue_worker_emb(record.model_name, q, instance, self._model_registry))
                     self._model_tasks_emb[record.model_name] = task
+            
+            elif mt == ModelType.RERANK and isinstance(instance, Optimum_RR):
+                if record.model_name not in self._model_queues_rerank:
+                    q: asyncio.Queue = asyncio.Queue()
+                    self._model_queues_rerank[record.model_name] = q
+                    task = asyncio.create_task(QueueWorker.queue_worker_rr(record.model_name, q, instance, self._model_registry))
+                    self._model_tasks_rerank[record.model_name] = task
             else:
                 logger.info(f"[WorkerRegistry] Model type/instance mismatch for {record.model_name}: {record.model_type}, {type(instance)}")
 
@@ -564,6 +625,14 @@ class WorkerRegistry:
                 await q.put(None)
             if t is not None and not t.done():
                 t.cancel()
+                
+            # Try rerank dicts
+            q = self._model_queues_rerank.pop(record.model_name, None)
+            t = self._model_tasks_rerank.pop(record.model_name, None)
+            if q is not None:
+                await q.put(None)
+            if t is not None and not t.done():
+                t.cancel()
 
     def _get_model_queue(self, model_name: str) -> asyncio.Queue:
         q = self._model_queues_llm.get(model_name)
@@ -591,6 +660,12 @@ class WorkerRegistry:
         if q is not None:
             return q
         raise ValueError(f"Embedding model '{model_name}' is not loaded or no worker is available")
+
+    def _get_rerank_queue(self, model_name: str) -> asyncio.Queue:
+        q = self._model_queues_rerank.get(model_name)
+        if q is not None:
+            return q
+        raise ValueError(f"Rerank model '{model_name}' is not loaded or no worker is available")
     
     async def generate(self, model_name: str, gen_config: OVGenAI_GenConfig) -> Dict[str, Any]:
         """Generate text without streaming."""
@@ -672,6 +747,21 @@ class WorkerRegistry:
             result_future=result_future,
         )
         q = self._get_emb_queue(model_name)
+        await q.put(packet)
+        completed = await result_future
+        return {"data": completed.response, "metrics": completed.metrics or {}}
+    
+    async def rerank(self, model_name: str, rr_config: RerankerConfig) -> Dict[str, Any]:
+        """Rerank documents."""
+        request_id = uuid.uuid4().hex
+        result_future: asyncio.Future = asyncio.get_running_loop().create_future()
+        packet = WorkerPacket(
+            request_id=request_id,
+            id_model=model_name,
+            gen_config=rr_config,
+            result_future=result_future,
+        )
+        q = self._get_rerank_queue(model_name)
         await q.put(packet)
         completed = await result_future
         return {"data": completed.response, "metrics": completed.metrics or {}}
