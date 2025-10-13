@@ -21,7 +21,7 @@ from src.server.model_registry import ModelLoadConfig, ModelRegistry, ModelUnloa
 from src.server.worker_registry import WorkerRegistry
 from src.server.models.openvino import OV_KokoroGenConfig
 from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
-from src.server.models.optimum import PreTrainedTokenizerConfig
+from src.server.models.optimum import PreTrainedTokenizerConfig, RerankerConfig
 
 #===============================================================#
 # Logging
@@ -161,6 +161,16 @@ class EmbeddingsRequest(BaseModel):
     user: Optional[str] = None, #not implemented
     #end of openai api
     config: Optional[PreTrainedTokenizerConfig] = None
+
+# No openai api to reference
+class RerankRequest(BaseModel):
+    model: str
+    query: str
+    documents: List[str]
+    prefix:Optional[str] = None
+    suffix:Optional[str] = None
+    task:Optional[str] = None
+    config: Optional[PreTrainedTokenizerConfig] = None #not implemented
 
 @app.get("/v1/models", dependencies=[Depends(verify_api_key)])
 async def openai_list_models():
@@ -400,3 +410,57 @@ async def embeddings(request: EmbeddingsRequest):
     except Exception as exc:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Embedding failed: {str(exc)}")
+    
+@app.post("/v1/rerank", dependencies=[Depends(verify_api_key)])
+async def rerank(request: RerankRequest):
+
+    try:
+        if request.config:
+
+            tok_config = PreTrainedTokenizerConfig.model_validate(request.config)
+            base_data = tok_config.model_dump()
+            rr_config = RerankerConfig.model_validate(base_data | {"query":request.query,"documents":request.documents})
+        if request.prefix:
+            rr_config.prefix = request.prefix
+        if request.suffix:
+            rr_config.suffix = request.suffix
+        if request.task:
+            rr_config.task = request.task
+            
+        model_name = request.model
+        created_ts = int(time.time())
+        request_id = f"ov-{uuid.uuid4().hex[:24]}"
+
+        result = await _workers.rerank(model_name, rr_config)
+        data = result.get("data", None)
+        metrics = result.get("metrics", {}) or {}
+
+        prompt_tokens = metrics.get("input_token", 0)
+        total_tokens = metrics.get("total_token", prompt_tokens)
+
+        docs = []
+        for i in range(len(data)):
+            docs.append({
+                "index":i,
+                "object":"ranked_documents",
+                "ranked_documents":data[i]
+            })
+
+        response = {
+            "id": request_id,
+            "object": "list",
+            "created": created_ts,
+            "model": model_name,
+            "data": docs,
+            "usage": {
+                "prompt_tokens": prompt_tokens,
+                "total_tokens": total_tokens,
+            },
+        }
+
+        return response
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Reranking failed: {str(exc)}")

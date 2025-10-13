@@ -64,13 +64,15 @@ class ModelType(str, Enum):
     - vlm: Image-to-text VLM models
     - whisper: Whisper ASR models
     - kokoro: Kokoro TTS models
-    - emb: Text-to-vector models"""    
+    - emb: Text-to-vector models    
+    - rerank: Reranker models"""    
     
     LLM = "llm"
     VLM = "vlm"
     WHISPER = "whisper"
     KOKORO = "kokoro"
     EMB = "emb"
+    RERANK = "rerank"
 
 class EngineType(str, Enum):
     """Engine used to load the model.
@@ -291,6 +293,7 @@ MODEL_CLASS_REGISTRY = {
     (EngineType.OV_GENAI, ModelType.WHISPER): "src.engine.ov_genai.whisper.OVGenAI_Whisper",
     (EngineType.OPENVINO, ModelType.KOKORO): "src.engine.openvino.kokoro.OV_Kokoro",
     (EngineType.OV_OPTIMUM, ModelType.EMB): "src.engine.optimum.optimum_emb.Optimum_EMB",
+    (EngineType.OV_OPTIMUM, ModelType.RERANK): "src.engine.optimum.optimum_rr.Optimum_RR",
 }
 
 async def create_model_instance(load_config: ModelLoadConfig) -> Any:
