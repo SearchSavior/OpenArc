@@ -6,7 +6,6 @@ import numpy as np
 from pynput import keyboard
 import tempfile
 from openai import OpenAI
-import httpx
 
 
 def transcribe_example():
@@ -77,7 +76,7 @@ def transcribe_example():
         tmp_path = tmp_file.name
         sf.write(tmp_path, audio_data, sample_rate)
     
-    print(f"💾 Audio saved to temporary WAV file")
+    print("💾 Audio saved to temporary WAV file")
     
     try:
         # Read WAV file and encode as base64 (OpenArc server expects this format)

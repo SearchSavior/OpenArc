@@ -1,14 +1,13 @@
-import os
 import base64
+import io  # For in-memory audio handling
+import os
+
+import numpy as np
+import requests  # For TTS request
 import sounddevice as sd
 import soundfile as sf
-import numpy as np
-from pynput import keyboard
-import tempfile
 from openai import OpenAI
-import httpx
-import requests  # For TTS request
-import io  # For in-memory audio handling
+from pynput import keyboard
 
 
 def talk_to_llm():
