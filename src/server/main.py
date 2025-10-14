@@ -416,10 +416,12 @@ async def rerank(request: RerankRequest):
 
     try:
         if request.config:
-
             tok_config = PreTrainedTokenizerConfig.model_validate(request.config)
             base_data = tok_config.model_dump()
             rr_config = RerankerConfig.model_validate(base_data | {"query":request.query,"documents":request.documents})
+        else:
+            rr_config = RerankerConfig.model_validate({"query":request.query,"documents":request.documents})
+            
         if request.prefix:
             rr_config.prefix = request.prefix
         if request.suffix:
