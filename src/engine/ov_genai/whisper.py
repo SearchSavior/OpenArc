@@ -50,7 +50,7 @@ class OVGenAI_Whisper:
         perf_metrics = getattr(result, "perf_metrics", None)
         metrics_dict = self.collect_metrics(perf_metrics) if perf_metrics is not None else {}
 
-        final_text = transcription
+        final_text = ' '.join(transcription) if isinstance(transcription, list) else transcription
 
         yield metrics_dict
         yield final_text
