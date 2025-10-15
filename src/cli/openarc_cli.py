@@ -76,6 +76,12 @@ def get_model_config(model_name: str):
     models = config.get("models", {})
     return models.get(model_name)
 
+def get_model_configs():
+    """Get model configuration by name."""
+    config = load_full_config()
+    models = config.get("models", {})
+    return models
+
 def remove_model_config(model_name: str):
     """Remove model configuration by name."""
     config = load_full_config()
@@ -199,42 +205,53 @@ def add(ctx, model_path, model_name, engine, model_type, device, runtime_config)
 
 @cli.command()
 @click.option('--model-name', '--mn',
-    required=True,
+    required=False,
     help='Model name to load from saved configuration.')
+@click.option('--all-models', '--am',
+    required=False,
+    is_flag=True,
+    help='Load all models from saved configuration.')
 @click.pass_context
-def load(ctx, model_name):
+def load(ctx, model_name, all_models):
     """- Load a model from saved configuration."""
     cli_instance = OpenArcCLI()
     
+    configs = {}
     # Get saved configuration
-    saved_config = get_model_config(model_name)
-    
-    if not saved_config:
+    if all_models:
+        configs = get_model_configs()
+    elif model_name:
+        configs[model_name]=get_model_config(model_name)
+    else:
+        console.print(f"❌ [red]A model name or all-models must be selected.[/red] {model_name}")
+        console.print("[yellow]Tip: Use 'openarc list' to see saved configurations, or 'openarc add' to create a new one.[/yellow]")
+        ctx.exit(1)
+        
+    if len(configs)==0 or (model_name and not configs[model_name]):
         console.print(f"❌ [red]Model configuration not found:[/red] {model_name}")
         console.print("[yellow]Tip: Use 'openarc list' to see saved configurations, or 'openarc add' to create a new one.[/yellow]")
         ctx.exit(1)
     
-    load_config = saved_config.copy()
-    
-    # Make API request to load the model
-    url = f"{cli_instance.base_url}/openarc/load"
-    
-    try:
-        console.print("[cyan]working...[/cyan]")
-        response = requests.post(url, json=load_config, headers=cli_instance.get_headers())
+    for key, value in configs.items():
+        # Make API request to load the model
+        url = f"{cli_instance.base_url}/openarc/load"
         
-        if response.status_code == 200:
-
-            console.print("[green]Done![/green]")
-            console.print("[dim]Use 'openarc status' to check the status of loaded models.[/dim]")
-        else:
-            console.print(f"❌ [red]error: {response.status_code}[/red]")
-            console.print(f"[red]Response:[/red] {response.text}")
-            ctx.exit(1)
+        try:
+            console.print("[cyan]working...[/cyan]")
+            response = requests.post(url, json=value, headers=cli_instance.get_headers())
             
-    except requests.exceptions.RequestException as e:
-        console.print(f"❌ [red]Request failed:[/red] {e}")
-        ctx.exit(1)
+            if response.status_code == 200:
+
+                console.print("[green]Done![/green]")
+                console.print("[dim]Use 'openarc status' to check the status of loaded models.[/dim]")
+            else:
+                console.print(f"❌ [red]error: {response.status_code}[/red]")
+                console.print(f"[red]Response:[/red] {response.text}")
+                ctx.exit(1)
+                
+        except requests.exceptions.RequestException as e:
+            console.print(f"❌ [red]Request failed:[/red] {e}")
+            ctx.exit(1)
 
 @cli.command()
 @click.option('--model-name', '--mn', required=True, help='Model name to unload')
