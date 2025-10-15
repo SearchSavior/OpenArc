@@ -12,6 +12,9 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
+from src.server.models.ov_genai import OVGenAI_VisionTokens
+
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -29,6 +32,7 @@ class ModelLoadConfig(BaseModel):
         """
         )
     model_type: ModelType = Field(...)
+    vlm_type: OVGenAI_VisionTokens = Field(...)
     engine: EngineType = Field(...)
     device: str = Field(
         ...,
