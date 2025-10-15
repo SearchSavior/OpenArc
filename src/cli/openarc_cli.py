@@ -176,11 +176,15 @@ def cli():
     required=True,
     help='Device(s) to load the model on.')
 @click.option("--runtime-config", "--rtc",
-    type=dict,
-    default={},
+    default=None,
     help='OpenVINO runtime configuration (e.g., performance hints). These are checked serverside at runtime.')
+@click.option('--vlm-type', '--vt',
+    type=click.Choice(['internvl2', 'llava15', 'llavanext', 'minicpmv26', 'phi3vision', 'phi4mm', 'qwen2vl', 'qwen25vl', 'gemma3']),
+    required=False,
+    default=None,
+    help='Vision model type. Used to map correct vision tokens.')
 @click.pass_context
-def add(ctx, model_path, model_name, engine, model_type, device, runtime_config):
+def add(ctx, model_path, model_name, engine, model_type, device, runtime_config, vlm_type):
     """- Add a model configuration to the config file."""
     
     # Build and save configuration
@@ -190,7 +194,8 @@ def add(ctx, model_path, model_name, engine, model_type, device, runtime_config)
         "model_type": model_type,  
         "engine": engine,    
         "device": device,
-        "runtime_config": runtime_config if runtime_config else {}
+        "runtime_config": runtime_config if runtime_config else {},
+        "vlm_type": vlm_type if vlm_type else None
     }
     
     save_model_config(model_name, load_config)
