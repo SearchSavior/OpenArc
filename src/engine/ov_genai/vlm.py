@@ -15,7 +15,7 @@ from openvino_genai import (
 from PIL import Image
 from transformers import AutoTokenizer
 
-from src.server.models.ov_genai import OVGenAI_GenConfig
+from src.server.models.ov_genai import OVGenAI_GenConfig, VLM_VISION_TOKENS
 from src.server.model_registry import ModelLoadConfig, ModelRegistry
 from src.engine.ov_genai.streamers import ChunkStreamer
 
@@ -33,9 +33,9 @@ class OVGenAI_VLM:
     def _vision_token_for_index(self, index: int) -> str:
         """
         Return the correctly formatted vision token for the given image index.
-        Handles enums whose values may contain an index placeholder like '{i}'.
+        Handles templates that may contain an index placeholder like '{i}'.
         """
-        token_template = str(self.vision_token.value) if self.vision_token is not None else ""
+        token_template = self.vision_token if self.vision_token is not None else ""
         if "{i}" in token_template:
             return token_template.replace("{i}", str(index))
         return token_template
@@ -147,11 +147,10 @@ class OVGenAI_VLM:
             prompt, ov_images = self.prepare_inputs(gen_config.messages, gen_config.tools)
             
             logger.debug(f"[{self.load_config.model_name}] Calling VLMPipeline.generate")
-            images_arg = ov_images if len(ov_images) > 0 else None
             result = await asyncio.to_thread(
                 self.model_path.generate,
                 prompt=prompt,
-                images=images_arg,
+                **({'images': ov_images} if len(ov_images) > 0 else {}),
                 generation_config=generation_kwargs,
             )
 
@@ -186,11 +185,10 @@ class OVGenAI_VLM:
         prompt, ov_images = self.prepare_inputs(gen_config.messages, gen_config.tools)
 
         async def _run_generation():
-            images_arg = ov_images if len(ov_images) > 0 else None
             return await asyncio.to_thread(
                 self.model_path.generate,
                 prompt=prompt,
-                images=images_arg,
+                **({'images': ov_images} if len(ov_images) > 0 else {}),
                 generation_config=generation_kwargs,
                 streamer=streamer,
             )
@@ -235,7 +233,7 @@ class OVGenAI_VLM:
 
     def load_model(self, loader: ModelLoadConfig):
         """
-        Load model using a ModelLoadConfig configuration and cache the AutoProcessor.
+        Load the VLMPipeline and cache the tokenizer and vision token.
         """
         try:
             logger.info(f"[{loader.model_name}] Device: {loader.device}, Runtime config: {loader.runtime_config}")
@@ -248,7 +246,10 @@ class OVGenAI_VLM:
             
             self.tokenizer = AutoTokenizer.from_pretrained(loader.model_path)
     
-            self.vision_token = loader.vlm_type
+            # Get vision token from the mapping using vlm_type as key
+            self.vision_token = VLM_VISION_TOKENS.get(loader.vlm_type)
+            if self.vision_token is None:
+                raise ValueError(f"Unknown VLM type: {loader.vlm_type}. Supported: {list(VLM_VISION_TOKENS.keys())}")
 
             logger.info(f"[{loader.model_name}] VLMPipeline initialized successfully")
 

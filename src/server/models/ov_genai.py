@@ -50,20 +50,15 @@ class OVGenAI_GenConfig(BaseModel):
 class OVGenAI_WhisperGenConfig(BaseModel):
     audio_base64: str = Field(..., description="Base64 encoded audio")
 
-class OVGenAI_VisionTokens(str, Enum):
-    """Defines image token syntax for supported Vision-Language Models (VLMs).
-    
-    The enum name is the external API identifier (e.g., 'internvl2').
-    The enum value is the internal token string (e.g., '<image>').
-    """
-
-    internvl2 = "<image>"
-    llava15 = "<image>"
-    llavanext = "<image>"
-    minicpmv26 = "(<image>./</image>)"
-    phi3vision = "<|image_{i}|>"
-    phi4mm = "<|image_{i}|>"
-    qwen2vl = "<|vision_start|><|image_pad|><|vision_end|>"
-    qwen25vl = "<|vision_start|><|image_pad|><|vision_end|>"
-    gemma3 = "<start_of_image>"
+VLM_VISION_TOKENS = {
+    "internvl2": "<image>",
+    "llava15": "<image>",
+    "llavanext": "<image>",
+    "minicpmv26": "(<image>./</image>)",
+    "phi3vision": "<|image_{i}|>",
+    "phi4mm": "<|image_{i}|>",
+    "qwen2vl": "<|vision_start|><|image_pad|><|vision_end|>",
+    "qwen25vl": "<|vision_start|><|image_pad|><|vision_end|>",
+    "gemma3": "<start_of_image>",
+}
 

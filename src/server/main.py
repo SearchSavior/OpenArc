@@ -298,9 +298,6 @@ async def openai_chat_completions(request: OpenAIChatCompletionRequest):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(exc)}")
 
-
-
-
 @app.post("/v1/audio/transcriptions", dependencies=[Depends(verify_api_key)])
 async def openai_audio_transcriptions(request: OpenAIWhisperRequest):
     try:
@@ -311,7 +308,6 @@ async def openai_audio_transcriptions(request: OpenAIWhisperRequest):
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Transcription failed: {str(exc)}")
-
 
 @app.post("/v1/audio/speech", dependencies=[Depends(verify_api_key)])
 async def openai_audio_speech(request: OpenAIKokoroRequest):
