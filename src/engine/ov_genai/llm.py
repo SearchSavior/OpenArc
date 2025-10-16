@@ -53,6 +53,25 @@ class OVGenAI_LLM:
             )
         return ov.Tensor(prompt_token_ids)
     
+    def prepare_raw_prompt(self, prompt: str) -> ov.Tensor:
+        """
+        Convert a raw text prompt into ov.Tensor using direct tokenization.
+        
+        This is used for the /v1/completions endpoint which expects raw text
+        rather than structured messages.
+        
+        Args:
+            prompt: str - Raw text prompt to tokenize
+            
+        Returns:
+            prompt_token_ids: ov.Tensor
+        """
+        prompt_token_ids = self.encoder_tokenizer.encode(
+            prompt,
+            return_tensors="np"
+        )
+        return ov.Tensor(prompt_token_ids)
+    
     def generate_type(self, gen_config: OVGenAI_GenConfig):
         """
         Unified text generation method that routes to streaming or non-streaming
@@ -83,7 +102,12 @@ class OVGenAI_LLM:
             repetition_penalty=gen_config.repetition_penalty,
         )
 
-        prompt_token_ids = self.prepare_inputs(gen_config.messages, gen_config.tools)
+        # Support both chat messages and raw prompts
+        if gen_config.prompt:
+            prompt_token_ids = self.prepare_raw_prompt(gen_config.prompt)
+        else:
+            prompt_token_ids = self.prepare_inputs(gen_config.messages, gen_config.tools)
+        
         result = await asyncio.to_thread(self.model.generate, prompt_token_ids, generation_kwargs)
         
         perf_metrics = result.perf_metrics
@@ -109,7 +133,12 @@ class OVGenAI_LLM:
 
         decoder_tokenizer = self.model.get_tokenizer()
         streamer = ChunkStreamer(decoder_tokenizer, gen_config)
-        prompt_token_ids = self.prepare_inputs(gen_config.messages, gen_config.tools)
+        
+        # Support both chat messages and raw prompts
+        if gen_config.prompt:
+            prompt_token_ids = self.prepare_raw_prompt(gen_config.prompt)
+        else:
+            prompt_token_ids = self.prepare_inputs(gen_config.messages, gen_config.tools)
 
         async def _run_generation():
             return await asyncio.to_thread(

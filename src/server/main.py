@@ -139,6 +139,20 @@ class OpenAIChatCompletionRequest(BaseModel):
     do_sample: Optional[bool] = None
     num_return_sequences: Optional[int] = None
 
+class OpenAICompletionRequest(BaseModel):
+    model: str
+    prompt: Union[str, List[str]]
+    stream: Optional[bool] = None
+    
+    temperature: Optional[float] = None
+    max_tokens: Optional[int] = None
+    stop: Optional[List[str]] = None
+    top_p: Optional[float] = None
+    top_k: Optional[int] = None
+    repetition_penalty: Optional[float] = None
+    do_sample: Optional[bool] = None
+    num_return_sequences: Optional[int] = None
+
 class OpenAIWhisperRequest(BaseModel):
     model: str
     audio_base64: str
@@ -297,6 +311,118 @@ async def openai_chat_completions(request: OpenAIChatCompletionRequest):
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(exc)}")
+
+@app.post("/v1/completions", dependencies=[Depends(verify_api_key)])
+async def openai_completions(request: OpenAICompletionRequest):
+    try:
+        # Handle both single prompt (string) and multiple prompts (list)
+        # For now, we'll process the first prompt if it's a list
+        prompt = request.prompt if isinstance(request.prompt, str) else request.prompt[0]
+        
+        logger.info(f"[completions] Received prompt: {prompt[:100]}..." if len(prompt) > 100 else f"[completions] Received prompt: {prompt}")
+        
+        config_kwargs = {
+            "prompt": prompt,
+            "temperature": request.temperature,
+            "max_new_tokens": request.max_tokens,
+            "top_p": request.top_p,
+            "top_k": request.top_k,
+            "repetition_penalty": request.repetition_penalty,
+            "do_sample": request.do_sample,
+            "num_return_sequences": request.num_return_sequences,
+            "stream": request.stream,
+        }
+        # Remove keys with value None
+        config_kwargs = {k: v for k, v in config_kwargs.items() if v is not None}
+        
+        generation_config = OVGenAI_GenConfig(**config_kwargs)
+        
+        model_name = request.model
+        created_ts = int(time.time())
+        request_id = f"ov-{uuid.uuid4().hex[:24]}"
+
+        if generation_config.stream:
+            async def event_stream() -> AsyncIterator[bytes]:
+                # Stream OpenAI-compatible chunks
+                metrics_data = None
+                async for item in _workers.stream_generate(model_name, generation_config):
+                    if isinstance(item, dict):
+                        # Capture metrics for final usage payload
+                        metrics_data = item.get("metrics", item)
+                        continue
+                    chunk_payload = {
+                        "id": request_id,
+                        "object": "text_completion.chunk",
+                        "created": created_ts,
+                        "model": model_name,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "text": item,
+                                "finish_reason": None,
+                            }
+                        ],
+                    }
+                    yield (f"data: {json.dumps(chunk_payload)}\n\n").encode()
+
+                # Final stop signal per OpenAI SSE with usage
+                prompt_tokens = (metrics_data or {}).get("input_token", 0)
+                completion_tokens = (metrics_data or {}).get("new_token", 0)
+                total_tokens = (metrics_data or {}).get("total_token", prompt_tokens + completion_tokens)
+                final_payload = {
+                    "id": request_id,
+                    "object": "text_completion.chunk",
+                    "created": created_ts,
+                    "model": model_name,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "text": "",
+                            "finish_reason": "stop",
+                        }
+                    ],
+                    "usage": {
+                        "prompt_tokens": prompt_tokens,
+                        "completion_tokens": completion_tokens,
+                        "total_tokens": total_tokens,
+                    },
+                }
+                yield (f"data: {json.dumps(final_payload)}\n\n").encode()
+                yield b"data: [DONE]\n\n"
+
+            return StreamingResponse(event_stream(), media_type="text/event-stream")
+        else:
+            result = await _workers.generate(model_name, generation_config)
+            text = result.get("text", "")
+            metrics = result.get("metrics", {}) or {}
+
+            prompt_tokens = metrics.get("input_token", 0)
+            completion_tokens = metrics.get("new_token", 0)
+            total_tokens = metrics.get("total_token", prompt_tokens + completion_tokens)
+
+            response = {
+                "id": request_id,
+                "object": "text_completion",
+                "created": created_ts,
+                "model": model_name,
+                "choices": [
+                    {
+                        "index": 0,
+                        "text": text,
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": total_tokens,
+                },
+            }
+            return response
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Completion failed: {str(exc)}")
 
 @app.post("/v1/audio/transcriptions", dependencies=[Depends(verify_api_key)])
 async def openai_audio_transcriptions(request: OpenAIWhisperRequest):

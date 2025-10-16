@@ -1,7 +1,6 @@
-from enum import Enum
-from typing import Dict, List, Union, Any
-from pydantic import BaseModel, Field
+from typing import Any, Dict, List, Union
 
+from pydantic import BaseModel, Field
 
 
 class OVGenAI_GenConfig(BaseModel):
@@ -10,8 +9,12 @@ class OVGenAI_GenConfig(BaseModel):
     Supports both text-only and multimodal (text + image) messages.
     """
     messages: List[Dict[str, Union[str, List[Dict[str, Any]]]]] = Field(
-        ...,
+        default=None,
         description="List of conversation messages. Content can be a string for text-only or a list of content items for multimodal messages."
+    )
+    prompt: str = Field(
+        default=None,
+        description="Raw text prompt (used for /v1/completions endpoint instead of messages)"
     )
     max_new_tokens: int = Field(
         default=512,
