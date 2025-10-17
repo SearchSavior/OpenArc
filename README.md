@@ -4,7 +4,7 @@
 [![Hugging Face](https://img.shields.io/badge/🤗%20Hugging%20Face-Echo9Zulu-yellow)](https://huggingface.co/Echo9Zulu)
 
 
-> [!]
+> [!NOTE]
 > OpenArc is under active development.
 
 **OpenArc** is an inference engine for Intel devices. Serve LLMs, VLMs, Whisper, Kokoro-TTS and Embedding models over OpenAI compatible endpoints, powered by OpenVINO.
@@ -13,7 +13,7 @@
 
 ## What's new?
 
-Drawing on ideas from llama.cpp, vLLM, transformers, OpenVINO Model Server, Ray, Lemonade and other projects, OpenArc has evolved into a capable serving engine for AI workloads on Intel devices.
+Drawing on ideas from `llama.cpp`, `vLLM`, `transformers`, `OpenVINO Model Server`, `Ray`, `Lemonade`, and other projects, OpenArc has evolved into a capable serving engine for AI workloads on Intel devices.
 
 New Features:
   - Multi GPU Pipeline Paralell
@@ -21,10 +21,11 @@ New Features:
   - NPU device support
   - OpenAI compatible endpoints
       - `/v1/models`
-      - `/v1/chat/completions`: tool use, streaming
+      - `/v1/completions`: `llm` only
+      - `/v1/chat/completions`: tools, streaming
       - `/v1/embeddings`: 
-      - `/v1/audio/transcriptions`: Whisper only
-      - `/v1/audio/speech`: Kokoro only       
+      - `/v1/audio/transcriptions`: `whisper` only
+      - `/v1/audio/speech`: `kokoro` only       
   - `jinja` templating with AutoTokenizers
   - Fully async multi engine, multi task architecture
   - Model concurrency: load and infer multiple models at once
@@ -36,9 +37,11 @@ New Features:
     - tpot
     - load time
     - stream mode
-  - More
+  - OpenVINO C++ stacktrace in server logs
+  - Fully rewritten command line tool
+  - 
 
-> [!] Interested in contributing? Please open an issue before submitting a PR!
+> [!NOTE] Interested in contributing? Please open an issue before submitting a PR!
 
 ## Quickstart 
 
@@ -66,6 +69,16 @@ uv sync
 source .venv/bin/activate
 ```
 
+Build latest optimum
+```
+uv pip install "optimum-intel[openvino] @ git+https://github.com/huggingface/optimum-intel"
+```
+
+Build latest OpenVINO and OpenVINO GenAI from nightly wheels
+```
+uv pip install --pre -U openvino-genai --extra-index-url https://storage.openvinotoolkit.org/simple/wheels/nightly
+```
+
 
 5. Set your API key as an environment variable:
 
@@ -89,7 +102,7 @@ openarc --help
  
 - Visit [OpenVINO System Requirments](https://docs.openvino.ai/2025/about-openvino/release-notes-openvino/system-requirements.html#cpu) to get the latest information on drivers.
 
-> [!]
+> [!NOTE]
 > Need help installing drivers? [Join our Discord](https://discord.gg/Bzz9hax9Jq) or open an issue.
 
 
@@ -99,6 +112,16 @@ openarc --help
   ```
   uv sync
   ```
+
+Build latest optimum
+```
+uv pip install "optimum-intel[openvino] @ git+https://github.com/huggingface/optimum-intel"
+```
+
+Build latest OpenVINO and OpenVINO GenAI from nightly wheels
+```
+uv pip install --pre -U openvino-genai --extra-index-url https://storage.openvinotoolkit.org/simple/wheels/nightly
+```
 
 4. Set your API key as an environment variable:
 ```
@@ -129,6 +152,15 @@ Add a model to openarc-config.json for easy loading with ```openarc load```.
 ```
 openarc add --model-name <model-name> --model-path <path/to/model> --engine <engine> --model-type <model-type> --device <target-device>
 ```
+
+#### VLM
+
+```
+openarc add --model-name <model-name> --model-path <path/to/model> --engine <engine> --model-type <model-type> --device <target-device> --vlm-type <vlm-type>
+```
+Getting VLM to work the way I wanted required using VLMPipeline in ways that are not well documented. You can look at the [code](src/engine/ov_genai/vlm.py#L33) to see where the magic happens. 
+
+`vlm-type` maps a vision token for a given architecture using strings like `qwen25vl`, `phi4mm`. Use `openarc add --help` to see the available options. The server will complain if you get anything wrong, so it should be easy to figure out.
 
 #### Whisper
 
@@ -271,6 +303,7 @@ openarc tool device-detect
 
 
 <br>
+
 ### OpenVINO Model Format: Intermediate Representation
 
 
@@ -278,11 +311,15 @@ openarc tool device-detect
 
 [OpenVINO Intermediate Representations](https://docs.openvino.ai/2025/documentation/openvino-ir-format.html) describe a set of standarsization techniques to format the operations of a neural network into a computational graph topology that a compiler can understand, stored in `openvino_model.bin` and `openvino_model.xml`.
 
-Each node and edge in the `openvino_model.xml` file maps opsets required for inference into xml trees which are parsed during model compilation, mapping required `opsets` to supported `opsets` using OpenVINO's device plugin system. 
+`openvino_model.xml` nodes represent [opsets](https://docs.openvino.ai/2025/documentation/openvino-ir-format/operation-sets.html#overview-of-artificial-neural-networks-representation) while edges represent data flow through the network a given IR describes. Together, these help OpenVINO's device plugin system determine what opsets are required vs which are *implemented* for a target device. 
+ 
+Optimum-Intel provides [a hands on primer](https://huggingface.co/docs/optimum/main/en/intel/openvino/optimization) demonstrating how the IR is used to apply post training optimization and is a good place to start building some intuition. 
+
+However, you don't need to understand everything and there are many sources of preconverted models.
 
 ### Model Sources
 
-To use this project you have to use a model converted to OpenVINO IR. Based on the tasks we support models usually come from Pytorch. `bin` and `safetensor` both work.
+To use this project you need to use a model converted to OpenVINO IR. Based on the tasks we support models usually come from Pytorch. `bin` and `safetensor` both work.
 
 There are a few sources of preconverted models which can be used with OpenArc;
 
@@ -293,7 +330,11 @@ There are a few sources of preconverted models which can be used with OpenArc;
 [LLMs optimized for NPU](https://huggingface.co/collections/OpenVINO/llms-optimized-for-npu-686e7f0bf7bc184bd71f8ba0)
 
 
-#### LLMs
+#### More models to get you started!
+
+<details>
+  <summary><strong>LLMs</strong></summary>
+<br>
 
 | **Models** |
 | --- |
@@ -306,16 +347,25 @@ There are a few sources of preconverted models which can be used with OpenArc;
 | [Echo9Zulu/Hermes-4-70B-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Hermes-4-70B-int4_asym-awq-ov) |
 | [Echo9Zulu/Qwen2.5-Coder-32B-Instruct-int4_sym-awq-ov](https://huggingface.co/Echo9Zulu/Qwen2.5-Coder-32B-Instruct-int4_sym-awq-ov) |
 
+</details>
 
-#### VLMs
+<details>
+  <summary><strong>VLMs</strong></summary>
+<br>
 
 | **Models** |
 | --- |
 | [Echo9Zulu/gemma-3-4b-it-int8_asym-ov](https://huggingface.co/Echo9Zulu/gemma-3-4b-it-int8_asym-ov) |
+| [Echo9Zulu/Gemma-3-12b-it-qat-int4_asym-ov](https://huggingface.co/Echo9Zulu/Gemma-3-12b-it-qat-int4_asym-ov) |
 | [Echo9Zulu/Qwen2.5-VL-7B-Instruct-int4_sym-ov](https://huggingface.co/Echo9Zulu/Qwen2.5-VL-7B-Instruct-int4_sym-ov/tree/main) |
+| [Echo9Zulu/Nanonets-OCR2-3B-LM-INT4_ASYM-VE-FP16-ov](https://huggingface.co/Echo9Zulu/Nanonets-OCR2-3B-LM-INT4_ASYM-VE-FP16-ov) |
+
+</details>
 
 
-#### Whisper
+<details>
+  <summary><strong>Whisper</strong></summary>
+<br>
 
 | **Models** |
 | --- |
@@ -324,21 +374,31 @@ There are a few sources of preconverted models which can be used with OpenArc;
 | [OpenVINO/whisper-large-v3-int8-ov](https://huggingface.co/OpenVINO/whisper-large-v3-int8-ov/tree/main) |
 | [OpenVINO/openai-whisper-large-v3-fp16-ov](https://huggingface.co/OpenVINO/openai-whisper-large-v3-fp16-ov/tree/main) |
 
-#### Kokoro
+</details>
+
+<details>
+  <summary><strong>Kokoro</strong></summary>
+<br>
 
 | **Models** |
 | --- |
 | [Echo9Zulu/Kokoro-82M-FP16-OpenVINO](https://huggingface.co/Echo9Zulu/Kokoro-82M-FP16-OpenVINO) |
 
-##### Embedding
+</details>
 
+<details>
+  <summary><strong>Embedding</strong></summary>
+<br>
 
-|----------------------------------------------------------------------|
+| **Models** |
+| --- |
 | [Echo9Zulu/Qwen3-Embedding-0.6B-int8_asym-ov](https://huggingface.co/Echo9Zulu/Qwen3-Embedding-0.6B-int8_asym-ov) |
 
+</details>
 
 
-#### Converting Models to OpenVINO IR
+
+### Converting Models to OpenVINO IR
 
 Intel provides a suite of tools you can use to apply different post training optimization techniques developed over at [Neural Network Compression Framwork](https://github.com/openvinotoolkit/nncf). 
 

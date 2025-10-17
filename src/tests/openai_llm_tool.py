@@ -16,7 +16,7 @@ def test_tool_calling():
         print(f"Failed to initialize OpenAI client: {e}")
         return
 
-    model_name = "qwen25-14b"
+    model_name = "Gemma-3-12B"
     
     # Track results
     total_tests = 50

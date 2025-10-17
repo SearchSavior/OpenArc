@@ -1,7 +1,7 @@
 import os
 from openai import OpenAI
 
-model_name = "Dolphin-X1"
+model_name = "Gemma-3-12B"
 
 def completions_non_streaming_example():
     """Run a simple non-streaming completions request against localhost:8000."""

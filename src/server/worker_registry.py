@@ -1,6 +1,10 @@
 import logging
 import asyncio
 import uuid
+import base64
+import io
+import torch
+import soundfile as sf
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Dict, Optional, Union
 
@@ -178,11 +182,6 @@ class InferWorker:
         Collects audio chunks and concatenates them into a single audio tensor,
         then converts to bytes for response.
         """
-        import base64
-        import io
-
-        import torch
-
         audio_chunks = []
         chunk_texts = []
 
@@ -197,7 +196,6 @@ class InferWorker:
 
                 # Convert to WAV bytes
                 wav_buffer = io.BytesIO()
-                import soundfile as sf
                 sf.write(wav_buffer, full_audio.numpy(), samplerate=24000, format='WAV')
                 wav_bytes = wav_buffer.getvalue()
 

@@ -158,7 +158,6 @@ class OpenAIWhisperRequest(BaseModel):
     model: str
     audio_base64: str
 
-
 class OpenAIKokoroRequest(BaseModel):
     model: str
     input: str
@@ -315,8 +314,6 @@ async def openai_chat_completions(request: OpenAIChatCompletionRequest):
 @app.post("/v1/completions", dependencies=[Depends(verify_api_key)])
 async def openai_completions(request: OpenAICompletionRequest):
     try:
-        # Handle both single prompt (string) and multiple prompts (list)
-        # For now, we'll process the first prompt if it's a list
         prompt = request.prompt if isinstance(request.prompt, str) else request.prompt[0]
         
         config_kwargs = {
