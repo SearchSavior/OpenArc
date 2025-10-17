@@ -255,7 +255,9 @@ class QueueWorker:
     Manages inference worker loops for consuming and processing packets from model queues.
     
     This class orchestrates the continuous processing of inference requests by running
-    dedicated worker loops for different model types. Each worker consumes packets from
+    dedicated worker loops for different model types. 
+    
+    Each worker consumes packets from
     model-specific queues, delegates generation to Worker_QueueHandler, handles logging,
     and manages result communication back to callers.
     

@@ -6,22 +6,23 @@ import json
 import logging
 import os
 import time
-import uuid
 import traceback
-from typing import Any, AsyncIterator, List, Optional, Dict, Union
+import uuid
+from typing import Any, AsyncIterator, Dict, List, Optional, Union
 
-from pydantic import BaseModel
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from pydantic import BaseModel
+
 from src.server.model_registry import ModelLoadConfig, ModelRegistry, ModelUnloadConfig
-from src.server.worker_registry import WorkerRegistry
 from src.server.models.openvino import OV_KokoroGenConfig
-from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
 from src.server.models.optimum import PreTrainedTokenizerConfig
+from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
+from src.server.worker_registry import WorkerRegistry
 
 #===============================================================#
 # Logging
@@ -199,7 +200,6 @@ async def openai_list_models():
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to list models: {str(exc)}")
 
-
 @app.post("/v1/chat/completions", dependencies=[Depends(verify_api_key)])
 async def openai_chat_completions(request: OpenAIChatCompletionRequest):
     try:
@@ -318,8 +318,6 @@ async def openai_completions(request: OpenAICompletionRequest):
         # Handle both single prompt (string) and multiple prompts (list)
         # For now, we'll process the first prompt if it's a list
         prompt = request.prompt if isinstance(request.prompt, str) else request.prompt[0]
-        
-        logger.info(f"[completions] Received prompt: {prompt[:100]}..." if len(prompt) > 100 else f"[completions] Received prompt: {prompt}")
         
         config_kwargs = {
             "prompt": prompt,

@@ -53,25 +53,6 @@ class OVGenAI_LLM:
             )
         return ov.Tensor(prompt_token_ids)
     
-    def prepare_raw_prompt(self, prompt: str) -> ov.Tensor:
-        """
-        Convert a raw text prompt into ov.Tensor using direct tokenization.
-        
-        This is used for the /v1/completions endpoint which expects raw text
-        rather than structured messages.
-        
-        Args:
-            prompt: str - Raw text prompt to tokenize
-            
-        Returns:
-            prompt_token_ids: ov.Tensor
-        """
-        prompt_token_ids = self.encoder_tokenizer.encode(
-            prompt,
-            return_tensors="np"
-        )
-        return ov.Tensor(prompt_token_ids)
-    
     def generate_type(self, gen_config: OVGenAI_GenConfig):
         """
         Unified text generation method that routes to streaming or non-streaming
@@ -104,8 +85,10 @@ class OVGenAI_LLM:
 
         # Support both chat messages and raw prompts
         if gen_config.prompt:
-            prompt_token_ids = self.prepare_raw_prompt(gen_config.prompt)
+            # Direct tokenization for raw text (used by /v1/completions endpoint)
+            prompt_token_ids = ov.Tensor(self.encoder_tokenizer.encode(gen_config.prompt, return_tensors="np"))
         else:
+            # Chat template tokenization for messages (used by /v1/chat/completions endpoint)
             prompt_token_ids = self.prepare_inputs(gen_config.messages, gen_config.tools)
         
         result = await asyncio.to_thread(self.model.generate, prompt_token_ids, generation_kwargs)
@@ -136,8 +119,10 @@ class OVGenAI_LLM:
         
         # Support both chat messages and raw prompts
         if gen_config.prompt:
-            prompt_token_ids = self.prepare_raw_prompt(gen_config.prompt)
+            # Direct tokenization for raw text (used by /v1/completions endpoint)
+            prompt_token_ids = ov.Tensor(self.encoder_tokenizer.encode(gen_config.prompt, return_tensors="np"))
         else:
+            # Chat template tokenization for messages (used by /v1/chat/completions endpoint)
             prompt_token_ids = self.prepare_inputs(gen_config.messages, gen_config.tools)
 
         async def _run_generation():

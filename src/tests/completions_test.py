@@ -1,6 +1,7 @@
 import os
 from openai import OpenAI
 
+model_name = "Dolphin-X1"
 
 def completions_non_streaming_example():
     """Run a simple non-streaming completions request against localhost:8000."""
@@ -14,12 +15,11 @@ def completions_non_streaming_example():
         return
 
     try:
-        model_name = "qwen25-14b"
         
         resp = client.completions.create(
             model=model_name,
             prompt="The future of artificial intelligence is",
-            max_tokens=64,
+            max_tokens=32,
             temperature=0.7,
         )
 
@@ -44,12 +44,11 @@ def completions_streaming_example():
         return
 
     try:
-        model_name = "qwen25-14b"
         
         stream = client.completions.create(
             model=model_name,
             prompt="Explain quantum computing in simple terms:",
-            max_tokens=128,
+            max_tokens=32,
             temperature=0.8,
             stream=True,
         )
@@ -84,12 +83,11 @@ def completions_with_parameters():
         return
 
     try:
-        model_name = "qwen25-14b"
         
         resp = client.completions.create(
             model=model_name,
             prompt="Translate this to French: Hello, how are you?",
-            max_tokens=64,
+            max_tokens=32,
             temperature=0.5,
             top_p=0.9,
             top_k=50,
@@ -107,7 +105,7 @@ def completions_with_parameters():
 if __name__ == "__main__":
     print("=" * 60)
     print("Testing OpenAI-compatible /v1/completions endpoint")
-    print("Model: qwen25-14b")
+    print("Model: {model_name}")
     print("=" * 60)
     print()
     
