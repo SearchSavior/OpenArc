@@ -60,18 +60,7 @@ class WorkerPacket:
 
 class InferWorker:
     """
-    Handles generation for individual packets.
-    
-    Responsibilities:
-    - Execute generation requests using pipelines
-
-    
-    Methods:
-    - infer_llm: Process text-to-text generation requests
-    - infer_vlm: Process image-to-text generation requests
-    - infer_whisper: Process audio transcription requests
-    - infer_kokoro: Process speech generation requests
-    - infer_emb: Process embedding requests
+    Handles generation callsfor individual packets for inference pipelines.
 
     """
     
@@ -252,33 +241,6 @@ class QueueWorker:
     """
     Manages inference worker loops for consuming and processing packets from model queues.
     
-    This class orchestrates the continuous processing of inference requests by running
-    dedicated worker loops for different model types. 
-    
-    Each worker consumes packets from
-    model-specific queues, delegates generation to Worker_QueueHandler, handles logging,
-    and manages result communication back to callers.
-    
-    Responsibilities:
-    - Run continuous worker loops for text and image models
-    - Consume packets from model-specific asyncio queues
-    - Coordinate with Worker_QueueHandler for actual generation
-    - Extract and log user messages for different content types
-    - Handle graceful shutdown via None packet signals
-    - Manage result futures and task completion notifications
-    
-    Worker Types:
-    - Text Workers (LLM): Handle text-to-text generation models
-    - Image Workers (VLM): Handle image-to-text/vision-language models
-    
-    Methods:
-    - worker_llm: Continuous worker for text models
-    - worker_vlm: Continuous worker for image/multimodal models
-    
-    Architecture:
-    Each worker runs as an independent asyncio task, processing packets sequentially
-    while allowing multiple workers to operate in parallel for different models.
-    Workers are spawned by WorkerRegistry and communicate via asyncio primitives.
     """
     
     @staticmethod
@@ -418,31 +380,7 @@ class WorkerRegistry:
     worker tasks for each loaded model, routing generation requests to the appropriate
     model-specific queues.
     
-    Architecture Overview:
-    - Subscribes to ModelRegistry events (model load/unload)
-    - Maintains separate queue/task dictionaries per model type (text vs image)
-    - Spawns Worker_ModelManager tasks for each loaded model
-    - Provides high-level generate() and stream_generate() APIs
-    - Handles request routing based on model names
-    
-    Key Features:
-    - Automatic worker lifecycle management (spawn on load, cleanup on unload)
-    - Type-safe model handling with explicit ModelType routing
-    - Concurrent processing via per-model asyncio queues
-    - Support for both streaming and non-streaming generation
-    - Graceful shutdown and resource cleanup
-    
-    Data Structures:
-    - _model_queues_llm/image: Per-model asyncio queues for request routing
-    - _model_tasks_llm/image: Per-model asyncio tasks for worker management
-    
-    Public API:
-    - generate(): Non-streaming text generation
-    - stream_generate(): Streaming text generation with AsyncIterator
-    
-    Thread Safety:
-    Uses asyncio.Lock for thread-safe access to internal dictionaries during
-    concurrent model loading/unloading operations.
+
     """
 
     def __init__(self, model_registry: ModelRegistry):
