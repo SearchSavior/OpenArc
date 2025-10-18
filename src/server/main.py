@@ -28,11 +28,8 @@ from src.server.worker_registry import WorkerRegistry
 # Logging
 #===============================================================#
 
-
-logging.basicConfig(
-    level=logging.ERROR,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Logging is configured in launch.py - don't configure here to avoid conflicts
+# The logger will inherit from root logger configured in launch.py
 logger = logging.getLogger(__name__)
 
 
@@ -202,7 +199,8 @@ async def openai_list_models():
 @app.post("/v1/chat/completions", dependencies=[Depends(verify_api_key)])
 async def openai_chat_completions(request: OpenAIChatCompletionRequest):
     try:
-        logger.info(f"[chat/completions] Received tools: {request.tools}")
+    
+
         
         config_kwargs = {
             "messages": request.messages,
@@ -218,11 +216,8 @@ async def openai_chat_completions(request: OpenAIChatCompletionRequest):
         }
         # Remove keys with value None
         config_kwargs = {k: v for k, v in config_kwargs.items() if v is not None}
-        
-        logger.info(f"[chat/completions] config_kwargs tools: {config_kwargs.get('tools', 'NOT PRESENT')}")
 
         generation_config = OVGenAI_GenConfig(**config_kwargs)
-        logger.info(f"[chat/completions] generation_config.tools: {generation_config.tools}")
 
         model_name = request.model
         created_ts = int(time.time())
@@ -256,6 +251,9 @@ async def openai_chat_completions(request: OpenAIChatCompletionRequest):
                 prompt_tokens = (metrics_data or {}).get("input_token", 0)
                 completion_tokens = (metrics_data or {}).get("new_token", 0)
                 total_tokens = (metrics_data or {}).get("total_token", prompt_tokens + completion_tokens)
+                
+                logger.info(f"[chat/completions] stream=true model={model_name} metrics={metrics_data}")
+                
                 final_payload = {
                     "id": request_id,
                     "object": "chat.completion.chunk",
@@ -286,6 +284,7 @@ async def openai_chat_completions(request: OpenAIChatCompletionRequest):
             prompt_tokens = metrics.get("input_token", 0)
             completion_tokens = metrics.get("new_token", 0)
             total_tokens = metrics.get("total_token", prompt_tokens + completion_tokens)
+        
 
             response = {
                 "id": request_id,
@@ -304,6 +303,7 @@ async def openai_chat_completions(request: OpenAIChatCompletionRequest):
                     "completion_tokens": completion_tokens,
                     "total_tokens": total_tokens,
                 },
+                "metrics": metrics,  # OpenArc internal metrics
             }
             return response
     except ValueError as exc:
@@ -364,6 +364,9 @@ async def openai_completions(request: OpenAICompletionRequest):
                 prompt_tokens = (metrics_data or {}).get("input_token", 0)
                 completion_tokens = (metrics_data or {}).get("new_token", 0)
                 total_tokens = (metrics_data or {}).get("total_token", prompt_tokens + completion_tokens)
+                
+                logger.info(f"[completions] stream=true model={model_name} metrics={metrics_data}")
+                
                 final_payload = {
                     "id": request_id,
                     "object": "text_completion.chunk",
@@ -394,6 +397,8 @@ async def openai_completions(request: OpenAICompletionRequest):
             prompt_tokens = metrics.get("input_token", 0)
             completion_tokens = metrics.get("new_token", 0)
             total_tokens = metrics.get("total_token", prompt_tokens + completion_tokens)
+            
+            logger.info(f"[completions] stream=false model={model_name} metrics={metrics}")
 
             response = {
                 "id": request_id,
@@ -424,7 +429,11 @@ async def openai_audio_transcriptions(request: OpenAIWhisperRequest):
     try:
         gen_config = OVGenAI_WhisperGenConfig(audio_base64=request.audio_base64)
         result = await _workers.transcribe_whisper(request.model, gen_config)
-        return {"text": result.get("text", ""), "metrics": result.get("metrics", {})}
+        metrics = result.get("metrics", {})
+        
+        logger.info(f"[audio/transcriptions] model={request.model} metrics={metrics}")
+        
+        return {"text": result.get("text", ""), "metrics": metrics}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
@@ -447,6 +456,9 @@ async def openai_audio_speech(request: OpenAIKokoroRequest):
         )
 
         result = await _workers.generate_speech_kokoro(request.model, gen_config)
+        metrics = result.get("metrics", {})
+        
+        logger.info(f"[audio/speech] model={request.model} voice={request.voice} metrics={metrics}")
 
         # Decode base64 audio and return as WAV file
         import base64
@@ -490,6 +502,8 @@ async def embeddings(request: EmbeddingsRequest):
 
         prompt_tokens = metrics.get("input_token", 0)
         total_tokens = metrics.get("total_token", prompt_tokens)
+        
+        logger.info(f"[embeddings] model={model_name} metrics={metrics}")
 
         embs = []
         for i in range(len(data)):

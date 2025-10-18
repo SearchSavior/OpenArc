@@ -3,7 +3,8 @@
 Context Overflow Test Script
 
 Tests increasing context sizes with OpenAI API-compatible endpoint.
-Progressively increases prompt size by 512 tokens each iteration and accumulates context.
+Progressively increases prompt size each iteration and accumulates context.
+Relies on server-reported metrics for accurate token counts.
 """
 
 import argparse
@@ -12,17 +13,10 @@ import sys
 from openai import OpenAI
 
 
-def estimate_tokens(text: str) -> int:
-    """Rough estimate of tokens (approximately 4 characters per token)."""
-    return len(text) // 4
-
-
-def generate_filler_text(token_count: int) -> str:
-    """Generate filler text for approximately the given token count."""
-    # Rough estimate: 4 chars per token, so multiply by 4
-    target_chars = token_count * 4
-    filler = "The quick brown fox jumps over the lazy dog. " * ((target_chars // 45) + 1)
-    return filler[:target_chars]
+def generate_filler_text(char_count: int) -> str:
+    """Generate filler text for approximately the given character count."""
+    filler = "The quick brown fox jumps over the lazy dog. " * ((char_count // 45) + 1)
+    return filler[:char_count]
 
 
 def main():
@@ -56,30 +50,24 @@ def main():
     )
 
     # Configuration
-    token_increment = 2048
+    char_increment = 8192  # Add roughly ~2048 tokens worth of characters per iteration
     accumulated_context = ""
     base_prompt = "You are a helpful assistant. Answer the following:\n\n"
 
-
     print(f"Model: {args.model}")
     print(f"Iterations: {args.iterations}")
-    print(f"Token increment per iteration: {token_increment}")
-
+    print(f"Character increment per iteration: {char_increment}")
     print(f"{'='*40}\n")
 
     for iteration in range(1, args.iterations + 1):
         # Add more context each iteration
-        filler = generate_filler_text(token_increment)
+        filler = generate_filler_text(char_increment)
         accumulated_context += filler
 
         # Build the full prompt
         full_prompt = base_prompt + accumulated_context + "\nWhat have you learned from this context?"
 
-        estimated_tokens = estimate_tokens(full_prompt)
-
         print(f"Iteration {iteration}/{args.iterations}")
-        print(f"  Estimated prompt tokens: ~{estimated_tokens}")
-        print(f"  Accumulated context size: ~{estimate_tokens(accumulated_context)} tokens")
 
         try:
             response = client.chat.completions.create(
@@ -96,13 +84,33 @@ def main():
             # Print response details
             if response.choices:
                 content = response.choices[0].message.content
-                print(f"  ✓ Success")
+                print("  ✓ Success")
                 print(f"  Response preview: {content[:80]}...")
 
+            # Extract and display OpenArc internal metrics
+            metrics = getattr(response, 'metrics', None)
+            if metrics:
+                print("\n  === Performance Metrics ===")
+                if 'ttft (s)' in metrics:
+                    print(f"  TTFT: {metrics['ttft (s)']:.2f}s")
+                if 'tpot (ms)' in metrics:
+                    print(f"  TPOT: {metrics['tpot (ms)']:.2f}ms")
+                if 'prefill_throughput (tokens/s)' in metrics:
+                    print(f"  Prefill throughput: {metrics['prefill_throughput (tokens/s)']:.2f} tokens/s")
+                if 'decode_throughput (tokens/s)' in metrics:
+                    print(f"  Decode throughput: {metrics['decode_throughput (tokens/s)']:.2f} tokens/s")
+                if 'decode_duration (s)' in metrics:
+                    print(f"  Decode duration: {metrics['decode_duration (s)']:.2f}s")
+
+            # Use server-reported token counts
             if response.usage:
-                print(f"  Prompt tokens (actual): {response.usage.prompt_tokens}")
-                print(f"  Completion tokens: {response.usage.completion_tokens}")
-                print(f"  Total tokens: {response.usage.total_tokens}")
+                prompt_tokens = response.usage.prompt_tokens
+                completion_tokens = response.usage.completion_tokens
+                total_tokens = response.usage.total_tokens
+                
+                print(f"\n  Prompt tokens: {prompt_tokens:,}")
+                print(f"  Completion tokens: {completion_tokens:,}")
+                print(f"  Total tokens: {total_tokens:,}")
 
         except Exception as e:
             print(f"  ✗ Error: {type(e).__name__}: {str(e)}")
