@@ -1,18 +1,18 @@
 Thanks for checking out OpenArc!
 
-## Philosophy
+## Motivation
 
-My goal with this project has been to make using Intel devices as accelerators for inference easier. 
+My goal with this project has been to make using Intel devices as accelerators easier. 
 
 That's it. 
 
-Over time I will add more tasks and model implementations as I learn more- these will eventually extend beyond OpenVINO.
+In the tradition of `llama.cpp`, OpenArc tries to enable building cool stuff on top of a system that *just works* while being hackable. 
 
 ## Codebase
 
 Our objective is simple; stay as close to standard python library as possible. 
 
-We don't use a database, do not persist AI artifacts and are not interested in opinionated pre or postprocessing. In the tradition of `llama.cpp`, OpenArc tries to enable building cool stuff on top of a system that *just works* in an area of the inference stack where things do not usually *just work*. 
+We don't use a database, do not persist AI artifacts and are not interested in opinionated pre or postprocessing; instead, we focus on the part of inference-work that really matters; ingesting data models can consume, and outputting data that programs can consume. 
 
 ### [server.py](src/server/server.py)
 
@@ -32,7 +32,9 @@ We don't use a database, do not persist AI artifacts and are not interested in o
 
 This is where the standard library/minimal dependency approach becomes less strict. 
 
-We want to support as many thoughtfully implemented tasks as people find useful. My intention with `server` and `worker` layer 
+We want to support as many thoughtfully implemented tasks as people find useful. `server` and `worker` layer can orchestrate *any* inferencing work you can come up with and over time they will continue to improve. 
+
+If that seems useful to you, here's how you can contribute.
 
 
 ## Contributing, broadly
@@ -45,8 +47,6 @@ We want to support as many thoughtfully implemented tasks as people find useful.
 
 ## PR Template
 
-OpenArc's PR template encourages thoughtful introspection on work you contribute. 
-
 ```
 ## What does this PR do
 
@@ -56,36 +56,32 @@ OpenArc's PR template encourages thoughtful introspection on work you contribute
 
 ```
 
+OpenArc's PR template encourages thoughtful introspection on work you contribute. 
+PRs which do maintenence 
 
 ### What does this PR do
 
 - describe the goal of your changes and what they do.
 - Be concise, and think about the big picture of OpenArc.
+- Generally PRs should have narrow scope; try not to change the codebase to much when introducing. If you find something should be refactored, or improved to make your changes, that a sign you need more than one PR. 
+- If you increased performance, make sure you have measured it
 
 ### Usage
 
 - Provide the simplest possible way to use every feature you have added.
 - This makes review easier, and is self documenting. 
-- Code communciates a lot, but people help connect concepts together. Break high level concepts down 
+- Expect your examples to be used in the documentation, and as tests during review.
 
 ### Discussion
 
-- offer motivation and discuss your strategy
+- Offer motivation and discuss your strategy
 - Take time to walk through challenges you faced, or issues you solved while working on the PR.
-- reference documentation, papers, discussions on forums- anything to spark quality
-- 
+- Reference documentation, papers, code examples discussions on forums- anything you found which helps the reviewer understand what
 
 
 
 
-```
-## What does this PR do
 
-## Usage/Examples
-
-## Discussion
-
-```
 
 
 
@@ -97,30 +93,10 @@ OpenArc's PR template encourages thoughtful introspection on work you contribute
 
 I have learned coding using AI tools and am not here to judge. Still, we need to define a standard.
 
-AI tools are a fantastic resource, especially for learning more about AI- most of this project was written in natural language and pseudocode in turn-based editing and agents using Cursor. Tab. Tab. Tab.
+AI tools are a fantastic resource, especially for learning more about AI- most of this project was written in natural language and pseudocode with turn-based editing and agents using Cursor. Tab. Tab. Tab. 
 
 That said, I review my own generated code line by line to ensure correctness and expect the same level of scrutiny from anyone who contributes to OpenArc. Nothing disqualifies a PR from review, but I ask that you respect my time and everyone elses by working to limit slop. 
 
-### Ground rules for generated code
-
-> [!Note] Check back here before you mark anything as ready for review.
-> There are many types of slop,
-
-- Generated omments are not allowed.
-- Code documentation should not mention changes.
-- Methods, functions, classes snippets should not contain language from instructions.
-- 
-
-
-
-
-A solid PR
-
-- Adds something to the project
-- Implements a paper
-- Refines existing systems
-
-- Maintains literally anything
 
 
 
