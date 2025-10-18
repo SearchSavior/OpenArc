@@ -51,7 +51,7 @@ New Features:
  
 - Visit [OpenVINO System Requirments](https://docs.openvino.ai/2025/about-openvino/release-notes-openvino/system-requirements.html#cpu) for the latest information on drivers.
 
-> [!] Need help installing drivers? [Join our Discord](https://discord.gg/Bzz9hax9Jq) or open an issue.
+> [!NOTE] Need help installing drivers? [Join our Discord](https://discord.gg/Bzz9hax9Jq) or open an issue.
 
 2. Install uv from [astral](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)
 
@@ -82,7 +82,7 @@ uv pip install --pre -U openvino-genai --extra-index-url https://storage.openvin
 
 	export OPENARC_API_KEY=<api-key>
 
-> [!] uv has a [pip interface](https://docs.astral.sh/uv/pip/) which is a drop in replacement for pip, but faster. Pretty cool, and a good place to start.
+> [!NOTE] uv has a [pip interface](https://docs.astral.sh/uv/pip/) which is a drop in replacement for pip, but faster. Pretty cool, and a good place to start.
 
 
 6. To get started, run:
@@ -132,7 +132,7 @@ setx OPENARC_API_KEY openarc-api-key
 openarc --help
 ```
 
-> [!] uv has a [pip interface](https://docs.astral.sh/uv/pip/) which is a drop in replacement for pip, but faster. Pretty cool, and a good place to start.
+> [!NOTE] uv has a [pip interface](https://docs.astral.sh/uv/pip/) which is a drop in replacement for pip, but faster. Pretty cool, and a good place to start.
 
 </details>
 
