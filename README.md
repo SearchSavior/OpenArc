@@ -37,11 +37,9 @@ New Features:
     - tpot
     - load time
     - stream mode
-  - OpenVINO C++ stacktrace in server logs
-  - Fully rewritten command line tool
-  - 
 
-> [!NOTE] Interested in contributing? Please open an issue before submitting a PR!
+
+>[!NOTE] Interested in contributing? Please open an issue before submitting a PR!
 
 ## Quickstart 
 
@@ -300,26 +298,9 @@ openarc tool device-detect
 
 </details>
 
-
-
 <br>
 
-### OpenVINO Model Format: Intermediate Representation
-
-
-### What is an IR?
-
-[OpenVINO Intermediate Representations](https://docs.openvino.ai/2025/documentation/openvino-ir-format.html) describe a set of standarsization techniques to format the operations of a neural network into a computational graph topology that a compiler can understand, stored in `openvino_model.bin` and `openvino_model.xml`.
-
-`openvino_model.xml` nodes represent [opsets](https://docs.openvino.ai/2025/documentation/openvino-ir-format/operation-sets.html#overview-of-artificial-neural-networks-representation) while edges represent data flow through the network a given IR describes. Together, these help OpenVINO's device plugin system determine what opsets are required vs which are *implemented* for a target device. 
- 
-Optimum-Intel provides [a hands on primer](https://huggingface.co/docs/optimum/main/en/intel/openvino/optimization) demonstrating how the IR is used to apply post training optimization and is a good place to start building some intuition. 
-
-However, you don't need to understand everything and there are many sources of preconverted models.
-
 ### Model Sources
-
-To use this project you need to use a model converted to OpenVINO IR. Based on the tasks we support models usually come from Pytorch. `bin` and `safetensor` both work.
 
 There are a few sources of preconverted models which can be used with OpenArc;
 
@@ -340,7 +321,6 @@ There are a few sources of preconverted models which can be used with OpenArc;
 | --- |
 | [Echo9Zulu/Qwen3-1.7B-int8_asym-ov](https://huggingface.co/Echo9Zulu/Qwen3-1.7B-int8_asym-ov/tree/main) |
 | [Echo9Zulu/Qwen3-4B-Instruct-2507-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Qwen3-4B-Instruct-2507-int4_asym-awq-ov) |
-| [Echo9Zulu/LLAMA-3_8B_Unaligned_BETA-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/LLAMA-3_8B_Unaligned_BETA-int4_asym-awq-ov) |
 [Echo9Zulu/Dolphin-X1-8B-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Dolphin-X1-8B-int4_asym-awq-ov) |
 [Echo9Zulu/Qwen3-14B-int4_sym-ov](https://huggingface.co/Echo9Zulu/Qwen3-14B-int4_sym-ov/tree/main) | 
 [Echo9Zulu/Magistral-Small-2509-Text-Only-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Magistral-Small-2509-Text-Only-int4_asym-awq-ov) |
@@ -400,17 +380,19 @@ There are a few sources of preconverted models which can be used with OpenArc;
 
 ### Converting Models to OpenVINO IR
 
+Optimum-Intel provides [a hands on primer](https://huggingface.co/docs/optimum/main/en/intel/openvino/optimization) demonstrating how the IR is used to apply post training optimization and is a good place to start building some intuition. 
+
 Intel provides a suite of tools you can use to apply different post training optimization techniques developed over at [Neural Network Compression Framwork](https://github.com/openvinotoolkit/nncf). 
 
 - Use the [Optimum-CLI conversion tool](https://huggingface.co/docs/optimum/main/en/intel/openvino/export) to learn how you can convert models to OpenVINO IR from other formats.
 
-- See [Supported Architectures](https://huggingface.co/docs/optimum/main/en/intel/openvino/models) to see what models can be converted to OpenVINO using the tools described in this section.
+- Visit [Supported Architectures](https://huggingface.co/docs/optimum/main/en/intel/openvino/models) to see what models can be converted to OpenVINO using the tools described in this section.
 
 - If you use the CLI tool and get an error about an unsupported architecture or "missing export config" follow the link, [open an issue](https://github.com/huggingface/optimum-intel/issues) reference the model card and the maintainers will get back to you.  
 
 
 ### Learning Resources
----
+
 Learn more about how to leverage your Intel devices for Machine Learning:
 
 [openvino_notebooks](https://github.com/openvinotoolkit/openvino_notebooks)
@@ -425,32 +407,6 @@ Learn more about how to leverage your Intel devices for Machine Learning:
 
 [Mutli GPU Pipeline Paralell with OpenVINO Model Server](https://docs.openvino.ai/2025/model-server/ovms_demos_continuous_batching_scaling.html#multi-gpu-configuration-loading-models-exceeding-a-single-card-vram)
 
-
-
-
-
-## OpenWebUI
-
-> [!NOTE]
-> I'm only going to cover the basics on OpenWebUI here. To learn more and set it up check out the [OpenWebUI docs](https://docs.openwebui.com/).
-
-- From the Connections menu add a new connection
-- Enter the server address and port where OpenArc is running **followed by /v1**
-Example:
-    http://0.0.0.0:8000/v1
-
-- Here you need to set the API key manually
-- When you hit the refresh button OpenWebUI sends a GET request to the OpenArc server to get the list of models at v1/models
-
-Serverside logs should report:
-			
-	"GET /v1/models HTTP/1.1" 200 OK 
-
-### Usage:
-
-- Load the model you want to use from openarc cli
-- Select the connection you just created and use the refresh button to update the list of models
-- if you use API keys and have a list of models these might be towards the bottom
 
 ## Acknowledgments
 
@@ -474,7 +430,7 @@ OpenArc stands on the shoulders of many other projects:
 
 [rich-click](https://github.com/ewels/rich-click)
 
-Thank for your work!!
+Thanks for your work!!
 
 
 
