@@ -137,7 +137,7 @@ class OVGenAI_VLM:
         try:
             logger.info(f"[{self.load_config.model_name}] Starting non-streaming generation")
             generation_kwargs = GenerationConfig(
-                max_new_tokens=gen_config.max_new_tokens,
+                max_new_tokens=gen_config.max_tokens,
                 temperature=gen_config.temperature,
                 top_k=gen_config.top_k,
                 top_p=gen_config.top_p,
@@ -173,7 +173,7 @@ class OVGenAI_VLM:
         Yields token chunks (str) as they arrive, then metrics (dict).
         """
         generation_kwargs = GenerationConfig(
-            max_new_tokens=gen_config.max_new_tokens,
+            max_new_tokens=gen_config.max_tokens,
             temperature=gen_config.temperature,
             top_k=gen_config.top_k,
             top_p=gen_config.top_p,

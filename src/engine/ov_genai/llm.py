@@ -107,7 +107,7 @@ class OVGenAI_LLM:
         Yields token chunks (str) as they arrive, then metrics (dict), then final new_text (str).
         """
         generation_kwargs = GenerationConfig(
-            max_new_tokens=gen_config.max_new_tokens,
+            max_new_tokens=gen_config.max_tokens,
             temperature=gen_config.temperature,
             top_k=gen_config.top_k,
             top_p=gen_config.top_p,
