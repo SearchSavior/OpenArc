@@ -16,7 +16,7 @@ def test_tool_calling():
         print(f"Failed to initialize OpenAI client: {e}")
         return
 
-    model_name = "Gemma-3-12B"
+    model_name = "Dolphin-X1"
     
     # Track results
     total_tests = 50
@@ -53,7 +53,7 @@ def test_tool_calling():
         
         # Initial conversation
         messages = [
-            {"role": "system", "content": "You are a helpful assistant with access to tools."},
+            {"role": "system", "content": "You are a helpful assistant with access to tools. always format tools with xml tags"},
             {"role": "user", "content": "Please use the write_word tool to write the word 'pirate'."}
         ]
         

@@ -12,7 +12,7 @@ from kokoro.pipeline import KPipeline
 
 
 # =====================================================================
-# OpenVINO-backed Kokoro model\
+# OpenVINO-backed Kokoro model
 # =====================================================================
 class OVKModel(KModel):
     def __init__(self, model_dir: Path, device: str):

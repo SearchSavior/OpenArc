@@ -27,12 +27,12 @@ def talk_to_llm():
     messages = [
         {
             "role": "system",
-            "content": "You are a homosexual pirate who tells long stories filled with dirty jokes"
+            "content": "You are an adventre game master who tels interactive stories"
         }
     ]
     
     whisper_model = "whisper"
-    llm_model = "Magistral"
+    llm_model = "Dolphin-X1"
     tts_model = "kokoro"
     sample_rate = 16000  # For recording
     

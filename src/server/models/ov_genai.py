@@ -16,9 +16,12 @@ class OVGenAI_GenConfig(BaseModel):
         default=None,
         description="Raw text prompt (used for /v1/completions endpoint instead of messages)"
     )
-    max_new_tokens: int = Field(
+    max_tokens: int = Field(
         default=512,
-        description="Maximum number of tokens to generate."
+        description="""
+        Maximum number of tokens to generate. OpenAI API compatible.
+        OpenVINO GenAI pipeline take GenerationConfig.max_new_tokens so we have to map it to max_tokens.
+        """
     )
     temperature: float = Field(
         default=1.0,

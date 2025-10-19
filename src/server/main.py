@@ -205,7 +205,7 @@ async def openai_chat_completions(request: OpenAIChatCompletionRequest):
         config_kwargs = {
             "messages": request.messages,
             "temperature": request.temperature,
-            "max_new_tokens": request.max_tokens,
+            "max_tokens": request.max_tokens,
             "top_p": request.top_p,
             "top_k": request.top_k,
             "repetition_penalty": request.repetition_penalty,
@@ -319,7 +319,7 @@ async def openai_completions(request: OpenAICompletionRequest):
         config_kwargs = {
             "prompt": prompt,
             "temperature": request.temperature,
-            "max_new_tokens": request.max_tokens,
+            "max_tokens": request.max_tokens,
             "top_p": request.top_p,
             "top_k": request.top_k,
             "repetition_penalty": request.repetition_penalty,
