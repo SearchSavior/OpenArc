@@ -79,7 +79,7 @@ def test_streaming_tool_call():
         },
         {
             "role": "user", 
-            "content": "Search for 'OpenVINO GenAI inference performance benchmarks'"
+            "content": "What's the most recent OpenVINO version?"
         }
     ]
     

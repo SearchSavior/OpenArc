@@ -200,45 +200,84 @@ def add(ctx, model_path, model_name, engine, model_type, device, runtime_config,
     
     save_model_config(model_name, load_config)
     console.print(f"✅ [green]Saved configuration for:[/green] {model_name}")
-    console.print(f"[dim]Use 'openarc load --mn {model_name}' to load this model.[/dim]")
+    console.print(f"[dim]Use 'openarc load {model_name}' to load this model.[/dim]")
 
 @cli.command()
-@click.option('--model-name', '--mn',
-    required=True,
-    help='Model name to load from saved configuration.')
+@click.argument('model_names', nargs=-1, required=True)
 @click.pass_context
-def load(ctx, model_name):
-    """- Load a model from saved configuration."""
+def load(ctx, model_names):
+    """- Load one or more models from saved configuration.
+    
+    Examples:
+        openarc load model1
+        openarc load Dolphin-X1 kokoro whisper
+    """
     cli_instance = OpenArcCLI()
     
-    # Get saved configuration
-    saved_config = get_model_config(model_name)
+    model_names = list(model_names)
     
-    if not saved_config:
-        console.print(f"❌ [red]Model configuration not found:[/red] {model_name}")
-        console.print("[yellow]Tip: Use 'openarc list' to see saved configurations, or 'openarc add' to create a new one.[/yellow]")
-        ctx.exit(1)
+    # Track results
+    successful_loads = []
+    failed_loads = []
     
-    load_config = saved_config.copy()
+    # Start loading queue
+    if len(model_names) > 1:
+        console.print(f"🚀 [blue]Starting load queue...[/blue] ({len(model_names)} models)\n")
     
-    # Make API request to load the model
-    url = f"{cli_instance.base_url}/openarc/load"
-    
-    try:
-        console.print("[cyan]working...[/cyan]")
-        response = requests.post(url, json=load_config, headers=cli_instance.get_headers())
-        
-        if response.status_code == 200:
-
-            console.print("[green]Done![/green]")
-            console.print("[dim]Use 'openarc status' to check the status of loaded models.[/dim]")
+    # Load each model
+    for idx, name in enumerate(model_names, 1):
+        # Show progress indicator for multiple models
+        if len(model_names) > 1:
+            console.print(f"[cyan]({idx}/{len(model_names)})[/cyan] [blue]loading[/blue] {name}")
         else:
-            console.print(f"❌ [red]error: {response.status_code}[/red]")
-            console.print(f"[red]Response:[/red] {response.text}")
-            ctx.exit(1)
+            console.print(f"[blue]loading[/blue] {name}")
+        
+        # Get saved configuration
+        saved_config = get_model_config(name)
+        
+        if not saved_config:
+            console.print(f"❌ [red]Model configuration not found:[/red] {name}")
+            console.print("[yellow]Tip: Use 'openarc list' to see saved configurations.[/yellow]\n")
+            failed_loads.append(name)
+            continue
+        
+        load_config = saved_config.copy()
+        
+        # Make API request to load the model
+        url = f"{cli_instance.base_url}/openarc/load"
+        
+        try:
+            console.print("[cyan]...working[/cyan]")
+            response = requests.post(url, json=load_config, headers=cli_instance.get_headers())
             
-    except requests.exceptions.RequestException as e:
-        console.print(f"❌ [red]Request failed:[/red] {e}")
+            if response.status_code == 200:
+                console.print(f"✅ [green]{name} loaded![/green]\n")
+                successful_loads.append(name)
+            else:
+                console.print(f"❌ [red]error: {response.status_code}[/red]")
+                console.print(f"[red]Response:[/red] {response.text}\n")
+                failed_loads.append(name)
+                
+        except requests.exceptions.RequestException as e:
+            console.print(f"❌ [red]Request failed:[/red] {e}\n")
+            failed_loads.append(name)
+    
+    # Summary
+    console.print("─" * 60)
+    if successful_loads and not failed_loads:
+        console.print(f"🎉 [green]All models loaded![/green] ({len(successful_loads)}/{len(model_names)})")
+    elif successful_loads and failed_loads:
+        console.print(f"⚠️  [yellow]Partial success:[/yellow] {len(successful_loads)}/{len(model_names)} models loaded")
+        console.print(f"   [green]✓ Loaded:[/green] {', '.join(successful_loads)}")
+        console.print(f"   [red]✗ Failed:[/red] {', '.join(failed_loads)}")
+    else:
+        console.print(f"❌ [red]All models failed to load![/red] (0/{len(model_names)})")
+        console.print(f"   [red]✗ Failed:[/red] {', '.join(failed_loads)}")
+    
+    console.print("[dim]Use 'openarc status' to see loaded models.[/dim]")
+    
+    # Exit with error code if any loads failed
+    if failed_loads:
         ctx.exit(1)
 
 @cli.command()
@@ -334,7 +373,7 @@ def list(ctx, rm, model_name):
         )
         console.print(panel)
     
-    console.print("\n[dim]To load a saved configuration: openarc load --model-name <model_name>[/dim]")
+    console.print("\n[dim]To load saved configurations: openarc load <model_name> [model_name2 ...][/dim]")
     console.print("[dim]To remove a configuration: openarc list --remove --model-name <model_name>[/dim]")
 
 @cli.command()
@@ -487,13 +526,42 @@ def serve():
               help="""
               - Port to bind the server to
               """)
-
-def start(host, openarc_port):
+@click.option("--load-models", "--lm",
+              required=False,
+              help="Load models on startup. Specify once followed by space-separated model names.")
+@click.argument('startup_models', nargs=-1, required=False)
+def start(host, openarc_port, load_models, startup_models):
     """
     - 'start' reads --host and --openarc-port from config or defaults to 0.0.0.0:8000
+    
+    Examples:
+        openarc serve start
+        openarc serve start --load-models model1 model2
+        openarc serve start --lm Dolphin-X1 kokoro whisper
     """
     # Save server configuration for other CLI commands to use
     save_cli_config(host, openarc_port)
+    
+    # Handle startup models
+    models_to_load = []
+    if load_models:
+        models_to_load.append(load_models)
+    if startup_models:
+        models_to_load.extend(startup_models)
+    
+    if models_to_load:
+        config = load_full_config()
+        saved_models = config.get("models", {})
+        missing = [m for m in models_to_load if m not in saved_models]
+        
+        if missing:
+            console.print("⚠️  [yellow]Warning: Models not in config (will be skipped):[/yellow]")
+            for m in missing:
+                console.print(f"   • {m}")
+            console.print("[dim]Use 'openarc list' to see saved configurations.[/dim]\n")
+        
+        os.environ["OPENARC_STARTUP_MODELS"] = ",".join(models_to_load)
+        console.print(f"📋 [blue]Models to load on startup:[/blue] {', '.join(models_to_load)}\n")
     
     console.print(f"🚀 [green]Starting OpenArc server on {host}:{openarc_port}[/green]")
     start_server(host=host, openarc_port=openarc_port)

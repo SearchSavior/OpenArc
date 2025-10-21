@@ -10,7 +10,7 @@ model = OpenAIServerModel(
     max_tokens=4096
 )
 
-# Add a system message to enforce JSON formatting
+
 agent = ToolCallingAgent(
     tools=[DuckDuckGoSearchTool()], 
     model=model

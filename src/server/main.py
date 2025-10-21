@@ -9,6 +9,7 @@ import re
 import time
 import traceback
 import uuid
+from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Dict, List, Optional, Union
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -25,21 +26,44 @@ from src.server.models.optimum import PreTrainedTokenizerConfig
 from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
 from src.server.worker_registry import WorkerRegistry
 
-#===============================================================#
-# Logging
-#===============================================================#
-
-# Logging is configured in launch.py - don't configure here to avoid conflicts
-# The logger will inherit from root logger configured in launch.py
 logger = logging.getLogger(__name__)
-
-
 
 #===============================================================#
 # FastAPI configuration
 #===============================================================#
 
-app = FastAPI()
+# Initialize registries
+_registry = ModelRegistry()
+_workers = WorkerRegistry(_registry)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan event handler for startup/shutdown"""
+    # Startup: Load models from env var
+    models = os.getenv("OPENARC_STARTUP_MODELS", "").strip()
+    if models:
+        from pathlib import Path
+        config_file = Path(__file__).parent.parent.parent / "openarc-config.json"
+        if config_file.exists():
+            with open(config_file) as f:
+                config = json.load(f)
+            
+            for name in models.split(","):
+                name = name.strip()
+                model_config = config.get("models", {}).get(name)
+                if not model_config:
+                    logger.warning(f"Startup: model '{name}' not in config, skipping")
+                    continue
+                try:
+                    await _registry.register_load(ModelLoadConfig(**model_config))
+                    logger.info(f"Startup: loaded '{name}'")
+                except Exception as e:
+                    logger.error(f"Startup: failed to load '{name}': {e}")
+    
+    yield
+    # Shutdown: (add cleanup here if needed)
+
+app = FastAPI(lifespan=lifespan)
 
 # API key authentication
 API_KEY = os.getenv("OPENARC_API_KEY")
@@ -114,13 +138,10 @@ def parse_tool_calls(text: str) -> Optional[List[Dict[str, Any]]]:
             pass
     
     return tool_calls if tool_calls else None
+
 #===============================================================#
 # OpenArc internal
 #===============================================================#
-
-_registry = ModelRegistry()
-_workers = WorkerRegistry(_registry)
-
 
 @app.post("/openarc/load", dependencies=[Depends(verify_api_key)])
 async def load_model(load_config: ModelLoadConfig):

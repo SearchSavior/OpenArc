@@ -244,6 +244,13 @@ Configure host and port
 openarc serve start --host --openarc-port
 ```
 
+Load models on startup
+
+```
+openarc serve start --load-models model1 model2
+```
+
+
 </details>
 
 <details>
@@ -251,13 +258,21 @@ openarc serve start --host --openarc-port
 <br>
 
 
-After using ```openarc add``` you can use ```openarc load``` to read the added configuration and load the model onto the OpenArc server. 
+After using ```openarc add``` you can use ```openarc load``` to read the added configuration and load models onto the OpenArc server. 
+
+OpenArc uses arguments from ```openarc add``` as metadata to make routing decisions internally; you are querying for correct inference code.
 
 ```
-openarc load --model-name <model-name>
+openarc load <model-name>
 ```
 
-OpenArc uses arguments from ```openarc add``` as metadata to make routing decisions internally; you are querying for inference code. 
+To load multiple models at once, use:
+
+```
+openarc load <model-name1> <model-name2> <model-name3>
+```
+
+Be mindful of your resources; loading models can be resource intensive! On the first load, OpenVINO performs model compilation for the target `--device`.
 
 When an ```openarc load``` command fails, the CLI tool displays the full stack trace to help you figure out why.
 
