@@ -76,14 +76,21 @@ class OVGenAI_LLM:
         Yields in order: metrics (dict), new_text (str).
         """
         generation_kwargs = GenerationConfig(
-            max_new_tokens=gen_config.max_new_tokens,
+            max_new_tokens=gen_config.max_tokens,
             temperature=gen_config.temperature,
             top_k=gen_config.top_k,
             top_p=gen_config.top_p,
             repetition_penalty=gen_config.repetition_penalty,
         )
 
-        prompt_token_ids = self.prepare_inputs(gen_config.messages, gen_config.tools)
+        # Support both chat messages and raw prompts
+        if gen_config.prompt:
+            # Direct tokenization for raw text (used by /v1/completions endpoint)
+            prompt_token_ids = ov.Tensor(self.encoder_tokenizer.encode(gen_config.prompt, return_tensors="np"))
+        else:
+            # Chat template tokenization for messages (used by /v1/chat/completions endpoint)
+            prompt_token_ids = self.prepare_inputs(gen_config.messages, gen_config.tools)
+        
         result = await asyncio.to_thread(self.model.generate, prompt_token_ids, generation_kwargs)
         
         perf_metrics = result.perf_metrics
@@ -100,7 +107,7 @@ class OVGenAI_LLM:
         Yields token chunks (str) as they arrive, then metrics (dict), then final new_text (str).
         """
         generation_kwargs = GenerationConfig(
-            max_new_tokens=gen_config.max_new_tokens,
+            max_new_tokens=gen_config.max_tokens,
             temperature=gen_config.temperature,
             top_k=gen_config.top_k,
             top_p=gen_config.top_p,
@@ -109,7 +116,14 @@ class OVGenAI_LLM:
 
         decoder_tokenizer = self.model.get_tokenizer()
         streamer = ChunkStreamer(decoder_tokenizer, gen_config)
-        prompt_token_ids = self.prepare_inputs(gen_config.messages, gen_config.tools)
+        
+        # Support both chat messages and raw prompts
+        if gen_config.prompt:
+            # Direct tokenization for raw text (used by /v1/completions endpoint)
+            prompt_token_ids = ov.Tensor(self.encoder_tokenizer.encode(gen_config.prompt, return_tensors="np"))
+        else:
+            # Chat template tokenization for messages (used by /v1/chat/completions endpoint)
+            prompt_token_ids = self.prepare_inputs(gen_config.messages, gen_config.tools)
 
         async def _run_generation():
             return await asyncio.to_thread(

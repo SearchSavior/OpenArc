@@ -10,7 +10,10 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from src.server.models.ov_genai import VLM_VISION_TOKENS
+
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -29,6 +32,10 @@ class ModelLoadConfig(BaseModel):
         """
         )
     model_type: ModelType = Field(...)
+    vlm_type: Optional[str] = Field(
+        default=None,
+        description=f"Vision token type for VLM models. Supported: {list(VLM_VISION_TOKENS.keys())}"
+    )
     engine: EngineType = Field(...)
     device: str = Field(
         ...,
@@ -39,6 +46,16 @@ class ModelLoadConfig(BaseModel):
     runtime_config: Dict[str, Any] = Field(
         default_factory=dict,
         description="Optional OpenVINO runtime properties.")
+    
+    @field_validator('vlm_type')
+    @classmethod
+    def validate_vlm_type(cls, v, info):
+        # Only validate if vlm_type is provided and model_type is VLM
+        if v is None:
+            return v
+        if v not in VLM_VISION_TOKENS:
+            raise ValueError(f"vlm_type must be one of {list(VLM_VISION_TOKENS.keys())}, got '{v}'")
+        return v
 
 class ModelUnloadConfig(BaseModel):
     model_name: str = Field(..., description="Name of the model to unload")

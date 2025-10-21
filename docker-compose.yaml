@@ -1,7 +1,0 @@
-services:
-  app:
-    build: .
-    container_name: OpenArc
-    devices:
-      - /dev/dri:/dev/dri
-    restart: always

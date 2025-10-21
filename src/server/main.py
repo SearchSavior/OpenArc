@@ -5,42 +5,65 @@ import datetime
 import json
 import logging
 import os
+import re
 import time
-import uuid
 import traceback
-from typing import Any, AsyncIterator, List, Optional, Dict, Union
+import uuid
+from contextlib import asynccontextmanager
+from typing import Any, AsyncIterator, Dict, List, Optional, Union
 
-from pydantic import BaseModel
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from pydantic import BaseModel
+
 from src.server.model_registry import ModelLoadConfig, ModelRegistry, ModelUnloadConfig
-from src.server.worker_registry import WorkerRegistry
 from src.server.models.openvino import OV_KokoroGenConfig
 from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
 from src.server.models.optimum import PreTrainedTokenizerConfig, RerankerConfig
+from src.server.worker_registry import WorkerRegistry
 
-#===============================================================#
-# Logging
-#===============================================================#
-
-
-logging.basicConfig(
-    level=logging.ERROR,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
-
-
 
 #===============================================================#
 # FastAPI configuration
 #===============================================================#
 
-app = FastAPI()
+# Initialize registries
+_registry = ModelRegistry()
+_workers = WorkerRegistry(_registry)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan event handler for startup/shutdown"""
+    # Startup: Load models from env var
+    models = os.getenv("OPENARC_STARTUP_MODELS", "").strip()
+    if models:
+        from pathlib import Path
+        config_file = Path(__file__).parent.parent.parent / "openarc-config.json"
+        if config_file.exists():
+            with open(config_file) as f:
+                config = json.load(f)
+            
+            for name in models.split(","):
+                name = name.strip()
+                model_config = config.get("models", {}).get(name)
+                if not model_config:
+                    logger.warning(f"Startup: model '{name}' not in config, skipping")
+                    continue
+                try:
+                    await _registry.register_load(ModelLoadConfig(**model_config))
+                    logger.info(f"Startup: loaded '{name}'")
+                except Exception as e:
+                    logger.error(f"Startup: failed to load '{name}': {e}")
+    
+    yield
+    # Shutdown: (add cleanup here if needed)
+
+app = FastAPI(lifespan=lifespan)
 
 # API key authentication
 API_KEY = os.getenv("OPENARC_API_KEY")
@@ -86,12 +109,39 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 #===============================================================#
-# OpenArc internal
+# Tool calling helpers
 #===============================================================#
 
-_registry = ModelRegistry()
-_workers = WorkerRegistry(_registry)
+def parse_tool_calls(text: str) -> Optional[List[Dict[str, Any]]]:
+    # Find all potential JSON objects
+    pattern = r'\{(?:[^{}]|(?:\{[^{}]*\}))*\}'
+    matches = re.findall(pattern, text, re.DOTALL)
+    
+    if not matches:
+        return None
+    
+    tool_calls = []
+    for match in matches:
+        try:
+            data = json.loads(match)
+            # Check if it has the expected structure
+            if "name" in data and "arguments" in data:
+                tool_calls.append({
+                    "id": f"call_{uuid.uuid4().hex[:24]}",
+                    "type": "function",
+                    "function": {
+                        "name": data.get("name", ""),
+                        "arguments": json.dumps(data.get("arguments", {}))
+                    }
+                })
+        except json.JSONDecodeError:
+            pass
+    
+    return tool_calls if tool_calls else None
 
+#===============================================================#
+# OpenArc internal
+#===============================================================#
 
 @app.post("/openarc/load", dependencies=[Depends(verify_api_key)])
 async def load_model(load_config: ModelLoadConfig):
@@ -139,10 +189,23 @@ class OpenAIChatCompletionRequest(BaseModel):
     do_sample: Optional[bool] = None
     num_return_sequences: Optional[int] = None
 
+class OpenAICompletionRequest(BaseModel):
+    model: str
+    prompt: Union[str, List[str]]
+    stream: Optional[bool] = None
+    
+    temperature: Optional[float] = None
+    max_tokens: Optional[int] = None
+    stop: Optional[List[str]] = None
+    top_p: Optional[float] = None
+    top_k: Optional[int] = None
+    repetition_penalty: Optional[float] = None
+    do_sample: Optional[bool] = None
+    num_return_sequences: Optional[int] = None
+
 class OpenAIWhisperRequest(BaseModel):
     model: str
     audio_base64: str
-
 
 class OpenAIKokoroRequest(BaseModel):
     model: str
@@ -195,16 +258,14 @@ async def openai_list_models():
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to list models: {str(exc)}")
 
-
 @app.post("/v1/chat/completions", dependencies=[Depends(verify_api_key)])
 async def openai_chat_completions(request: OpenAIChatCompletionRequest):
     try:
-        logger.info(f"[chat/completions] Received tools: {request.tools}")
-        
+    
         config_kwargs = {
             "messages": request.messages,
             "temperature": request.temperature,
-            "max_new_tokens": request.max_tokens,
+            "max_tokens": request.max_tokens,
             "top_p": request.top_p,
             "top_k": request.top_k,
             "repetition_penalty": request.repetition_penalty,
@@ -215,12 +276,181 @@ async def openai_chat_completions(request: OpenAIChatCompletionRequest):
         }
         # Remove keys with value None
         config_kwargs = {k: v for k, v in config_kwargs.items() if v is not None}
-        
-        logger.info(f"[chat/completions] config_kwargs tools: {config_kwargs.get('tools', 'NOT PRESENT')}")
 
         generation_config = OVGenAI_GenConfig(**config_kwargs)
-        logger.info(f"[chat/completions] generation_config.tools: {generation_config.tools}")
 
+        model_name = request.model
+        created_ts = int(time.time())
+        request_id = f"ov-{uuid.uuid4().hex[:24]}"
+
+        if generation_config.stream:
+            async def event_stream() -> AsyncIterator[bytes]:
+                # Stream OpenAI-compatible chunks
+                accumulated_text = ""
+                metrics_data = None
+                tool_call_sent = False
+                
+                async for item in _workers.stream_generate(model_name, generation_config):
+                    if isinstance(item, dict):
+                        metrics_data = item.get("metrics", item)
+                        continue
+                    
+                    accumulated_text += item
+                    tool_calls = parse_tool_calls(accumulated_text)
+                    
+                    # If tool call detected and not yet sent, stream tool call deltas
+                    if tool_calls and not tool_call_sent:
+                        tool_call_sent = True
+                        # Send tool call structure
+                        for idx, tc in enumerate(tool_calls):
+                            # Initial tool call with id, type, name
+                            tool_call_start = {
+                                'id': request_id,
+                                'object': 'chat.completion.chunk',
+                                'created': created_ts,
+                                'model': model_name,
+                                'choices': [{
+                                    'index': 0,
+                                    'delta': {
+                                        'tool_calls': [{
+                                            'index': idx,
+                                            'id': tc['id'],
+                                            'type': tc['type'],
+                                            'function': {'name': tc['function']['name'], 'arguments': ''}
+                                        }]
+                                    },
+                                    'finish_reason': None
+                                }]
+                            }
+                            yield (f"data: {json.dumps(tool_call_start)}\n\n").encode()
+                            
+                            # Stream arguments
+                            tool_call_args = {
+                                'id': request_id,
+                                'object': 'chat.completion.chunk',
+                                'created': created_ts,
+                                'model': model_name,
+                                'choices': [{
+                                    'index': 0,
+                                    'delta': {
+                                        'tool_calls': [{
+                                            'index': idx,
+                                            'function': {'arguments': tc['function']['arguments']}
+                                        }]
+                                    },
+                                    'finish_reason': None
+                                }]
+                            }
+                            yield (f"data: {json.dumps(tool_call_args)}\n\n").encode()
+                    elif not tool_calls:
+                        # Regular content streaming
+                        chunk_payload = {
+                            "id": request_id,
+                            "object": "chat.completion.chunk",
+                            "created": created_ts,
+                            "model": model_name,
+                            "choices": [{
+                                "index": 0,
+                                "delta": {"content": item},
+                                "finish_reason": None,
+                            }],
+                        }
+                        yield (f"data: {json.dumps(chunk_payload)}\n\n").encode()
+
+                # Final chunk
+                prompt_tokens = (metrics_data or {}).get("input_token", 0)
+                completion_tokens = (metrics_data or {}).get("new_token", 0)
+                total_tokens = (metrics_data or {}).get("total_token", prompt_tokens + completion_tokens)
+                
+                finish_reason = "tool_calls" if tool_call_sent else "stop"
+                
+                final_payload = {
+                    "id": request_id,
+                    "object": "chat.completion.chunk",
+                    "created": created_ts,
+                    "model": model_name,
+                    "choices": [{
+                        "index": 0,
+                        "delta": {},
+                        "finish_reason": finish_reason,
+                    }],
+                    "usage": {
+                        "prompt_tokens": prompt_tokens,
+                        "completion_tokens": completion_tokens,
+                        "total_tokens": total_tokens,
+                    },
+                }
+                yield (f"data: {json.dumps(final_payload)}\n\n").encode()
+                yield b"data: [DONE]\n\n"
+
+            return StreamingResponse(event_stream(), media_type="text/event-stream")
+        else:
+            result = await _workers.generate(model_name, generation_config)
+            text = result.get("text", "")
+            metrics = result.get("metrics", {}) or {}
+
+            prompt_tokens = metrics.get("input_token", 0)
+            completion_tokens = metrics.get("new_token", 0)
+            total_tokens = metrics.get("total_token", prompt_tokens + completion_tokens)
+        
+            # Check for tool calls
+            tool_calls = parse_tool_calls(text)
+            message = {"role": "assistant"}
+            finish_reason = "stop"
+            
+            if tool_calls:
+                message["content"] = None
+                message["tool_calls"] = tool_calls
+                finish_reason = "tool_calls"
+            else:
+                message["content"] = text
+
+            response = {
+                "id": request_id,
+                "object": "chat.completion",
+                "created": created_ts,
+                "model": model_name,
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": message,
+                        "finish_reason": finish_reason,
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": total_tokens,
+                },
+                "metrics": metrics,  # OpenArc internal metrics
+            }
+            return response
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Generation failed: {str(exc)}")
+
+@app.post("/v1/completions", dependencies=[Depends(verify_api_key)])
+async def openai_completions(request: OpenAICompletionRequest):
+    try:
+        prompt = request.prompt if isinstance(request.prompt, str) else request.prompt[0]
+        
+        config_kwargs = {
+            "prompt": prompt,
+            "temperature": request.temperature,
+            "max_tokens": request.max_tokens,
+            "top_p": request.top_p,
+            "top_k": request.top_k,
+            "repetition_penalty": request.repetition_penalty,
+            "do_sample": request.do_sample,
+            "num_return_sequences": request.num_return_sequences,
+            "stream": request.stream,
+        }
+        # Remove keys with value None
+        config_kwargs = {k: v for k, v in config_kwargs.items() if v is not None}
+        
+        generation_config = OVGenAI_GenConfig(**config_kwargs)
+        
         model_name = request.model
         created_ts = int(time.time())
         request_id = f"ov-{uuid.uuid4().hex[:24]}"
@@ -236,13 +466,13 @@ async def openai_chat_completions(request: OpenAIChatCompletionRequest):
                         continue
                     chunk_payload = {
                         "id": request_id,
-                        "object": "chat.completion.chunk",
+                        "object": "text_completion.chunk",
                         "created": created_ts,
                         "model": model_name,
                         "choices": [
                             {
                                 "index": 0,
-                                "delta": {"content": item},
+                                "text": item,
                                 "finish_reason": None,
                             }
                         ],
@@ -253,15 +483,18 @@ async def openai_chat_completions(request: OpenAIChatCompletionRequest):
                 prompt_tokens = (metrics_data or {}).get("input_token", 0)
                 completion_tokens = (metrics_data or {}).get("new_token", 0)
                 total_tokens = (metrics_data or {}).get("total_token", prompt_tokens + completion_tokens)
+                
+                logger.info(f"[completions] stream=true model={model_name} metrics={metrics_data}")
+                
                 final_payload = {
                     "id": request_id,
-                    "object": "chat.completion.chunk",
+                    "object": "text_completion.chunk",
                     "created": created_ts,
                     "model": model_name,
                     "choices": [
                         {
                             "index": 0,
-                            "delta": {},
+                            "text": "",
                             "finish_reason": "stop",
                         }
                     ],
@@ -283,16 +516,18 @@ async def openai_chat_completions(request: OpenAIChatCompletionRequest):
             prompt_tokens = metrics.get("input_token", 0)
             completion_tokens = metrics.get("new_token", 0)
             total_tokens = metrics.get("total_token", prompt_tokens + completion_tokens)
+            
+            logger.info(f"[completions] stream=false model={model_name} metrics={metrics}")
 
             response = {
                 "id": request_id,
-                "object": "chat.completion",
+                "object": "text_completion",
                 "created": created_ts,
                 "model": model_name,
                 "choices": [
                     {
                         "index": 0,
-                        "message": {"role": "assistant", "content": text},
+                        "text": text,
                         "finish_reason": "stop",
                     }
                 ],
@@ -306,22 +541,22 @@ async def openai_chat_completions(request: OpenAIChatCompletionRequest):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Generation failed: {str(exc)}")
-
-
-
+        raise HTTPException(status_code=500, detail=f"Completion failed: {str(exc)}")
 
 @app.post("/v1/audio/transcriptions", dependencies=[Depends(verify_api_key)])
 async def openai_audio_transcriptions(request: OpenAIWhisperRequest):
     try:
         gen_config = OVGenAI_WhisperGenConfig(audio_base64=request.audio_base64)
         result = await _workers.transcribe_whisper(request.model, gen_config)
-        return {"text": result.get("text", ""), "metrics": result.get("metrics", {})}
+        metrics = result.get("metrics", {})
+        
+        logger.info(f"[audio/transcriptions] model={request.model} metrics={metrics}")
+        
+        return {"text": result.get("text", ""), "metrics": metrics}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Transcription failed: {str(exc)}")
-
 
 @app.post("/v1/audio/speech", dependencies=[Depends(verify_api_key)])
 async def openai_audio_speech(request: OpenAIKokoroRequest):
@@ -340,6 +575,9 @@ async def openai_audio_speech(request: OpenAIKokoroRequest):
         )
 
         result = await _workers.generate_speech_kokoro(request.model, gen_config)
+        metrics = result.get("metrics", {})
+        
+        logger.info(f"[audio/speech] model={request.model} voice={request.voice} metrics={metrics}")
 
         # Decode base64 audio and return as WAV file
         import base64
@@ -383,6 +621,8 @@ async def embeddings(request: EmbeddingsRequest):
 
         prompt_tokens = metrics.get("input_token", 0)
         total_tokens = metrics.get("total_token", prompt_tokens)
+        
+        logger.info(f"[embeddings] model={model_name} metrics={metrics}")
 
         embs = []
         for i in range(len(data)):

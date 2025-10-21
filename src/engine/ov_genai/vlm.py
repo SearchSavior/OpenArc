@@ -4,7 +4,7 @@ import gc
 
 import logging
 from io import BytesIO
-from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
+from typing import Any, AsyncIterator, Dict, List, Tuple, Union
 
 import numpy as np
 import openvino as ov
@@ -13,9 +13,9 @@ from openvino_genai import (
     VLMPipeline,
 )
 from PIL import Image
-from transformers import AutoProcessor
+from transformers import AutoTokenizer
 
-from src.server.models.ov_genai import OVGenAI_GenConfig
+from src.server.models.ov_genai import OVGenAI_GenConfig, VLM_VISION_TOKENS
 from src.server.model_registry import ModelLoadConfig, ModelRegistry
 from src.engine.ov_genai.streamers import ChunkStreamer
 
@@ -26,66 +26,98 @@ logger.setLevel(logging.INFO)
 class OVGenAI_VLM:
     def __init__(self, load_config: ModelLoadConfig):
         self.model_path = None
-        self.processor: Optional[AutoProcessor] = None
+        self.tokenizer = None
+        self.vision_token = None
         self.load_config = load_config
 
-    def prepare_inputs(self, 
-        messages: List[Dict[str, Any]], 
-        tools: List[Dict[str, Any]] = []) -> Tuple[str, 
-        Optional[Union[ov.Tensor, List[ov.Tensor]]]]:
+    def _vision_token_for_index(self, index: int) -> str:
         """
-        Convert chat-style messages (with optional raw base64 images in data URLs) into:
-        - a prompt string (using model tokenizer chat template on text-only content)
-        - a list of ov.Tensor images (one per image), or None if no images
-        
-        These match VLMPipeline.generate() expected inputs.
+        Return the correctly formatted vision token for the given image index.
+        Handles templates that may contain an index placeholder like '{i}'.
         """
-        images: List[Image.Image] = []
-        text_conversation: List[Dict[str, Any]] = []
+        token_template = self.vision_token if self.vision_token is not None else ""
+        if "{i}" in token_template:
+            return token_template.replace("{i}", str(index))
+        return token_template
 
-        for message in messages:
-            # Check if the message content is a list (multimodal content)
+    def prepare_inputs(self,
+        messages: List[Dict[str, Any]],
+        tools: List[Dict[str, Any]] = []
+    ) -> Tuple[str, List[ov.Tensor]]:
+        """
+        Parse a messages list and prepare text prompt + image tensors for VLM inference.
+
+        Args:
+            messages: list of messages, optionally containing multimodal content
+            vision_token: VisionToken enum defining the model's image tag syntax
+
+        Returns:
+            (tokenized_messages, ov_images)
+        """
+
+        images: List[Image.Image] = []
+        text_messages: List[Dict[str, Any]] = []
+
+        # Step 1: Extract text and images
+        for idx, message in enumerate(messages):
+            # Multimodal message (list of dict content items)
             if isinstance(message.get("content", ""), list):
                 text_parts: List[str] = []
+
                 for content_item in message["content"]:
-                    # Check if this is an image content item
-                    if isinstance(content_item, dict) and content_item.get("type") == "image_url":
+                    if (
+                        isinstance(content_item, dict)
+                        and content_item.get("type") == "image_url"
+                    ):
                         image_url = content_item.get("image_url", {})
-                        # Check if it's a base64 encoded image
-                        if isinstance(image_url, dict) and isinstance(image_url.get("url", ""), str) and image_url["url"].startswith("data:image/"):
-                            # Extract the base64 data
+                        # Check for embedded base64 data
+                        if (
+                            isinstance(image_url, dict)
+                            and isinstance(image_url.get("url", ""), str)
+                            and image_url["url"].startswith("data:image/")
+                        ):
                             base64_data = image_url["url"].split(",", 1)
                             if len(base64_data) > 1:
-                                # Decode base64 to binary
                                 image_data = base64.b64decode(base64_data[1])
-                                # Convert to PIL Image and ensure RGB
                                 image = Image.open(BytesIO(image_data)).convert("RGB")
                                 images.append(image)
-                    # If it's a text content item
+
+                                # Insert model-specific image token where this image appears
+                                token_str = self._vision_token_for_index(len(images) - 1)
+                                text_parts.append(f" {token_str} ")
+
+                    # Handle text segments
                     elif isinstance(content_item, dict) and content_item.get("type") == "text":
                         text_parts.append(content_item.get("text", ""))
 
-                # Create a new message with just the text parts
+                # Combine extracted text back into a unified string
                 text_message = message.copy()
-                text_message["content"] = " ".join([t for t in text_parts if isinstance(t, str)]) if text_parts else ""
-                text_conversation.append(text_message)
-            else:
-                text_conversation.append(message)
+                text_message["content"] = (
+                    " ".join([t for t in text_parts if isinstance(t, str)]) if text_parts else ""
+                )
+                text_messages.append(text_message)
 
-        # Build prompt from text-only conversation using GenAI tokenizer's chat template
-        tokenizer = self.model_path.get_tokenizer()
-        # openvino_genai.Tokenizer.apply_chat_template requires (history, add_generation_prompt, chat_template='')
-        prompt: str = tokenizer.apply_chat_template(
-            text_conversation
+            # Simple text-only message
+            else:
+                text_messages.append(message)
+
+        # Step 2: Build the chat template prompt using cached tokenizer
+        tokenizer = self.tokenizer
+        tokenized_messages: str = tokenizer.apply_chat_template(
+            text_messages,
+            tokenize=False,
+            tools=tools if tools else None,
+            add_generation_prompt=True
         )
 
-        # Convert PIL images to ov.Tensor(s). If none, return None for images.
-        ov_images: Optional[Union[ov.Tensor, List[ov.Tensor]]] = None
-        if images:
-            # Pass raw HWC uint8 arrays; VLMPipeline will handle model-specific preprocessing.
-            ov_images = [ov.Tensor(np.array(img, dtype=np.uint8)) for img in images]
+        # Step 3: Convert images to OpenVINO Tensors
+        ov_images: List[ov.Tensor] = []
+        for img in images:
+            arr = np.array(img, dtype=np.uint8)
+            tensor = ov.Tensor(arr)
+            ov_images.append(tensor)
 
-        return prompt, ov_images
+        return tokenized_messages, ov_images
 
     def generate_type(self, gen_config: OVGenAI_GenConfig):
         """
@@ -105,7 +137,7 @@ class OVGenAI_VLM:
         try:
             logger.info(f"[{self.load_config.model_name}] Starting non-streaming generation")
             generation_kwargs = GenerationConfig(
-                max_new_tokens=gen_config.max_new_tokens,
+                max_new_tokens=gen_config.max_tokens,
                 temperature=gen_config.temperature,
                 top_k=gen_config.top_k,
                 top_p=gen_config.top_p,
@@ -115,10 +147,12 @@ class OVGenAI_VLM:
             prompt, ov_images = self.prepare_inputs(gen_config.messages, gen_config.tools)
             
             logger.debug(f"[{self.load_config.model_name}] Calling VLMPipeline.generate")
-            if ov_images is not None:
-                result = await asyncio.to_thread(self.model_path.generate, prompt, ov_images, generation_kwargs)
-            else:
-                result = await asyncio.to_thread(self.model_path.generate, prompt, generation_config=generation_kwargs)
+            result = await asyncio.to_thread(
+                self.model_path.generate,
+                prompt=prompt,
+                **({'images': ov_images} if len(ov_images) > 0 else {}),
+                generation_config=generation_kwargs,
+            )
 
             perf_metrics = result.perf_metrics
 
@@ -139,7 +173,7 @@ class OVGenAI_VLM:
         Yields token chunks (str) as they arrive, then metrics (dict).
         """
         generation_kwargs = GenerationConfig(
-            max_new_tokens=gen_config.max_new_tokens,
+            max_new_tokens=gen_config.max_tokens,
             temperature=gen_config.temperature,
             top_k=gen_config.top_k,
             top_p=gen_config.top_p,
@@ -151,21 +185,13 @@ class OVGenAI_VLM:
         prompt, ov_images = self.prepare_inputs(gen_config.messages, gen_config.tools)
 
         async def _run_generation():
-            if ov_images is not None:
-                return await asyncio.to_thread(
-                    self.model_path.generate,
-                    prompt,
-                    ov_images,
-                    generation_kwargs,
-                    streamer
-                )
-            else:
-                return await asyncio.to_thread(
-                    self.model_path.generate,
-                    prompt,
-                    generation_config=generation_kwargs,
-                    streamer=streamer
-                )
+            return await asyncio.to_thread(
+                self.model_path.generate,
+                prompt=prompt,
+                **({'images': ov_images} if len(ov_images) > 0 else {}),
+                generation_config=generation_kwargs,
+                streamer=streamer,
+            )
 
         gen_task = asyncio.create_task(_run_generation())
 
@@ -207,7 +233,7 @@ class OVGenAI_VLM:
 
     def load_model(self, loader: ModelLoadConfig):
         """
-        Load model using a ModelLoadConfig configuration and cache the AutoProcessor.
+        Load the VLMPipeline and cache the tokenizer and vision token.
         """
         try:
             logger.info(f"[{loader.model_name}] Device: {loader.device}, Runtime config: {loader.runtime_config}")
@@ -217,6 +243,14 @@ class OVGenAI_VLM:
                 loader.device,
                 **(loader.runtime_config or {})
             )
+            
+            self.tokenizer = AutoTokenizer.from_pretrained(loader.model_path)
+    
+            # Get vision token from the mapping using vlm_type as key
+            self.vision_token = VLM_VISION_TOKENS.get(loader.vlm_type)
+            if self.vision_token is None:
+                raise ValueError(f"Unknown VLM type: {loader.vlm_type}. Supported: {list(VLM_VISION_TOKENS.keys())}")
+
             logger.info(f"[{loader.model_name}] VLMPipeline initialized successfully")
 
         except Exception as e:
@@ -232,9 +266,13 @@ class OVGenAI_VLM:
             del self.model_path
             self.model_path = None
 
-        if self.processor is not None:
-            del self.processor
-            self.processor = None
+        if self.tokenizer is not None:
+            del self.tokenizer
+            self.tokenizer = None
+            
+        if self.vision_token is not None:
+            del self.vision_token
+            self.vision_token = None
 
         gc.collect()
         logger.info(f"[{self.load_config.model_name}] weights and tokenizer unloaded and memory cleaned up")

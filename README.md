@@ -4,7 +4,7 @@
 [![Hugging Face](https://img.shields.io/badge/🤗%20Hugging%20Face-Echo9Zulu-yellow)](https://huggingface.co/Echo9Zulu)
 
 
-> [!]
+> [!NOTE]
 > OpenArc is under active development.
 
 **OpenArc** is an inference engine for Intel devices. Serve LLMs, VLMs, Whisper, Kokoro-TTS and Embedding models over OpenAI compatible endpoints, powered by OpenVINO.
@@ -13,7 +13,7 @@
 
 ## What's new?
 
-Drawing on ideas from llama.cpp, vLLM, transformers, OpenVINO Model Server, Ray, Lemonade and other projects, OpenArc has evolved into a capable serving engine for AI workloads on Intel devices.
+Drawing on ideas from `llama.cpp`, `vLLM`, `transformers`, `OpenVINO Model Server`, `Ray`, `Lemonade`, and other projects, OpenArc has evolved into a capable serving engine for AI workloads on Intel devices.
 
 New Features:
   - Multi GPU Pipeline Paralell
@@ -21,11 +21,13 @@ New Features:
   - NPU device support
   - OpenAI compatible endpoints
       - `/v1/models`
-      - `/v1/chat/completions`: tool use, streaming
+      - `/v1/completions`: `llm` only
+      - `/v1/chat/completions`
       - `/v1/embeddings`: 
-      - `/v1/audio/transcriptions`: Whisper only
-      - `/v1/audio/speech`: Kokoro only       
-  - `jinja` templating with AutoTokenizers
+      - `/v1/audio/transcriptions`: `whisper` only
+      - `/v1/audio/speech`: `kokoro` only       
+  - `jinja` templating with `AutoTokenizers`
+  - OpenAI compatible tool use with streaming
   - Fully async multi engine, multi task architecture
   - Model concurrency: load and infer multiple models at once
   - Performance metrics on every request
@@ -36,9 +38,10 @@ New Features:
     - tpot
     - load time
     - stream mode
-  - More
 
-> [!] Interested in contributing? Please open an issue before submitting a PR!
+
+> [!NOTE] 
+> Interested in contributing? Please open an issue before submitting a PR!
 
 ## Quickstart 
 
@@ -50,7 +53,8 @@ New Features:
  
 - Visit [OpenVINO System Requirments](https://docs.openvino.ai/2025/about-openvino/release-notes-openvino/system-requirements.html#cpu) for the latest information on drivers.
 
-> [!] Need help installing drivers? [Join our Discord](https://discord.gg/Bzz9hax9Jq) or open an issue.
+> [!NOTE] 
+> Need help installing drivers? [Join our Discord](https://discord.gg/Bzz9hax9Jq) or open an issue.
 
 2. Install uv from [astral](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)
 
@@ -66,12 +70,23 @@ uv sync
 source .venv/bin/activate
 ```
 
+Build latest optimum
+```
+uv pip install "optimum-intel[openvino] @ git+https://github.com/huggingface/optimum-intel"
+```
+
+Build latest OpenVINO and OpenVINO GenAI from nightly wheels
+```
+uv pip install --pre -U openvino-genai --extra-index-url https://storage.openvinotoolkit.org/simple/wheels/nightly
+```
+
 
 5. Set your API key as an environment variable:
 
 	export OPENARC_API_KEY=<api-key>
 
-> [!] uv has a [pip interface](https://docs.astral.sh/uv/pip/) which is a drop in replacement for pip, but faster. Pretty cool, and a good place to start.
+> [!NOTE] 
+> uv has a [pip interface](https://docs.astral.sh/uv/pip/) which is a drop in replacement for pip, but faster. Pretty cool, and a good place to start.
 
 
 6. To get started, run:
@@ -89,7 +104,7 @@ openarc --help
  
 - Visit [OpenVINO System Requirments](https://docs.openvino.ai/2025/about-openvino/release-notes-openvino/system-requirements.html#cpu) to get the latest information on drivers.
 
-> [!]
+> [!NOTE]
 > Need help installing drivers? [Join our Discord](https://discord.gg/Bzz9hax9Jq) or open an issue.
 
 
@@ -99,6 +114,16 @@ openarc --help
   ```
   uv sync
   ```
+
+Build latest optimum
+```
+uv pip install "optimum-intel[openvino] @ git+https://github.com/huggingface/optimum-intel"
+```
+
+Build latest OpenVINO and OpenVINO GenAI from nightly wheels
+```
+uv pip install --pre -U openvino-genai --extra-index-url https://storage.openvinotoolkit.org/simple/wheels/nightly
+```
 
 4. Set your API key as an environment variable:
 ```
@@ -111,7 +136,8 @@ setx OPENARC_API_KEY openarc-api-key
 openarc --help
 ```
 
-> [!] uv has a [pip interface](https://docs.astral.sh/uv/pip/) which is a drop in replacement for pip, but faster. Pretty cool, and a good place to start.
+> [!NOTE] 
+> uv has a [pip interface](https://docs.astral.sh/uv/pip/) which is a drop in replacement for pip, but faster. Pretty cool, and a good place to start.
 
 </details>
 
@@ -129,6 +155,15 @@ Add a model to openarc-config.json for easy loading with ```openarc load```.
 ```
 openarc add --model-name <model-name> --model-path <path/to/model> --engine <engine> --model-type <model-type> --device <target-device>
 ```
+
+#### VLM
+
+```
+openarc add --model-name <model-name> --model-path <path/to/model> --engine <engine> --model-type <model-type> --device <target-device> --vlm-type <vlm-type>
+```
+Getting VLM to work the way I wanted required using VLMPipeline in ways that are not well documented. You can look at the [code](src/engine/ov_genai/vlm.py#L33) to see where the magic happens. 
+
+`vlm-type` maps a vision token for a given architecture using strings like `qwen25vl`, `phi4mm`. Use `openarc add --help` to see the available options. The server will complain if you get anything wrong, so it should be easy to figure out.
 
 #### Whisper
 
@@ -209,6 +244,13 @@ Configure host and port
 openarc serve start --host --openarc-port
 ```
 
+Load models on startup
+
+```
+openarc serve start --load-models model1 model2
+```
+
+
 </details>
 
 <details>
@@ -216,13 +258,21 @@ openarc serve start --host --openarc-port
 <br>
 
 
-After using ```openarc add``` you can use ```openarc load``` to read the added configuration and load the model onto the OpenArc server. 
+After using ```openarc add``` you can use ```openarc load``` to read the added configuration and load models onto the OpenArc server. 
+
+OpenArc uses arguments from ```openarc add``` as metadata to make routing decisions internally; you are querying for correct inference code.
 
 ```
-openarc load --model-name <model-name>
+openarc load <model-name>
 ```
 
-OpenArc uses arguments from ```openarc add``` as metadata to make routing decisions internally; you are querying for inference code. 
+To load multiple models at once, use:
+
+```
+openarc load <model-name1> <model-name2> <model-name3>
+```
+
+Be mindful of your resources; loading models can be resource intensive! On the first load, OpenVINO performs model compilation for the target `--device`.
 
 When an ```openarc load``` command fails, the CLI tool displays the full stack trace to help you figure out why.
 
@@ -268,67 +318,101 @@ openarc tool device-detect
 
 </details>
 
+<br>
 
-
-
-## Supported Models
-
-[OpenVINO IR](https://docs.openvino.ai/2025/documentation/openvino-ir-format.html) is an intermediate representation of a model from a variety of source frameworks.
-
-Based on the tasks we support models usually come from Pytorch, 
+### Model Sources
 
 There are a few sources of preconverted models which can be used with OpenArc;
 
-- [OpenVINO LLM Collection on HuggingFace](https://huggingface.co/collections/OpenVINO/llm-6687aaa2abca3bbcec71a9bd)
+[OpenVINO on HuggingFace](https://huggingface.co/collections/OpenVINO/llm-6687aaa2abca3bbcec71a9bd)
 
-- [My HuggingFace repo](https://huggingface.co/Echo9Zulu)
-	- My repo contains preconverted models for a variety of architectures and usecases
-	- OpenArc supports almost all of them 
-  - Includes NSFW, ERP and "exotic" community finetunes that Intel doesn't host take advantage!
-  - **These get updated regularly so check back often!**
-  - If you read this here, *mention it on Discord* and I can quant a model you want to try. 
+[My HuggingFace repo](https://huggingface.co/Echo9Zulu)
 
-- [Optimum-CLI Conversion documentation](https://huggingface.co/docs/optimum/main/en/intel/openvino/export) to learn how you can convert models to OpenVINO IR from other formats.
+[LLMs optimized for NPU](https://huggingface.co/collections/OpenVINO/llms-optimized-for-npu-686e7f0bf7bc184bd71f8ba0)
 
-- [Supported Architectures](https://huggingface.co/docs/optimum/main/en/intel/openvino/models)List of models which can be converted to OpenVINO IR
 
-- [Optimum-CLI-Tool_tool](https://huggingface.co/spaces/Echo9Zulu/Optimum-CLI-Tool_tool), a Gradio application which helps you GUI-ify an often research intensive process.
+#### More models to get you started!
+
+<details>
+  <summary><strong>LLMs</strong></summary>
+<br>
+
+| **Models** |
+| --- |
+| [Echo9Zulu/Qwen3-1.7B-int8_asym-ov](https://huggingface.co/Echo9Zulu/Qwen3-1.7B-int8_asym-ov/tree/main) |
+| [Echo9Zulu/Qwen3-4B-Instruct-2507-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Qwen3-4B-Instruct-2507-int4_asym-awq-ov) |
+[Echo9Zulu/Dolphin-X1-8B-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Dolphin-X1-8B-int4_asym-awq-ov) |
+[Echo9Zulu/Qwen3-14B-int4_sym-ov](https://huggingface.co/Echo9Zulu/Qwen3-14B-int4_sym-ov/tree/main) | 
+[Echo9Zulu/Magistral-Small-2509-Text-Only-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Magistral-Small-2509-Text-Only-int4_asym-awq-ov) |
+| [Echo9Zulu/Hermes-4-70B-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Hermes-4-70B-int4_asym-awq-ov) |
+| [Echo9Zulu/Qwen2.5-Coder-32B-Instruct-int4_sym-awq-ov](https://huggingface.co/Echo9Zulu/Qwen2.5-Coder-32B-Instruct-int4_sym-awq-ov) |
+
+</details>
+
+<details>
+  <summary><strong>VLMs</strong></summary>
+<br>
+
+| **Models** |
+| --- |
+| [Echo9Zulu/gemma-3-4b-it-int8_asym-ov](https://huggingface.co/Echo9Zulu/gemma-3-4b-it-int8_asym-ov) |
+| [Echo9Zulu/Gemma-3-12b-it-qat-int4_asym-ov](https://huggingface.co/Echo9Zulu/Gemma-3-12b-it-qat-int4_asym-ov) |
+| [Echo9Zulu/Qwen2.5-VL-7B-Instruct-int4_sym-ov](https://huggingface.co/Echo9Zulu/Qwen2.5-VL-7B-Instruct-int4_sym-ov/tree/main) |
+| [Echo9Zulu/Nanonets-OCR2-3B-LM-INT4_ASYM-VE-FP16-ov](https://huggingface.co/Echo9Zulu/Nanonets-OCR2-3B-LM-INT4_ASYM-VE-FP16-ov) |
+
+</details>
+
+
+<details>
+  <summary><strong>Whisper</strong></summary>
+<br>
+
+| **Models** |
+| --- |
+| [OpenVINO/distil-whisper-large-v3-int8-ov](https://huggingface.co/OpenVINO/distil-whisper-large-v3-int8-ov) |
+| [OpenVINO/distil-whisper-large-v3-fp16-ov](https://huggingface.co/OpenVINO/distil-whisper-large-v3-fp16-ov) |
+| [OpenVINO/whisper-large-v3-int8-ov](https://huggingface.co/OpenVINO/whisper-large-v3-int8-ov/tree/main) |
+| [OpenVINO/openai-whisper-large-v3-fp16-ov](https://huggingface.co/OpenVINO/openai-whisper-large-v3-fp16-ov/tree/main) |
+
+</details>
+
+<details>
+  <summary><strong>Kokoro</strong></summary>
+<br>
+
+| **Models** |
+| --- |
+| [Echo9Zulu/Kokoro-82M-FP16-OpenVINO](https://huggingface.co/Echo9Zulu/Kokoro-82M-FP16-OpenVINO) |
+
+</details>
+
+<details>
+  <summary><strong>Embedding</strong></summary>
+<br>
+
+| **Models** |
+| --- |
+| [Echo9Zulu/Qwen3-Embedding-0.6B-int8_asym-ov](https://huggingface.co/Echo9Zulu/Qwen3-Embedding-0.6B-int8_asym-ov) |
+
+</details>
+
+
+
+### Converting Models to OpenVINO IR
+
+Optimum-Intel provides [a hands on primer](https://huggingface.co/docs/optimum/main/en/intel/openvino/optimization) demonstrating how the IR is used to apply post training optimization and is a good place to start building some intuition. 
+
+Intel provides a suite of tools you can use to apply different post training optimization techniques developed over at [Neural Network Compression Framwork](https://github.com/openvinotoolkit/nncf). 
+
+- Use the [Optimum-CLI conversion tool](https://huggingface.co/docs/optimum/main/en/intel/openvino/export) to learn how you can convert models to OpenVINO IR from other formats.
+
+- Visit [Supported Architectures](https://huggingface.co/docs/optimum/main/en/intel/openvino/models) to see what models can be converted to OpenVINO using the tools described in this section.
 
 - If you use the CLI tool and get an error about an unsupported architecture or "missing export config" follow the link, [open an issue](https://github.com/huggingface/optimum-intel/issues) reference the model card and the maintainers will get back to you.  
 
-Here are some models to get started:
-
-| Models                                                                           LLMs 
-
-| [Qwen3-4B-Instruct-2507-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Qwen3-4B-Instruct-2507-int4_asym-awq-ov) | 
-                             | Compressed Weights |
-| [Magistral-Small-2509-Text-Only-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Magistral-Small-2509-Text-Only-int4_asym-awq-ov)   |	
-| [Hermes-4-70B-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Hermes-4-70B-int4_asym-awq-ov) | 
-| 
-
-
-VLMs
-
-[gemma-3-4b-it-int8_asym-ov](https://huggingface.co/Echo9Zulu/gemma-3-4b-it-int8_asym-ov) | 3.89 GB            |
-
-
-
-
-
-Whisper 
-
-[distil-whisper-large-v3-int8-ov](https://huggingface.co/OpenVINO/distil-whisper-large-v3-int8-ov)
-
-Kokoro
-
-[Echo9Zulu/Kokoro-82M-FP16-OpenVINO](https://huggingface.co/Echo9Zulu/Kokoro-82M-FP16-OpenVINO)
-
-Embedding
-
-[Qwen3-Embedding-0.6B-int8_asym-ov](https://huggingface.co/Echo9Zulu/Qwen3-Embedding-0.6B-int8_asym-ov)
 
 ### Learning Resources
----
+
 Learn more about how to leverage your Intel devices for Machine Learning:
 
 [openvino_notebooks](https://github.com/openvinotoolkit/openvino_notebooks)
@@ -343,32 +427,6 @@ Learn more about how to leverage your Intel devices for Machine Learning:
 
 [Mutli GPU Pipeline Paralell with OpenVINO Model Server](https://docs.openvino.ai/2025/model-server/ovms_demos_continuous_batching_scaling.html#multi-gpu-configuration-loading-models-exceeding-a-single-card-vram)
 
-
-
-
-
-## OpenWebUI
-
-> [!NOTE]
-> I'm only going to cover the basics on OpenWebUI here. To learn more and set it up check out the [OpenWebUI docs](https://docs.openwebui.com/).
-
-- From the Connections menu add a new connection
-- Enter the server address and port where OpenArc is running **followed by /v1**
-Example:
-    http://0.0.0.0:8000/v1
-
-- Here you need to set the API key manually
-- When you hit the refresh button OpenWebUI sends a GET request to the OpenArc server to get the list of models at v1/models
-
-Serverside logs should report:
-			
-	"GET /v1/models HTTP/1.1" 200 OK 
-
-### Usage:
-
-- Load the model you want to use from openarc cli
-- Select the connection you just created and use the refresh button to update the list of models
-- if you use API keys and have a list of models these might be towards the bottom
 
 ## Acknowledgments
 
@@ -392,7 +450,7 @@ OpenArc stands on the shoulders of many other projects:
 
 [rich-click](https://github.com/ewels/rich-click)
 
-Thank for your work!!
+Thanks for your work!!
 
 
 

@@ -12,7 +12,7 @@ headers = {
 }
 
 data = {
-    "model": "kokoro-82m-fp16-ov",
+    "model": "kokoro",
     "input": "The quick brown fox jumped over the lazy dog.",
     "voice": "af_sarah",
     "speed": 1.0,

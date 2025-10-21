@@ -1,20 +1,28 @@
-from typing import Dict, List, Union, Any
-from pydantic import BaseModel, Field
+from typing import Any, Dict, List
 
+from pydantic import BaseModel, Field
 
 
 class OVGenAI_GenConfig(BaseModel):
     """
     Configuration for text generation with an OpenVINO GenAI pipeline.
     Supports both text-only and multimodal (text + image) messages.
+    Supports OpenAI message format including tool calls and tool responses.
     """
-    messages: List[Dict[str, Union[str, List[Dict[str, Any]]]]] = Field(
-        ...,
-        description="List of conversation messages. Content can be a string for text-only or a list of content items for multimodal messages."
+    messages: List[Dict[str, Any]] = Field(
+        default=None,
+        description="List of conversation messages. Supports OpenAI message format including user/assistant/system/tool roles, tool_calls, and tool_call_id fields."
     )
-    max_new_tokens: int = Field(
+    prompt: str = Field(
+        default=None,
+        description="Raw text prompt (used for /v1/completions endpoint instead of messages)"
+    )
+    max_tokens: int = Field(
         default=512,
-        description="Maximum number of tokens to generate."
+        description="""
+        Maximum number of tokens to generate. OpenAI API compatible.
+        OpenVINO GenAI pipeline take GenerationConfig.max_new_tokens so we have to map it to max_tokens.
+        """
     )
     temperature: float = Field(
         default=1.0,
@@ -48,3 +56,16 @@ class OVGenAI_GenConfig(BaseModel):
 
 class OVGenAI_WhisperGenConfig(BaseModel):
     audio_base64: str = Field(..., description="Base64 encoded audio")
+
+VLM_VISION_TOKENS = {
+    "internvl2": "<image>",
+    "llava15": "<image>",
+    "llavanext": "<image>",
+    "minicpmv26": "(<image>./</image>)",
+    "phi3vision": "<|image_{i}|>",
+    "phi4mm": "<|image_{i}|>",
+    "qwen2vl": "<|vision_start|><|image_pad|><|vision_end|>",
+    "qwen25vl": "<|vision_start|><|image_pad|><|vision_end|>",
+    "gemma3": "<start_of_image>",
+}
+

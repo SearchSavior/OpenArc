@@ -3,7 +3,7 @@ from threading import Thread
 from transformers import AutoTokenizer, TextIteratorStreamer
 from optimum.intel.openvino import OVModelForCausalLM
 
-model_id = "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Qwen3-1.7B-int8_asym-ov" # Can be a local path or an HF id
+model_id = "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Hermes-4-14B-AWQ-GPTQ-SE-ov" # Can be a local path or an HF id
 ov_config = {"PERFORMANCE_HINT": "LATENCY", 
              #"INFERENCE_NUM_THREADS": 10, 
              #"ENABLE_HYPER_THREADING": True
@@ -33,7 +33,7 @@ inputs = tokenizer(text=text_prompt_templated, return_tensors="pt")
 input_token_count = inputs['input_ids'].shape[1]
 
 streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
-generation_kwargs = dict(inputs, streamer=streamer, max_new_tokens=8192)
+generation_kwargs = dict(inputs, streamer=streamer, max_new_tokens=128)
 thread = Thread(target=model.generate, kwargs=generation_kwargs)
 
 first_token_received = False
