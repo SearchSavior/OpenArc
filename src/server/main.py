@@ -232,8 +232,7 @@ class RerankRequest(BaseModel):
     documents: List[str]
     prefix:Optional[str] = None
     suffix:Optional[str] = None
-    task:Optional[str] = None
-    config: Optional[PreTrainedTokenizerConfig] = None #not implemented
+    instruction:Optional[str] = None
 
 @app.get("/v1/models", dependencies=[Depends(verify_api_key)])
 async def openai_list_models():
@@ -655,19 +654,15 @@ async def embeddings(request: EmbeddingsRequest):
 async def rerank(request: RerankRequest):
 
     try:
-        if request.config:
-            tok_config = PreTrainedTokenizerConfig.model_validate(request.config)
-            base_data = tok_config.model_dump()
-            rr_config = RerankerConfig.model_validate(base_data | {"query":request.query,"documents":request.documents})
-        else:
-            rr_config = RerankerConfig.model_validate({"query":request.query,"documents":request.documents})
+        config_data = {"query": request.query, "documents": request.documents}
+        if request.prefix is not None:
+            config_data["prefix"] = request.prefix
+        if request.suffix is not None:
+            config_data["suffix"] = request.suffix
+        if request.instruction is not None:
+            config_data["instruction"] = request.instruction
             
-        if request.prefix:
-            rr_config.prefix = request.prefix
-        if request.suffix:
-            rr_config.suffix = request.suffix
-        if request.task:
-            rr_config.task = request.task
+        rr_config = RerankerConfig.model_validate(config_data)
             
         model_name = request.model
         created_ts = int(time.time())

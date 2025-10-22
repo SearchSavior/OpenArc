@@ -1,21 +1,15 @@
 
 
-import asyncio
 import gc
 import logging
-from typing import Any, AsyncIterator, Dict, List, Union
+from typing import Any, AsyncIterator, Dict, Union
 
 import torch
-import torch.nn.functional as F
-from torch import Tensor
 
 from transformers import AutoTokenizer
 from optimum.intel import OVModelForCausalLM
 
 from src.server.models.optimum import RerankerConfig
-
-from typing import Any, AsyncIterator, Dict
-
 from src.server.model_registry import ModelLoadConfig, ModelRegistry
 
 class Optimum_RR:
@@ -43,12 +37,12 @@ class Optimum_RR:
     async def generate_rerankings(self, rr_config: RerankerConfig) -> AsyncIterator[Union[Dict[str, Any], str]]:
         prefix_tokens = self.tokenizer.encode(rr_config.prefix, add_special_tokens=False)
         suffix_tokens = self.tokenizer.encode(rr_config.suffix, add_special_tokens=False)
-        self.max_length = rr_config.max_length
-        pairs = [self.format_instruction(rr_config.task, rr_config.query, doc) for doc in rr_config.documents]
+        
+        pairs = [self.format_instruction(rr_config.instruction, rr_config.query, doc) for doc in rr_config.documents]
         print(pairs)
-        # Currently hard coding tokenizer args.  If these are model independent than it is fine.  Otherwise
-        # implement the rr_config PreTrainedTokenizerConfig args.
-        max_length = 8192
+        
+        # Use max_length from config
+        max_length = rr_config.max_length
         inputs = self.tokenizer(
             pairs, padding=False, truncation="longest_first", return_attention_mask=False, max_length=max_length - len(prefix_tokens) - len(suffix_tokens)
         )
@@ -56,9 +50,7 @@ class Optimum_RR:
         for i, ele in enumerate(inputs["input_ids"]):
             inputs["input_ids"][i] = prefix_tokens + ele + suffix_tokens
 
-        # Currently hard coding tokenizer args.  If these are model independent than it is fine.  Otherwise
-        # implement the rr_config PreTrainedTokenizerConfig args.
-        inputs = self.tokenizer.pad(inputs, padding=True, return_tensors="pt", max_length=self.max_length)
+        inputs = self.tokenizer.pad(inputs, padding=True, return_tensors="pt", max_length=max_length)
         for key in inputs:
             inputs[key] = inputs[key].to(self.model.device)
 

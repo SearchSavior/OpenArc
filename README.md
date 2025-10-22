@@ -396,6 +396,15 @@ There are a few sources of preconverted models which can be used with OpenArc;
 
 </details>
 
+<details>
+  <summary><strong>Reranker</strong></summary>
+<br>
+
+| **Models** |
+| --- |
+| [OpenVINO/Qwen3-Reranker-0.6B-fp16-ov](https://huggingface.co/OpenVINO/Qwen3-Reranker-0.6B-fp16-ov) |
+
+</details>
 
 
 ### Converting Models to OpenVINO IR

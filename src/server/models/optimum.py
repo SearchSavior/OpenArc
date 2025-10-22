@@ -191,7 +191,7 @@ class PreTrainedTokenizerConfig(BaseModel):
         )
     )
 
-class RerankerConfig(PreTrainedTokenizerConfig):
+class RerankerConfig(BaseModel):
 
     query: str = Field(
         default=None,
@@ -199,7 +199,6 @@ class RerankerConfig(PreTrainedTokenizerConfig):
             "Phrase to compare documents to."
         )
     )
-
     documents:  List[str] = Field(
         default=None,
         description=(
@@ -217,13 +216,20 @@ class RerankerConfig(PreTrainedTokenizerConfig):
     suffix: str = Field(
         default="<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
         description=(
-            "Text to append to end of query. This is model specific."
+            "Text to append to end of query. This is model specific and configured for Qwen3-Rerank tokenizer."
         )
     )
 
-    task: str = Field(
+    instruction: str = Field(
         default="Given a search query, retrieve relevant passages that answer the query",
         description=(
             "Prompt command delivered to the model."
+        )
+    )
+
+    max_length: int = Field(
+        default=1024,
+        description=(
+            "Maximum sequence length for tokenization."
         )
     )

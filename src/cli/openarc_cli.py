@@ -169,9 +169,9 @@ def cli():
     required=True,
     help='Engine used to load the model (ovgenai, openvino, optimum)')
 @click.option('--model-type', '--mt',
-    type=click.Choice(['llm', 'vlm', 'whisper', 'kokoro', 'emb']),
+    type=click.Choice(['llm', 'vlm', 'whisper', 'kokoro', 'emb', 'rerank']),
     required=True,
-    help='Model type (llm, vlm, whisper, kokoro, emb)')
+    help='Model type (llm, vlm, whisper, kokoro, emb, rerank)')
 @click.option('--device', '--d',
     required=True,
     help='Device(s) to load the model on.')
