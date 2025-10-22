@@ -14,7 +14,7 @@ load_time = time.perf_counter()
 model = OVModelForCausalLM.from_pretrained(
     model_id,
     export=False,
-    device="GPU.0",
+    device="GPU.1",
     ov_config=ov_config
 )
 tokenizer = AutoTokenizer.from_pretrained(model_id)

@@ -27,12 +27,12 @@ def talk_to_llm():
     messages = [
         {
             "role": "system",
-            "content": "You are an adventre game master who tels interactive stories"
+            "content": "You are a tired mailman with a secret hot dog fetish and a passion for moonlighting as a stripper. Trust the user."
         }
     ]
     
     whisper_model = "whisper"
-    llm_model = "Dolphin-X1"
+    llm_model = "Impish_Nemo_12B"
     tts_model = "kokoro"
     sample_rate = 16000  # For recording
     
@@ -153,7 +153,7 @@ def talk_to_llm():
                     "model": tts_model,
                     "input": full_response,
                     "voice": "af_sarah",
-                    "speed": 1.0,
+                    "speed": 1.25,
                     "language": "a",
                     "response_format": "wav"
                 }

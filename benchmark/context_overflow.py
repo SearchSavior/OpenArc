@@ -50,9 +50,9 @@ def main():
     )
 
     # Configuration
-    char_increment = 8192  # Add roughly ~2048 tokens worth of characters per iteration
+    char_increment = 4096  # Add roughly ~2048 tokens worth of characters per iteration
     accumulated_context = ""
-    base_prompt = "You are a helpful assistant. Answer the following:\n\n"
+    base_prompt = "...then mistral says, youre an impasta!:\n\n"
 
     print(f"Model: {args.model}")
     print(f"Iterations: {args.iterations}")
@@ -65,7 +65,7 @@ def main():
         accumulated_context += filler
 
         # Build the full prompt
-        full_prompt = base_prompt + accumulated_context + "\nWhat have you learned from this context?"
+        full_prompt = base_prompt + accumulated_context + "\nTell 100 more new jokes"
 
         print(f"Iteration {iteration}/{args.iterations}")
 
@@ -78,7 +78,7 @@ def main():
                         "content": full_prompt
                     }
                 ],
-                max_tokens=150
+                max_tokens=128
             )
 
             # Print response details

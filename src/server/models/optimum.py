@@ -1,4 +1,4 @@
-from typing import Dict, List, Union, Any
+from typing import List, Union
 from pydantic import BaseModel, Field
 
 # converted from https://huggingface.co/docs/transformers/main_classes/tokenizer
