@@ -1,7 +1,7 @@
 from transformers import AutoTokenizer
 import random
 
-def get_input_tokens(model_path, num_tokens):
+def num_input_ids(model_path, num_tokens):
     """
     Generate random input tokens for benchmarking.
     Follows llama.cpp approach.

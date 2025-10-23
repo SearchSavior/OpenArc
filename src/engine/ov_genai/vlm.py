@@ -135,7 +135,6 @@ class OVGenAI_VLM:
         Yields in order: metrics (dict), new_text (str).
         """
         try:
-            logger.info(f"[{self.load_config.model_name}] Starting non-streaming generation")
             generation_kwargs = GenerationConfig(
                 max_new_tokens=gen_config.max_tokens,
                 temperature=gen_config.temperature,
@@ -146,7 +145,6 @@ class OVGenAI_VLM:
 
             prompt, ov_images = self.prepare_inputs(gen_config.messages, gen_config.tools)
             
-            logger.debug(f"[{self.load_config.model_name}] Calling VLMPipeline.generate")
             result = await asyncio.to_thread(
                 self.model_path.generate,
                 prompt=prompt,
@@ -236,7 +234,7 @@ class OVGenAI_VLM:
         Load the VLMPipeline and cache the tokenizer and vision token.
         """
         try:
-            logger.info(f"[{loader.model_name}] Device: {loader.device}, Runtime config: {loader.runtime_config}")
+            logger.info(f"{loader.model_type} on {loader.device} with {loader.runtime_config}")
             
             self.model_path = VLMPipeline(
                 loader.model_path,
@@ -251,7 +249,7 @@ class OVGenAI_VLM:
             if self.vision_token is None:
                 raise ValueError(f"Unknown VLM type: {loader.vlm_type}. Supported: {list(VLM_VISION_TOKENS.keys())}")
 
-            logger.info(f"[{loader.model_name}] VLMPipeline initialized successfully")
+            logger.info(f"{loader.model_name} loaded successfully")
 
         except Exception as e:
             logger.error(f"[{loader.model_name}] Failed to initialize VLMPipeline: {e}", exc_info=True)
@@ -275,6 +273,6 @@ class OVGenAI_VLM:
             self.vision_token = None
 
         gc.collect()
-        logger.info(f"[{self.load_config.model_name}] weights and tokenizer unloaded and memory cleaned up")
+        logger.info(f"[{self.load_config.model_name}] unloaded successfully")
         return removed
 

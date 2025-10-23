@@ -196,7 +196,7 @@ class OVGenAI_LLM:
         """
         
         logger.info(f"{loader.model_name} loading...")
-        logger.info(f"ModelType: {loader.model_type}, Device: {loader.device}, Runtime config: {loader.runtime_config}")
+        logger.info(f"{loader.model_type} on {loader.device} with {loader.runtime_config}")
 
         self.model = LLMPipeline(
             loader.model_path,
@@ -205,7 +205,7 @@ class OVGenAI_LLM:
         )
 
         self.encoder_tokenizer = AutoTokenizer.from_pretrained(loader.model_path)
-        logging.info(f"Model loaded successfully: {loader.model_name}")
+        logging.info(f"{loader.model_name} loaded successfully")
 
     async def unload_model(self, registry: ModelRegistry, model_name: str) -> bool:
         """Unregister model from registry and free memory resources.
@@ -228,7 +228,7 @@ class OVGenAI_LLM:
             self.encoder_tokenizer = None
         
         gc.collect()
-        logging.info(f"[{self.load_config.model_name}] weights and tokenizer unloaded and memory cleaned up")
+        logging.info(f"[{self.load_config.model_name}] unloaded successfully")
         return removed
 
 
