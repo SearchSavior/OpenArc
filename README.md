@@ -7,13 +7,39 @@
 > [!NOTE]
 > OpenArc is under active development.
 
-**OpenArc** is an inference engine for Intel devices. Serve LLMs, VLMs, Whisper, Kokoro-TTS and Embedding models over OpenAI compatible endpoints, powered by OpenVINO.
+**OpenArc** is an inference engine for Intel devices. Serve LLMs, VLMs, Whisper, Kokoro-TTS, Embedding and Reranker models over OpenAI compatible endpoints, powered by OpenVINO.
 
 **OpenArc 2.0** arrives with more endpoints, better UX, pipeline paralell, NPU support and much more!
 
+Drawing on ideas from `llama.cpp`, `vLLM`, `transformers`, `OpenVINO Model Server`, `Ray`, `Lemonade`, and other project cited below, OpenArc has become a way for me to learn about state of the art inference engines and try to build one myself.
+
+## Table of Contents
+
+- [What's new?](#whats-new)
+- [Quickstart](#quickstart)
+  - [Linux](#quickstart-linux)
+  - [Windows](#quickstart-windows)
+- [OpenArc CLI](#openarc-cli)
+  - [openarc add](#openarc-add)
+  - [openarc list](#openarc-list)
+  - [openarc serve](#openarc-serve)
+  - [openarc load](#openarc-load)
+  - [openarc status](#openarc-status)
+  - [openarc bench](#openarc-bench)
+  - [openarc tool](#openarc-tool)
+- [Model Sources](#model-sources)
+  - [LLMs](#llms)
+  - [VLMs](#vlms)
+  - [Whisper](#whisper)
+  - [Kokoro](#kokoro)
+  - [Embedding](#embedding)
+  - [Reranker](#reranker)
+- [Converting Models to OpenVINO IR](#converting-models-to-openvino-ir)
+- [Learning Resources](#learning-resources)
+- [Acknowledgments](#acknowledgments)
+
 ## What's new?
 
-Drawing on ideas from `llama.cpp`, `vLLM`, `transformers`, `OpenVINO Model Server`, `Ray`, `Lemonade`, and other projects, OpenArc has evolved into a capable serving engine for AI workloads on Intel devices.
 
 New Features:
   - Multi GPU Pipeline Paralell
@@ -47,7 +73,7 @@ New Features:
 
 ## Quickstart 
 
-<details>
+<details id="quickstart-linux">
   <summary>Linux</summary>
 <br>
 
@@ -99,7 +125,7 @@ openarc --help
 
 </details>
 
-<details>
+<details id="quickstart-windows">
   <summary>Windows</summary>
 
 1. OpenVINO requires **device specifc drivers**.
@@ -145,12 +171,14 @@ openarc --help
 
 ## OpenArc CLI
 
-<details>
+This section documents the CLI commands available to you. Walk through the commands in the order presented 
+
+
+<details id="openarc-add">
   <summary><code>openarc add</code></summary>
 <br>
 
-Add a model to openarc-config.json for easy loading with ```openarc load```.
-> [!] For vision language models, use `vlm` instead of `llm` for `--model-type`.
+Add a model to `openarc_config.json` for easy loading with ```openarc load```.
 
 #### Single device
 
@@ -179,20 +207,14 @@ openarc add --model-name <model-name> --model-path <path/to/whisper> --engine ov
 openarc add --model-name <model-name> --model-path <path/to/kokoro> --engine openvino --model-type kokoro --device CPU 
 ```
 
-
 #### ```runtime-config```
 
-Accepts many options to modify ```openvino``` runtime behavior for different inference scenarios. OpenArc will report errors to the server when the fail, making experimentation easy.
+Accepts many options to modify `openvino` runtime behavior for different inference scenarios. OpenArc reports c++ errors to the server when these fail, making experimentation easy. 
 
 See OpenVINO documentation on [Inference Optimization](https://docs.openvino.ai/2025/openvino-workflow/running-inference/optimize-inference.html) to learn more about what can be customized. 
 
 Review [pipeline-paralellism preview](https://docs.openvino.ai/2025/openvino-workflow/running-inference/inference-devices-and-modes/hetero-execution.html#pipeline-parallelism-preview) to learn how you can customize multi device inference using HETERO device plugin. Some example commands are provided for a few difference scenarios:
 
-#### Hybrid Mode/CPU Offload
-
-```
-openarc add --model-name <model-name> -model-path <path/to/model> --engine ovgenai --model-type llm --device <HETERO:GPU.0,CPU> --runtime-config {"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}
-```
 
 #### Multi-GPU Pipeline Paralell
 
@@ -209,13 +231,18 @@ openarc add --model-name <model-name> --model-path <path/to/model> --engine ovge
 ```
 ---
 
+#### Hybrid Mode/CPU Offload
+
+```
+openarc add --model-name <model-name> -model-path <path/to/model> --engine ovgenai --model-type llm --device <HETERO:GPU.0,CPU> --runtime-config {"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}
+```
 </details>
 
-<details>
+<details id="openarc-list">
   <summary><code>openarc list</code></summary>
 <br>
 
-Reads added configurations from ```openarc-config.json```.
+Reads added configurations from ```openarc_config.json```.
 
 Display all saved configurations:
 ```
@@ -229,7 +256,7 @@ openarc list --rm --model-name <model-name>
 
 </details>
 
-<details>
+<details id="openarc-serve">
   <summary><code>openarc serve</code></summary>
 <br>
 
@@ -246,16 +273,15 @@ Configure host and port
 openarc serve start --host --openarc-port
 ```
 
-Load models on startup
+To load models on startup:
 
 ```
 openarc serve start --load-models model1 model2
 ```
 
-
 </details>
 
-<details>
+<details id="openarc-load">
   <summary><code>openarc load</code></summary>
 <br>
 
@@ -276,11 +302,11 @@ openarc load <model-name1> <model-name2> <model-name3>
 
 Be mindful of your resources; loading models can be resource intensive! On the first load, OpenVINO performs model compilation for the target `--device`.
 
-When an ```openarc load``` command fails, the CLI tool displays the full stack trace to help you figure out why.
+When `openarc load` fails, the CLI tool displays a full stack trace to help you figure out why.
 
 </details>
 
-<details>
+<details id="openarc-status">
   <summary><code>openarc status</code></summary>
 <br>
 
@@ -295,14 +321,40 @@ openarc status
 
 </details>
 
-<details>
+<details id="openarc-bench">
+  <summary><code>openarc bench</code></summary>
+<br>
+
+Benchmark model performance with pseudo-random input tokens.
+
+This approach follows [llama-bench](https://github.com/ggml-org/llama.cpp/blob/683fa6ba/tools/llama-bench/llama-bench.cpp#L1922), providing a baseline for the community to assess inference performance between `llama.cpp` backends and `openvino`
+
+To support different `llm` tokenizers, we use `input_tokens` to collect `p` a pseaudrandom number of tokens directly using `AutoTokenizer`. 
+
+Default values are:
+```
+openarc bench <model-name> --p <512> --n <128> --r <5>
+```
+Which gives:
+
+
+![openarc bench](assets/openarc_bench_sample.png)
+
+`openarc bench` also records metrics in a sqlite database `openarc_bench.db` for easy analysis.
+
+</details>
+
+
+
+
+<details id="openarc-tool">
   <summary><code>openarc tool</code></summary>
 <br>
 
 
 Utility scripts.
 
-To see OpenVINO properties your device supports use:
+To see `openvino` properties your device supports use:
 
 ```
 openarc tool device-props
@@ -335,7 +387,7 @@ There are a few sources of preconverted models which can be used with OpenArc;
 
 #### More models to get you started!
 
-<details>
+<details id="llms">
   <summary><strong>LLMs</strong></summary>
 <br>
 
@@ -352,7 +404,7 @@ There are a few sources of preconverted models which can be used with OpenArc;
 
 </details>
 
-<details>
+<details id="vlms">
   <summary><strong>VLMs</strong></summary>
 <br>
 
@@ -366,7 +418,7 @@ There are a few sources of preconverted models which can be used with OpenArc;
 </details>
 
 
-<details>
+<details id="whisper">
   <summary><strong>Whisper</strong></summary>
 <br>
 
@@ -379,7 +431,7 @@ There are a few sources of preconverted models which can be used with OpenArc;
 
 </details>
 
-<details>
+<details id="kokoro">
   <summary><strong>Kokoro</strong></summary>
 <br>
 
@@ -389,7 +441,7 @@ There are a few sources of preconverted models which can be used with OpenArc;
 
 </details>
 
-<details>
+<details id="embedding">
   <summary><strong>Embedding</strong></summary>
 <br>
 
@@ -399,7 +451,7 @@ There are a few sources of preconverted models which can be used with OpenArc;
 
 </details>
 
-<details>
+<details id="reranker">
   <summary><strong>Reranker</strong></summary>
 <br>
 
@@ -408,6 +460,7 @@ There are a few sources of preconverted models which can be used with OpenArc;
 | [OpenVINO/Qwen3-Reranker-0.6B-fp16-ov](https://huggingface.co/OpenVINO/Qwen3-Reranker-0.6B-fp16-ov) |
 
 </details>
+
 
 
 ### Converting Models to OpenVINO IR
@@ -462,6 +515,24 @@ OpenArc stands on the shoulders of many other projects:
 [rich-click](https://github.com/ewels/rich-click)
 
 Thanks for your work!!
+
+<script>
+  // Automatically open details elements when navigating to them via anchor links
+  function openDetailsForHash() {
+    const hash = window.location.hash.slice(1); // Remove the '#'
+    if (hash) {
+      const element = document.getElementById(hash);
+      if (element && element.tagName === 'DETAILS') {
+        element.open = true;
+      }
+    }
+  }
+
+  // Run on page load
+  document.addEventListener('DOMContentLoaded', openDetailsForHash);
+  // Also run on hash change (when clicking links)
+  window.addEventListener('hashchange', openDetailsForHash);
+</script>
 
 
 

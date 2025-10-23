@@ -29,8 +29,8 @@ click.rich_click.STYLE_COMMANDS_TABLE_ROW_STYLES = ["magenta", "yellow", "cyan",
 console = Console()
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
-CONFIG_FILE = PROJECT_ROOT / "openarc-config.json"
-BENCH_DB = PROJECT_ROOT / "openarc-bench.db"
+CONFIG_FILE = PROJECT_ROOT / "openarc_config.json"
+BENCH_DB = PROJECT_ROOT / "openarc_bench.db"
 
 def init_bench_db():
     """Initialize benchmark database and create table if it doesn't exist."""
