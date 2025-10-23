@@ -72,8 +72,8 @@ def generate_answers(questions, model, tokenizer, max_new_tokens=50):
 
 
 def main():
-    MODEL_ID = "/mnt/Ironwolf-4TB/Models/Pytorch/Llama/Dolphin3.0-Llama3.2-1B"
-    OUTPUT_DIR = "dolphin3.0-llama3.2-1b-compressed"
+    MODEL_ID = "/mnt/Ironwolf-4TB/Models/Pytorch/Qwen/Hermes-4-14B"
+    OUTPUT_DIR = "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Hermes-4-14B-FP8_E4M3-ov"
 
     dataset = load_dataset("wikitext", "wikitext-2-raw-v1", split="test")
     # Filtering to remove empty samples from the dataset
