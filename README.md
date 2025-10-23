@@ -12,7 +12,7 @@
 
 **OpenArc 2.0** arrives with more endpoints, better UX, pipeline paralell, NPU support and much more!
 
-Drawing on ideas from `llama.cpp`, `vLLM`, `transformers`, `OpenVINO Model Server`, `Ray`, `Lemonade`, and other projects cited below, OpenArc has been a way for me to learn about state of the art inference engines by trying to build one myself to get better performance on the only hardware I could afford. Frustrated with options available to bigger parts of the community
+Drawing on ideas from `llama.cpp`, `vLLM`, `transformers`, `OpenVINO Model Server`, `Ray`, `Lemonade`, and other projects cited below, OpenArc has been a way for me to learn about state of the art inference engines by trying to build one myself to get better performance on the only hardware I could afford. 
 
 ## Table of Contents
 
