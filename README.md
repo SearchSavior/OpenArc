@@ -17,9 +17,12 @@ Drawing on ideas from `llama.cpp`, `vLLM`, `transformers`, `OpenVINO Model Serve
 
 - [What's new?](#whats-new)
 - [Quickstart](#quickstart)
-  - [Linux](#quickstart-linux)
-  - [Windows](#quickstart-windows)
+  - [Linux](#linux)
+  - [Windows](#windows)
 - [OpenArc CLI](#openarc-cli)
+  <details>
+  <summary>Click to expand CLI commands</summary>
+
   - [openarc add](#openarc-add)
   - [openarc list](#openarc-list)
   - [openarc serve](#openarc-serve)
@@ -27,13 +30,22 @@ Drawing on ideas from `llama.cpp`, `vLLM`, `transformers`, `OpenVINO Model Serve
   - [openarc status](#openarc-status)
   - [openarc bench](#openarc-bench)
   - [openarc tool](#openarc-tool)
+
+  </details>
+
 - [Model Sources](#model-sources)
+  <details>
+  <summary>Click to expand model types</summary>
+
   - [LLMs](#llms)
   - [VLMs](#vlms)
   - [Whisper](#whisper)
   - [Kokoro](#kokoro)
   - [Embedding](#embedding)
   - [Reranker](#reranker)
+
+  </details>
+
 - [Converting Models to OpenVINO IR](#converting-models-to-openvino-ir)
 - [Learning Resources](#learning-resources)
 - [Acknowledgments](#acknowledgments)
@@ -71,10 +83,15 @@ New Features:
 > [!NOTE] 
 > Interested in contributing? Please open an issue before submitting a PR!
 
+<div align="right">
+
+[↑ Top](#table-of-contents)
+
+</div>
+
 ## Quickstart 
 
-<details id="quickstart-linux">
-  <summary>Linux</summary>
+### Linux
 <br>
 
 1. OpenVINO requires **device specifc drivers**.
@@ -123,10 +140,7 @@ uv pip install --pre -U openvino-genai --extra-index-url https://storage.openvin
 openarc --help
 ```
 
-</details>
-
-<details id="quickstart-windows">
-  <summary>Windows</summary>
+### Windows
 
 1. OpenVINO requires **device specifc drivers**.
  
@@ -167,15 +181,17 @@ openarc --help
 > [!NOTE] 
 > uv has a [pip interface](https://docs.astral.sh/uv/pip/) which is a drop in replacement for pip, but faster. Pretty cool, and a good place to start.
 
-</details>
+<div align="right">
+
+[↑ Top](#table-of-contents)
+
+</div>
 
 ## OpenArc CLI
 
 This section documents the CLI commands available to you. Walk through the commands in the order presented 
 
-
-<details id="openarc-add">
-  <summary><code>openarc add</code></summary>
+### openarc add
 <br>
 
 Add a model to `openarc_config.json` for easy loading with ```openarc load```.
@@ -236,10 +252,8 @@ openarc add --model-name <model-name> --model-path <path/to/model> --engine ovge
 ```
 openarc add --model-name <model-name> -model-path <path/to/model> --engine ovgenai --model-type llm --device <HETERO:GPU.0,CPU> --runtime-config {"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}
 ```
-</details>
 
-<details id="openarc-list">
-  <summary><code>openarc list</code></summary>
+### openarc list
 <br>
 
 Reads added configurations from ```openarc_config.json```.
@@ -254,10 +268,7 @@ Remove a configuration:
 openarc list --rm --model-name <model-name>
 ```
 
-</details>
-
-<details id="openarc-serve">
-  <summary><code>openarc serve</code></summary>
+### openarc serve
 <br>
 
 
@@ -279,10 +290,7 @@ To load models on startup:
 openarc serve start --load-models model1 model2
 ```
 
-</details>
-
-<details id="openarc-load">
-  <summary><code>openarc load</code></summary>
+### openarc load
 <br>
 
 
@@ -304,10 +312,7 @@ Be mindful of your resources; loading models can be resource intensive! On the f
 
 When `openarc load` fails, the CLI tool displays a full stack trace to help you figure out why.
 
-</details>
-
-<details id="openarc-status">
-  <summary><code>openarc status</code></summary>
+### openarc status
 <br>
 
 
@@ -319,10 +324,7 @@ openarc status
 
 ![device-detect](assets/openarc_status.png)
 
-</details>
-
-<details id="openarc-bench">
-  <summary><code>openarc bench</code></summary>
+### openarc bench
 <br>
 
 Benchmark model performance with pseudo-random input tokens.
@@ -342,13 +344,9 @@ Which gives:
 
 `openarc bench` also records metrics in a sqlite database `openarc_bench.db` for easy analysis.
 
-</details>
 
 
-
-
-<details id="openarc-tool">
-  <summary><code>openarc tool</code></summary>
+### openarc tool
 <br>
 
 
@@ -370,9 +368,13 @@ openarc tool device-detect
 
 ---
 
-</details>
-
 <br>
+
+<div align="right">
+
+[↑ Top](#table-of-contents)
+
+</div>
 
 ### Model Sources
 
@@ -387,81 +389,69 @@ There are a few sources of preconverted models which can be used with OpenArc;
 
 #### More models to get you started!
 
-<details id="llms">
-  <summary><strong>LLMs</strong></summary>
+### LLMs
 <br>
 
-| **Models** |
-| --- |
-| [Echo9Zulu/Qwen3-1.7B-int8_asym-ov](https://huggingface.co/Echo9Zulu/Qwen3-1.7B-int8_asym-ov/tree/main) |
-| [Echo9Zulu/Qwen3-4B-Instruct-2507-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Qwen3-4B-Instruct-2507-int4_asym-awq-ov) |
-| [Gapeleon/Satyr-V0.1-4B-HF-int4_awq-ov](https://huggingface.co/Gapeleon/Satyr-V0.1-4B-HF-int4_awq-ov?not-for-all-audiences=true) |
-[Echo9Zulu/Dolphin-X1-8B-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Dolphin-X1-8B-int4_asym-awq-ov) |
-[Echo9Zulu/Qwen3-14B-int4_sym-ov](https://huggingface.co/Echo9Zulu/Qwen3-14B-int4_sym-ov/tree/main) | 
-[Echo9Zulu/Magistral-Small-2509-Text-Only-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Magistral-Small-2509-Text-Only-int4_asym-awq-ov) |
-| [Echo9Zulu/Hermes-4-70B-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Hermes-4-70B-int4_asym-awq-ov) |
-| [Echo9Zulu/Qwen2.5-Coder-32B-Instruct-int4_sym-awq-ov](https://huggingface.co/Echo9Zulu/Qwen2.5-Coder-32B-Instruct-int4_sym-awq-ov) |
+|| **Models** |
+|| --- |
+|| [Echo9Zulu/Qwen3-1.7B-int8_asym-ov](https://huggingface.co/Echo9Zulu/Qwen3-1.7B-int8_asym-ov/tree/main) |
+|| [Echo9Zulu/Qwen3-4B-Instruct-2507-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Qwen3-4B-Instruct-2507-int4_asym-awq-ov) |
+|| [Gapeleon/Satyr-V0.1-4B-HF-int4_awq-ov](https://huggingface.co/Gapeleon/Satyr-V0.1-4B-HF-int4_awq-ov?not-for-all-audiences=true) |
+|[Echo9Zulu/Dolphin-X1-8B-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Dolphin-X1-8B-int4_asym-awq-ov) |
+|[Echo9Zulu/Qwen3-14B-int4_sym-ov](https://huggingface.co/Echo9Zulu/Qwen3-14B-int4_sym-ov/tree/main) | 
+|[Echo9Zulu/Magistral-Small-2509-Text-Only-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Magistral-Small-2509-Text-Only-int4_asym-awq-ov) |
+|| [Echo9Zulu/Hermes-4-70B-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Hermes-4-70B-int4_asym-awq-ov) |
+|| [Echo9Zulu/Qwen2.5-Coder-32B-Instruct-int4_sym-awq-ov](https://huggingface.co/Echo9Zulu/Qwen2.5-Coder-32B-Instruct-int4_sym-awq-ov) |
 
-</details>
-
-<details id="vlms">
-  <summary><strong>VLMs</strong></summary>
+### VLMs
 <br>
 
-| **Models** |
-| --- |
-| [Echo9Zulu/gemma-3-4b-it-int8_asym-ov](https://huggingface.co/Echo9Zulu/gemma-3-4b-it-int8_asym-ov) |
-| [Echo9Zulu/Gemma-3-12b-it-qat-int4_asym-ov](https://huggingface.co/Echo9Zulu/Gemma-3-12b-it-qat-int4_asym-ov) |
-| [Echo9Zulu/Qwen2.5-VL-7B-Instruct-int4_sym-ov](https://huggingface.co/Echo9Zulu/Qwen2.5-VL-7B-Instruct-int4_sym-ov/tree/main) |
-| [Echo9Zulu/Nanonets-OCR2-3B-LM-INT4_ASYM-VE-FP16-ov](https://huggingface.co/Echo9Zulu/Nanonets-OCR2-3B-LM-INT4_ASYM-VE-FP16-ov) |
-
-</details>
+|| **Models** |
+|| --- |
+|| [Echo9Zulu/gemma-3-4b-it-int8_asym-ov](https://huggingface.co/Echo9Zulu/gemma-3-4b-it-int8_asym-ov) |
+|| [Echo9Zulu/Gemma-3-12b-it-qat-int4_asym-ov](https://huggingface.co/Echo9Zulu/Gemma-3-12b-it-qat-int4_asym-ov) |
+|| [Echo9Zulu/Qwen2.5-VL-7B-Instruct-int4_sym-ov](https://huggingface.co/Echo9Zulu/Qwen2.5-VL-7B-Instruct-int4_sym-ov/tree/main) |
+|| [Echo9Zulu/Nanonets-OCR2-3B-LM-INT4_ASYM-VE-FP16-ov](https://huggingface.co/Echo9Zulu/Nanonets-OCR2-3B-LM-INT4_ASYM-VE-FP16-ov) |
 
 
-<details id="whisper">
-  <summary><strong>Whisper</strong></summary>
+### Whisper
 <br>
 
-| **Models** |
-| --- |
-| [OpenVINO/distil-whisper-large-v3-int8-ov](https://huggingface.co/OpenVINO/distil-whisper-large-v3-int8-ov) |
-| [OpenVINO/distil-whisper-large-v3-fp16-ov](https://huggingface.co/OpenVINO/distil-whisper-large-v3-fp16-ov) |
-| [OpenVINO/whisper-large-v3-int8-ov](https://huggingface.co/OpenVINO/whisper-large-v3-int8-ov/tree/main) |
-| [OpenVINO/openai-whisper-large-v3-fp16-ov](https://huggingface.co/OpenVINO/openai-whisper-large-v3-fp16-ov/tree/main) |
+|| **Models** |
+|| --- |
+|| [OpenVINO/distil-whisper-large-v3-int8-ov](https://huggingface.co/OpenVINO/distil-whisper-large-v3-int8-ov) |
+|| [OpenVINO/distil-whisper-large-v3-fp16-ov](https://huggingface.co/OpenVINO/distil-whisper-large-v3-fp16-ov) |
+|| [OpenVINO/whisper-large-v3-int8-ov](https://huggingface.co/OpenVINO/whisper-large-v3-int8-ov/tree/main) |
+|| [OpenVINO/openai-whisper-large-v3-fp16-ov](https://huggingface.co/OpenVINO/openai-whisper-large-v3-fp16-ov/tree/main) |
 
-</details>
-
-<details id="kokoro">
-  <summary><strong>Kokoro</strong></summary>
+### Kokoro
 <br>
 
-| **Models** |
-| --- |
-| [Echo9Zulu/Kokoro-82M-FP16-OpenVINO](https://huggingface.co/Echo9Zulu/Kokoro-82M-FP16-OpenVINO) |
+|| **Models** |
+|| --- |
+|| [Echo9Zulu/Kokoro-82M-FP16-OpenVINO](https://huggingface.co/Echo9Zulu/Kokoro-82M-FP16-OpenVINO) |
 
-</details>
-
-<details id="embedding">
-  <summary><strong>Embedding</strong></summary>
+### Embedding
 <br>
 
-| **Models** |
-| --- |
-| [Echo9Zulu/Qwen3-Embedding-0.6B-int8_asym-ov](https://huggingface.co/Echo9Zulu/Qwen3-Embedding-0.6B-int8_asym-ov) |
+|| **Models** |
+|| --- |
+|| [Echo9Zulu/Qwen3-Embedding-0.6B-int8_asym-ov](https://huggingface.co/Echo9Zulu/Qwen3-Embedding-0.6B-int8_asym-ov) |
 
-</details>
-
-<details id="reranker">
-  <summary><strong>Reranker</strong></summary>
+### Reranker
 <br>
 
-| **Models** |
-| --- |
-| [OpenVINO/Qwen3-Reranker-0.6B-fp16-ov](https://huggingface.co/OpenVINO/Qwen3-Reranker-0.6B-fp16-ov) |
-
-</details>
+|| **Models** |
+|| --- |
+|| [OpenVINO/Qwen3-Reranker-0.6B-fp16-ov](https://huggingface.co/OpenVINO/Qwen3-Reranker-0.6B-fp16-ov) |
 
 
+
+<div align="right">
+
+[↑ Top](#table-of-contents)
+
+</div>
 
 ### Converting Models to OpenVINO IR
 
@@ -474,6 +464,12 @@ Intel provides a suite of tools you can use to apply different post training opt
 - Visit [Supported Architectures](https://huggingface.co/docs/optimum/main/en/intel/openvino/models) to see what models can be converted to OpenVINO using the tools described in this section.
 
 - If you use the CLI tool and get an error about an unsupported architecture or "missing export config" follow the link, [open an issue](https://github.com/huggingface/optimum-intel/issues) reference the model card and the maintainers will get back to you.  
+
+<div align="right">
+
+[↑ Top](#table-of-contents)
+
+</div>
 
 ### Learning Resources
 
@@ -491,6 +487,12 @@ Learn more about how to leverage your Intel devices for Machine Learning:
 
 [Mutli GPU Pipeline Paralell with OpenVINO Model Server](https://docs.openvino.ai/2025/model-server/ovms_demos_continuous_batching_scaling.html#multi-gpu-configuration-loading-models-exceeding-a-single-card-vram)
 
+
+<div align="right">
+
+[↑ Top](#table-of-contents)
+
+</div>
 
 ## Acknowledgments
 
@@ -515,24 +517,6 @@ OpenArc stands on the shoulders of many other projects:
 [rich-click](https://github.com/ewels/rich-click)
 
 Thanks for your work!!
-
-<script>
-  // Automatically open details elements when navigating to them via anchor links
-  function openDetailsForHash() {
-    const hash = window.location.hash.slice(1); // Remove the '#'
-    if (hash) {
-      const element = document.getElementById(hash);
-      if (element && element.tagName === 'DETAILS') {
-        element.open = true;
-      }
-    }
-  }
-
-  // Run on page load
-  document.addEventListener('DOMContentLoaded', openDetailsForHash);
-  // Also run on hash change (when clicking links)
-  window.addEventListener('hashchange', openDetailsForHash);
-</script>
 
 
 
