@@ -1,6 +1,11 @@
-from transformers import AutoTokenizer
 import random
+import requests
+import os
 
+from transformers import AutoTokenizer
+
+model_path = r"/mnt/Ironwolf-4TB/Models/OpenVINO/Llama/dphn_Dolphin-X1-8B-int4_asym-awq-ov"
+num_tokens = 512
 def get_input_tokens(model_path, num_tokens):
     """
     Generate random input tokens for benchmarking.
@@ -18,12 +23,21 @@ def get_input_tokens(model_path, num_tokens):
     
     return input_ids
 
-# Example usage:
-#if __name__ == "__main__":
-#    model_path = "/mnt/Ironwolf-4TB/Models/OpenVINO/Mistral/Impish_Nemo_12B-int4_asym-awq-ov"
-#    num_tokens = 512
-#    
-#    input_ids = get_input_tokens(model_path, num_tokens)
-#    print(f"Generated {len(input_ids)} random tokens")
-#    print(f"Sample tokens: {input_ids[:10]}")
-    
+
+
+
+
+response = requests.post(
+    "http://localhost:8000/openarc/bench",
+    headers={"Authorization": f"Bearer {os.getenv('OPENARC_API_KEY')}"},
+    json={
+        "model": "Dolphin-X1",
+        "input_ids": get_input_tokens(model_path, num_tokens),  # Pre-encoded token IDs
+        "max_tokens": 128,
+        "temperature": 0.7
+    }
+)
+
+metrics = response.json()
+print(metrics)
+# Output: {"metrics": {"input_token": ..., "new_token": ..., "ttft_ms": ..., ...}}

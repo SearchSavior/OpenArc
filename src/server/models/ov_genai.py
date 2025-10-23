@@ -17,6 +17,10 @@ class OVGenAI_GenConfig(BaseModel):
         default=None,
         description="Raw text prompt (used for /v1/completions endpoint instead of messages)"
     )
+    input_ids: List[int] = Field(
+        default=None,
+        description="Pre-encoded input token IDs (used for benchmarking to bypass tokenization)"
+    )
     max_tokens: int = Field(
         default=512,
         description="""

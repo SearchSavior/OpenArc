@@ -140,6 +140,19 @@ def parse_tool_calls(text: str) -> Optional[List[Dict[str, Any]]]:
     return tool_calls if tool_calls else None
 
 #===============================================================#
+# Request Models
+#===============================================================#
+
+class OpenArcBenchRequest(BaseModel):
+    model: str
+    input_ids: List[int]
+    max_tokens: Optional[int] = 512
+    temperature: Optional[float] = None
+    top_p: Optional[float] = None
+    top_k: Optional[int] = None
+    repetition_penalty: Optional[float] = None
+
+#===============================================================#
 # OpenArc internal
 #===============================================================#
 
@@ -169,6 +182,35 @@ async def unload_model(unload_config: ModelUnloadConfig):
 async def get_status():
     """Get registry status showing all loaded models."""
     return await _registry.status()
+
+@app.post("/openarc/bench", dependencies=[Depends(verify_api_key)])
+async def benchmark(request: OpenArcBenchRequest):
+    """Benchmark endpoint that accepts pre-encoded input_ids and returns only metrics."""
+    try:
+        config_kwargs = {
+            "input_ids": request.input_ids,
+            "max_tokens": request.max_tokens,
+            "temperature": request.temperature,
+            "top_p": request.top_p,
+            "top_k": request.top_k,
+            "repetition_penalty": request.repetition_penalty,
+            "stream": False,  # Benchmarking is always non-streaming
+        }
+        # Remove keys with value None
+        config_kwargs = {k: v for k, v in config_kwargs.items() if v is not None}
+
+        generation_config = OVGenAI_GenConfig(**config_kwargs)
+        
+        result = await _workers.generate(request.model, generation_config)
+        metrics = result.get("metrics", {}) or {}
+        
+        logger.info(f"[bench] model={request.model} input_ids_len={len(request.input_ids)} metrics={metrics}")
+        
+        return {"metrics": metrics}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Benchmark failed: {str(exc)}")
 
 #===============================================================#
 # OpenAI-compatible endpoints

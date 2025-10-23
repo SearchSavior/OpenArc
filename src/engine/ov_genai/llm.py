@@ -83,8 +83,12 @@ class OVGenAI_LLM:
             repetition_penalty=gen_config.repetition_penalty,
         )
 
-        # Support both chat messages and raw prompts
-        if gen_config.prompt:
+        # Support pre-encoded input_ids, raw prompts, and chat messages
+        if gen_config.input_ids:
+            # Pre-encoded input IDs (used by /openarc/bench endpoint for benchmarking)
+            import numpy as np
+            prompt_token_ids = ov.Tensor(np.array(gen_config.input_ids, dtype=np.int64).reshape(1, -1))
+        elif gen_config.prompt:
             # Direct tokenization for raw text (used by /v1/completions endpoint)
             prompt_token_ids = ov.Tensor(self.encoder_tokenizer.encode(gen_config.prompt, return_tensors="np"))
         else:
