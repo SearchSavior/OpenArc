@@ -23,14 +23,16 @@ New Features:
       - `/v1/models`
       - `/v1/completions`: `llm` only
       - `/v1/chat/completions`
-      - `/v1/embeddings`: 
+      - `/v1/embeddings`: `qwen3-embedding` only
+      - `/v1/rerank`: `qwen3-reranker` only
       - `/v1/audio/transcriptions`: `whisper` only
       - `/v1/audio/speech`: `kokoro` only       
   - `jinja` templating with `AutoTokenizers`
-  - OpenAI compatible tool use with streaming
+  - tool use with streaming
   - Fully async multi engine, multi task architecture
   - Model concurrency: load and infer multiple models at once
-  - Performance metrics on every request
+  - `llama-bench` style benchmarking for `llm`
+  - metrics on every request
     - prefill_throughput
     - ttft
     - decode_throughput
