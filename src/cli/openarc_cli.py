@@ -4,6 +4,8 @@ OpenArc CLI Tool - Command-line interface for OpenArc server operations.
 """
 import os
 import json
+import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 import requests
@@ -28,6 +30,64 @@ console = Console()
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 CONFIG_FILE = PROJECT_ROOT / "openarc-config.json"
+BENCH_DB = PROJECT_ROOT / "openarc-bench.db"
+
+def init_bench_db():
+    """Initialize benchmark database and create table if it doesn't exist."""
+    conn = sqlite3.connect(BENCH_DB)
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS benchmark_results (
+            bench_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            model_name TEXT NOT NULL,
+            input_tokens INTEGER NOT NULL,
+            max_tokens INTEGER NOT NULL,
+            run_number INTEGER NOT NULL,
+            ttft_s TEXT,
+            tpot_ms TEXT,
+            prefill_throughput_tokens_s TEXT,
+            decode_throughput_tokens_s TEXT,
+            decode_duration_s TEXT,
+            input_token_count TEXT,
+            new_token_count TEXT,
+            total_token_count TEXT
+        )
+    """)
+    
+    conn.commit()
+    conn.close()
+
+def save_bench_result(model_name: str, result: dict):
+    """Save a single benchmark result to the database."""
+    conn = sqlite3.connect(BENCH_DB)
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        INSERT INTO benchmark_results (
+            timestamp, model_name, input_tokens, max_tokens, run_number,
+            ttft_s, tpot_ms, prefill_throughput_tokens_s, decode_throughput_tokens_s,
+            decode_duration_s, input_token_count, new_token_count, total_token_count
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        datetime.now().isoformat(),
+        model_name,
+        result['p'],
+        result['n'],
+        result['run'],
+        str(result['ttft']),
+        str(result['tpot']),
+        str(result['prefill_throughput']),
+        str(result['decode_throughput']),
+        str(result['decode_duration']),
+        result['input_token'],
+        result['new_token'],
+        result['total_token']
+    ))
+    
+    conn.commit()
+    conn.close()
 
 def save_cli_config(host: str, port: int):
     """Save server configuration to JSON config file."""
@@ -314,17 +374,17 @@ def unload(ctx, model_name):
         console.print(f"❌ [red]Request failed:[/red] {e}")
         ctx.exit(1)
 
-@cli.command()
-@click.option('--model-name','--mn', help='Model name to remove (used with --rm).')
-@click.option('--rm', is_flag=True, help='Remove a model configuration.')
+@cli.command("list")
+@click.option('--model-name','--mn', help='Model name to remove (used with --remove/--rm).')
+@click.option('--remove', '--rm', is_flag=True, help='Remove a model configuration.')
 @click.pass_context
-def list(ctx, rm, model_name):
+def list_configs(ctx, remove, model_name):
     """- List saved model configurations.
        
        - Remove a model configuration."""
-    if rm:
+    if remove:
         if not model_name:
-            console.print("❌ [red]Error:[/red] --model-name is required when using --rm")
+            console.print("❌ [red]Error:[/red] --model-name is required when using --remove")
 
             ctx.exit(1)
         
@@ -448,7 +508,7 @@ def status(ctx):
               help='Number of times to repeat each benchmark. Default: 5')
 @click.pass_context
 def bench(ctx, model_name, input_tokens, max_tokens, runs):
-    """- Benchmark model performance with various prompt and generation lengths.
+    """- Benchmark inference with pseudo-random input tokens.
     
     Examples:
         openarc bench Dolphin-X1
@@ -456,6 +516,9 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs):
         openarc bench Dolphin-X1 --p 16,32,64 --n 128,256
         openarc bench Dolphin-X1 -p 16 -p 32 -n 128 -n 256
     """
+    # Initialize benchmark database
+    init_bench_db()
+    
     cli_instance = OpenArcCLI()
     
     # Parse input_tokens and max_tokens (handle comma-separated and multiple invocations)
@@ -550,7 +613,7 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs):
                         metrics = bench_response.json().get('metrics', {})
                         
                         # Store individual result
-                        results.append({
+                        result = {
                             'p': p,
                             'n': n,
                             'run': r + 1,
@@ -562,7 +625,11 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs):
                             'input_token': metrics.get('input_token', 0),
                             'new_token': metrics.get('new_token', 0),
                             'total_token': metrics.get('total_token', 0),
-                        })
+                        }
+                        results.append(result)
+                        
+                        # Save result to database
+                        save_bench_result(model_name, result)
                         
                     except Exception as e:
                         console.print(f"\n⚠️  [yellow]Error in run {r+1}: {e}[/yellow]")
