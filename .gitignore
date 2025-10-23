@@ -11,7 +11,7 @@ __pycache__/
 *.log
 *.env
 openarc_api.log
-openarc-config.json
+openarc_config.json
 CONTRIBUTING-wip.md
 docker-compose.yaml
 docker-compose.override.yaml
@@ -21,3 +21,4 @@ docker-compose.override.yaml
 .vscode/
 .builds/
 .cursor/
+openarc_bench.db

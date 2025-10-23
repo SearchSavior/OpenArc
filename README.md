@@ -2,6 +2,7 @@
 
 [![Discord](https://img.shields.io/discord/1341627368581628004?logo=Discord&logoColor=%23ffffff&label=Discord&link=https%3A%2F%2Fdiscord.gg%2FmaMY7QjG)](https://discord.gg/Bzz9hax9Jq)
 [![Hugging Face](https://img.shields.io/badge/🤗%20Hugging%20Face-Echo9Zulu-yellow)](https://huggingface.co/Echo9Zulu)
+[![Devices](https://img.shields.io/badge/Devices-CPU%2FGPU%2FNPU-blue)](https://github.com/openvinotoolkit/openvino)
 
 
 > [!NOTE]
@@ -11,7 +12,7 @@
 
 **OpenArc 2.0** arrives with more endpoints, better UX, pipeline paralell, NPU support and much more!
 
-Drawing on ideas from `llama.cpp`, `vLLM`, `transformers`, `OpenVINO Model Server`, `Ray`, `Lemonade`, and other project cited below, OpenArc has become a way for me to learn about state of the art inference engines and try to build one myself.
+Drawing on ideas from `llama.cpp`, `vLLM`, `transformers`, `OpenVINO Model Server`, `Ray`, `Lemonade`, and other projects cited below, OpenArc has been a way for me to learn about state of the art inference engines by trying to build one myself to get better performance on the only hardware I could afford. Frustrated with options available to bigger parts of the community
 
 ## Table of Contents
 
@@ -20,8 +21,6 @@ Drawing on ideas from `llama.cpp`, `vLLM`, `transformers`, `OpenVINO Model Serve
   - [Linux](#linux)
   - [Windows](#windows)
 - [OpenArc CLI](#openarc-cli)
-  <details>
-  <summary>Click to expand CLI commands</summary>
 
   - [openarc add](#openarc-add)
   - [openarc list](#openarc-list)
@@ -31,20 +30,14 @@ Drawing on ideas from `llama.cpp`, `vLLM`, `transformers`, `OpenVINO Model Serve
   - [openarc bench](#openarc-bench)
   - [openarc tool](#openarc-tool)
 
-  </details>
 
 - [Model Sources](#model-sources)
-  <details>
-  <summary>Click to expand model types</summary>
-
   - [LLMs](#llms)
   - [VLMs](#vlms)
   - [Whisper](#whisper)
   - [Kokoro](#kokoro)
   - [Embedding](#embedding)
   - [Reranker](#reranker)
-
-  </details>
 
 - [Converting Models to OpenVINO IR](#converting-models-to-openvino-ir)
 - [Learning Resources](#learning-resources)
@@ -78,7 +71,8 @@ New Features:
     - tpot
     - load time
     - stream mode
-
+  - More OpenVINO [examples](examples\)
+  - OpenArc demos 
 
 > [!NOTE] 
 > Interested in contributing? Please open an issue before submitting a PR!
@@ -187,22 +181,24 @@ openarc --help
 
 </div>
 
-## OpenArc CLI
+# OpenArc CLI
 
-This section documents the CLI commands available to you. Walk through the commands in the order presented 
+This section documents the CLI commands available to you.
 
-### openarc add
+All commands have aliases but are written here for clarity.
+
+## openarc add
 <br>
 
 Add a model to `openarc_config.json` for easy loading with ```openarc load```.
 
-#### Single device
+### Single device
 
 ```
 openarc add --model-name <model-name> --model-path <path/to/model> --engine <engine> --model-type <model-type> --device <target-device>
 ```
 
-#### VLM
+### VLM
 
 ```
 openarc add --model-name <model-name> --model-path <path/to/model> --engine <engine> --model-type <model-type> --device <target-device> --vlm-type <vlm-type>
@@ -211,19 +207,19 @@ Getting VLM to work the way I wanted required using VLMPipeline in ways that are
 
 `vlm-type` maps a vision token for a given architecture using strings like `qwen25vl`, `phi4mm`. Use `openarc add --help` to see the available options. The server will complain if you get anything wrong, so it should be easy to figure out.
 
-#### Whisper
+### Whisper
 
 ```
 openarc add --model-name <model-name> --model-path <path/to/whisper> --engine ovgenai --model-type whisper --device <target-device> 
 ```
 
-#### Kokoro (CPU only)
+### Kokoro (CPU only)
 
 ```
 openarc add --model-name <model-name> --model-path <path/to/kokoro> --engine openvino --model-type kokoro --device CPU 
 ```
 
-#### ```runtime-config```
+### ```runtime-config```
 
 Accepts many options to modify `openvino` runtime behavior for different inference scenarios. OpenArc reports c++ errors to the server when these fail, making experimentation easy. 
 
@@ -232,13 +228,13 @@ See OpenVINO documentation on [Inference Optimization](https://docs.openvino.ai/
 Review [pipeline-paralellism preview](https://docs.openvino.ai/2025/openvino-workflow/running-inference/inference-devices-and-modes/hetero-execution.html#pipeline-parallelism-preview) to learn how you can customize multi device inference using HETERO device plugin. Some example commands are provided for a few difference scenarios:
 
 
-#### Multi-GPU Pipeline Paralell
+### Multi-GPU Pipeline Paralell
 
 ```
 openarc add --model-name <model-name> --model-path <path/to/model> --engine ovgenai --model-type llm --device <HETERO:GPU.0,GPU.1> --runtime-config {"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}
 ```
 
-#### Tensor Paralell (CPU only)
+### Tensor Paralell (CPU only)
 
 Requires more than one CPU socket in a single node.
 
@@ -247,16 +243,16 @@ openarc add --model-name <model-name> --model-path <path/to/model> --engine ovge
 ```
 ---
 
-#### Hybrid Mode/CPU Offload
+### Hybrid Mode/CPU Offload
 
 ```
 openarc add --model-name <model-name> -model-path <path/to/model> --engine ovgenai --model-type llm --device <HETERO:GPU.0,CPU> --runtime-config {"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}
 ```
 
-### openarc list
+## openarc list
 <br>
 
-Reads added configurations from ```openarc_config.json```.
+Reads added configurations from `openarc_config.json`.
 
 Display all saved configurations:
 ```
@@ -265,10 +261,10 @@ openarc list
 
 Remove a configuration:
 ```
-openarc list --rm --model-name <model-name>
+openarc list --remove --model-name <model-name>
 ```
 
-### openarc serve
+## openarc serve
 <br>
 
 
@@ -312,7 +308,7 @@ Be mindful of your resources; loading models can be resource intensive! On the f
 
 When `openarc load` fails, the CLI tool displays a full stack trace to help you figure out why.
 
-### openarc status
+## openarc status
 <br>
 
 
@@ -392,58 +388,60 @@ There are a few sources of preconverted models which can be used with OpenArc;
 ### LLMs
 <br>
 
-|| **Models** |
-|| --- |
-|| [Echo9Zulu/Qwen3-1.7B-int8_asym-ov](https://huggingface.co/Echo9Zulu/Qwen3-1.7B-int8_asym-ov/tree/main) |
-|| [Echo9Zulu/Qwen3-4B-Instruct-2507-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Qwen3-4B-Instruct-2507-int4_asym-awq-ov) |
-|| [Gapeleon/Satyr-V0.1-4B-HF-int4_awq-ov](https://huggingface.co/Gapeleon/Satyr-V0.1-4B-HF-int4_awq-ov?not-for-all-audiences=true) |
-|[Echo9Zulu/Dolphin-X1-8B-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Dolphin-X1-8B-int4_asym-awq-ov) |
-|[Echo9Zulu/Qwen3-14B-int4_sym-ov](https://huggingface.co/Echo9Zulu/Qwen3-14B-int4_sym-ov/tree/main) | 
-|[Echo9Zulu/Magistral-Small-2509-Text-Only-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Magistral-Small-2509-Text-Only-int4_asym-awq-ov) |
-|| [Echo9Zulu/Hermes-4-70B-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Hermes-4-70B-int4_asym-awq-ov) |
-|| [Echo9Zulu/Qwen2.5-Coder-32B-Instruct-int4_sym-awq-ov](https://huggingface.co/Echo9Zulu/Qwen2.5-Coder-32B-Instruct-int4_sym-awq-ov) |
+| **Models** |
+| --- |
+| [Echo9Zulu/Qwen3-1.7B-int8_asym-ov](https://huggingface.co/Echo9Zulu/Qwen3-1.7B-int8_asym-ov/tree/main) |
+| [Echo9Zulu/Qwen3-4B-Instruct-2507-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Qwen3-4B-Instruct-2507-int4_asym-awq-ov) |
+| [Gapeleon/Satyr-V0.1-4B-HF-int4_awq-ov](https://huggingface.co/Gapeleon/Satyr-V0.1-4B-HF-int4_awq-ov?not-for-all-audiences=true) |
+| [Echo9Zulu/Dolphin-X1-8B-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Dolphin-X1-8B-int4_asym-awq-ov) |
+| [Echo9Zulu/Qwen3-8B-ShiningValiant3-int4-asym-ov](https://huggingface.co/Echo9Zulu/Qwen3-8B-ShiningValiant3-int4-asym-ov) |
+| [Echo9Zulu/Qwen3-14B-int4_sym-ov](https://huggingface.co/Echo9Zulu/Qwen3-14B-int4_sym-ov/tree/main) |
+| [Echo9Zulu/Magistral-Small-2509-Text-Only-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Magistral-Small-2509-Text-Only-int4_asym-awq-ov) |
+| [Echo9Zulu/Hermes-4-70B-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Hermes-4-70B-int4_asym-awq-ov) |
+| [Echo9Zulu/Qwen2.5-Coder-32B-Instruct-int4_sym-awq-ov](https://huggingface.co/Echo9Zulu/Qwen2.5-Coder-32B-Instruct-int4_sym-awq-ov) |
+| [Echo9Zulu/Qwen3-32B-Instruct-int4_sym-awq-ov](https://huggingface.co/Echo9Zulu/Qwen3-32B-Instruct-int4_sym-awq-ov) |
 
 ### VLMs
 <br>
 
-|| **Models** |
-|| --- |
-|| [Echo9Zulu/gemma-3-4b-it-int8_asym-ov](https://huggingface.co/Echo9Zulu/gemma-3-4b-it-int8_asym-ov) |
-|| [Echo9Zulu/Gemma-3-12b-it-qat-int4_asym-ov](https://huggingface.co/Echo9Zulu/Gemma-3-12b-it-qat-int4_asym-ov) |
-|| [Echo9Zulu/Qwen2.5-VL-7B-Instruct-int4_sym-ov](https://huggingface.co/Echo9Zulu/Qwen2.5-VL-7B-Instruct-int4_sym-ov/tree/main) |
-|| [Echo9Zulu/Nanonets-OCR2-3B-LM-INT4_ASYM-VE-FP16-ov](https://huggingface.co/Echo9Zulu/Nanonets-OCR2-3B-LM-INT4_ASYM-VE-FP16-ov) |
+| **Models** |
+| --- |
+| [Echo9Zulu/gemma-3-4b-it-int8_asym-ov](https://huggingface.co/Echo9Zulu/gemma-3-4b-it-int8_asym-ov) |
+| [Echo9Zulu/Gemma-3-12b-it-qat-int4_asym-ov](https://huggingface.co/Echo9Zulu/Gemma-3-12b-it-qat-int4_asym-ov) |
+| [Echo9Zulu/Qwen2.5-VL-7B-Instruct-int4_sym-ov](https://huggingface.co/Echo9Zulu/Qwen2.5-VL-7B-Instruct-int4_sym-ov/tree/main) |
+| [Echo9Zulu/Nanonets-OCR2-3B-LM-INT4_ASYM-VE-FP16-ov](https://huggingface.co/Echo9Zulu/Nanonets-OCR2-3B-LM-INT4_ASYM-VE-FP16-ov) |
 
 
 ### Whisper
 <br>
 
-|| **Models** |
-|| --- |
-|| [OpenVINO/distil-whisper-large-v3-int8-ov](https://huggingface.co/OpenVINO/distil-whisper-large-v3-int8-ov) |
-|| [OpenVINO/distil-whisper-large-v3-fp16-ov](https://huggingface.co/OpenVINO/distil-whisper-large-v3-fp16-ov) |
-|| [OpenVINO/whisper-large-v3-int8-ov](https://huggingface.co/OpenVINO/whisper-large-v3-int8-ov/tree/main) |
-|| [OpenVINO/openai-whisper-large-v3-fp16-ov](https://huggingface.co/OpenVINO/openai-whisper-large-v3-fp16-ov/tree/main) |
+| **Models** |
+| --- |
+| [OpenVINO/distil-whisper-large-v3-int8-ov](https://huggingface.co/OpenVINO/distil-whisper-large-v3-int8-ov) |
+| [OpenVINO/distil-whisper-large-v3-fp16-ov](https://huggingface.co/OpenVINO/distil-whisper-large-v3-fp16-ov) |
+| [OpenVINO/whisper-large-v3-int8-ov](https://huggingface.co/OpenVINO/whisper-large-v3-int8-ov/tree/main) |
+| [OpenVINO/openai-whisper-large-v3-fp16-ov](https://huggingface.co/OpenVINO/openai-whisper-large-v3-fp16-ov/tree/main) |
 
 ### Kokoro
 <br>
 
-|| **Models** |
-|| --- |
-|| [Echo9Zulu/Kokoro-82M-FP16-OpenVINO](https://huggingface.co/Echo9Zulu/Kokoro-82M-FP16-OpenVINO) |
+| **Models** |
+| --- |
+| [Echo9Zulu/Kokoro-82M-FP16-OpenVINO](https://huggingface.co/Echo9Zulu/Kokoro-82M-FP16-OpenVINO) |
 
 ### Embedding
 <br>
 
-|| **Models** |
-|| --- |
-|| [Echo9Zulu/Qwen3-Embedding-0.6B-int8_asym-ov](https://huggingface.co/Echo9Zulu/Qwen3-Embedding-0.6B-int8_asym-ov) |
+| **Models** |
+| --- |
+| [Echo9Zulu/Qwen3-Embedding-0.6B-int8_asym-ov](https://huggingface.co/Echo9Zulu/Qwen3-Embedding-0.6B-int8_asym-ov) |
 
 ### Reranker
 <br>
 
-|| **Models** |
-|| --- |
-|| [OpenVINO/Qwen3-Reranker-0.6B-fp16-ov](https://huggingface.co/OpenVINO/Qwen3-Reranker-0.6B-fp16-ov) |
+| **Models** |
+| --- |
+| [OpenVINO/Qwen3-Reranker-0.6B-fp16-ov](https://huggingface.co/OpenVINO/Qwen3-Reranker-0.6B-fp16-ov) |
 
 
 

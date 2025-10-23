@@ -1,7 +1,7 @@
 from transformers import AutoTokenizer
 import random
 
-def num_input_ids(model_path, num_tokens):
+def random_input_ids(model_path, num_tokens):
     """
     Generate random input tokens for benchmarking.
     Follows llama.cpp approach.
@@ -23,7 +23,7 @@ def num_input_ids(model_path, num_tokens):
 #    model_path = "/mnt/Ironwolf-4TB/Models/OpenVINO/Mistral/Impish_Nemo_12B-int4_asym-awq-ov"
 #    num_tokens = 512
 #    
-#    input_ids = get_input_tokens(model_path, num_tokens)
+#    input_ids = random_input_ids(model_path, num_tokens)
 #    print(f"Generated {len(input_ids)} random tokens")
 #    print(f"Sample tokens: {input_ids[:10]}")
     

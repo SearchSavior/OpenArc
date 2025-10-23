@@ -7,6 +7,7 @@ import json
 import sqlite3
 from datetime import datetime
 from pathlib import Path
+import uuid
 
 import requests
 import rich_click as click
@@ -18,7 +19,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from src.server.launch import start_server
 from src.cli.device_query import DeviceDataQuery, DeviceDiagnosticQuery
-from src.cli.openarc_bench import num_input_ids
+from src.cli.openarc_bench import random_input_ids
 
 click.rich_click.STYLE_OPTIONS_TABLE_LEADING = 1
 click.rich_click.STYLE_OPTIONS_TABLE_BOX = "SIMPLE"
@@ -40,6 +41,7 @@ def init_bench_db():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS benchmark_results (
             bench_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL,
             timestamp TEXT NOT NULL,
             model_name TEXT NOT NULL,
             input_tokens INTEGER NOT NULL,
@@ -59,18 +61,19 @@ def init_bench_db():
     conn.commit()
     conn.close()
 
-def save_bench_result(model_name: str, result: dict):
+def save_bench_result(model_name: str, result: dict, run_id: str):
     """Save a single benchmark result to the database."""
     conn = sqlite3.connect(BENCH_DB)
     cursor = conn.cursor()
     
     cursor.execute("""
         INSERT INTO benchmark_results (
-            timestamp, model_name, input_tokens, max_tokens, run_number,
+            run_id, timestamp, model_name, input_tokens, max_tokens, run_number,
             ttft_s, tpot_ms, prefill_throughput_tokens_s, decode_throughput_tokens_s,
             decode_duration_s, input_token_count, new_token_count, total_token_count
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
+        run_id,
         datetime.now().isoformat(),
         model_name,
         result['p'],
@@ -345,33 +348,73 @@ def load(ctx, model_names):
         ctx.exit(1)
 
 @cli.command()
-@click.option('--model-name', '--mn', required=True, help='Model name to unload')
+@click.argument('model_names', nargs=-1, required=True)
 @click.pass_context
-def unload(ctx, model_name):
+def unload(ctx, model_names):
     """
-    - POST Delete a model from registry and unload from memory.
+    - Unload one or more models from registry and memory.
+    
+    Examples:
+        openarc unload model1
+        openarc unload Dolphin-X1 kokoro whisper
     """
     cli_instance = OpenArcCLI()
 
-    url = f"{cli_instance.base_url}/openarc/unload"
-    payload = {"model_name": model_name}
+    model_names = list(model_names)
     
-    try:
-        console.print(f"🗑️  [blue]Unloading model:[/blue] {model_name}")
-        response = requests.post(url, json=payload, headers=cli_instance.get_headers())
-        
-        if response.status_code == 200:
-            result = response.json()
-            # Handle different possible response formats
-            message = result.get('message', f"Model '{model_name}' unloaded successfully")
-            console.print(f"✅ [green]{message}[/green]")
+    # Track results
+    successful_unloads = []
+    failed_unloads = []
+    
+    # Start unloading queue
+    if len(model_names) > 1:
+        console.print(f"🗑️  [blue]Starting unload queue...[/blue] ({len(model_names)} models)\n")
+    
+    # Unload each model
+    for idx, name in enumerate(model_names, 1):
+        # Show progress indicator for multiple models
+        if len(model_names) > 1:
+            console.print(f"[cyan]({idx}/{len(model_names)})[/cyan] [blue]unloading[/blue] {name}")
         else:
-            console.print(f"❌ [red]Error unloading model: {response.status_code}[/red]")
-            console.print(f"[red]Response:[/red] {response.text}")
-            ctx.exit(1)
+            console.print(f"[blue]unloading[/blue] {name}")
+        
+        url = f"{cli_instance.base_url}/openarc/unload"
+        payload = {"model_name": name}
+        
+        try:
+            console.print("[cyan]...working[/cyan]")
+            response = requests.post(url, json=payload, headers=cli_instance.get_headers())
             
-    except requests.exceptions.RequestException as e:
-        console.print(f"❌ [red]Request failed:[/red] {e}")
+            if response.status_code == 200:
+                result = response.json()
+                message = result.get('message', f"Model '{name}' unloaded successfully")
+                console.print(f"✅ [green]{message}[/green]\n")
+                successful_unloads.append(name)
+            else:
+                console.print(f"❌ [red]error: {response.status_code}[/red]")
+                console.print(f"[red]Response:[/red] {response.text}\n")
+                failed_unloads.append(name)
+                
+        except requests.exceptions.RequestException as e:
+            console.print(f"❌ [red]Request failed:[/red] {e}\n")
+            failed_unloads.append(name)
+    
+    # Summary
+    console.print("─" * 60)
+    if successful_unloads and not failed_unloads:
+        console.print(f"🎉 [green]All models unloaded![/green] ({len(successful_unloads)}/{len(model_names)})")
+    elif successful_unloads and failed_unloads:
+        console.print(f"⚠️  [yellow]Partial success:[/yellow] {len(successful_unloads)}/{len(model_names)} models unloaded")
+        console.print(f"   [green]✓ Unloaded:[/green] {', '.join(successful_unloads)}")
+        console.print(f"   [red]✗ Failed:[/red] {', '.join(failed_unloads)}")
+    else:
+        console.print(f"❌ [red]All models failed to unload![/red] (0/{len(model_names)})")
+        console.print(f"   [red]✗ Failed:[/red] {', '.join(failed_unloads)}")
+    
+    console.print("[dim]Use 'openarc status' to see loaded models.[/dim]")
+    
+    # Exit with error code if any unloads failed
+    if failed_unloads:
         ctx.exit(1)
 
 @cli.command("list")
@@ -572,6 +615,9 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs):
     console.print(f"max tokens:   {n_values}")
     console.print(f"runs: {runs}\n")
     
+    # Generate unique run_id for this benchmark session
+    run_id = str(uuid.uuid4())
+    
     total_runs = len(p_values) * len(n_values) * runs
     results = []
     
@@ -591,7 +637,7 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs):
                     
                     try:
                         # Generate random input tokens
-                        input_ids = num_input_ids(model_path, p)
+                        input_ids = random_input_ids(model_path, p)
                         
                         # Make benchmark request
                         bench_url = f"{cli_instance.base_url}/openarc/bench"
@@ -629,7 +675,7 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs):
                         results.append(result)
                         
                         # Save result to database
-                        save_bench_result(model_name, result)
+                        save_bench_result(model_name, result, run_id)
                         
                     except Exception as e:
                         console.print(f"\n⚠️  [yellow]Error in run {r+1}: {e}[/yellow]")
