@@ -440,11 +440,11 @@ def status(ctx):
 
 @cli.command()
 @click.argument('model_name')
-@click.option('--p', '--input_tokens', multiple=True, default=['512'],
+@click.option('--input_tokens', '--p', multiple=True, default=['512'],
               help='Number of prompt tokens. Can be comma-separated (e.g., --p 16,32) or specified multiple times (e.g., -p 16 -p 32). Default: 512')
-@click.option('--n', '--max_tokens', multiple=True, default=['128'],
+@click.option('--max_tokens', '--n', multiple=True, default=['128'],
               help='Number of tokens to generate. Can be comma-separated or specified multiple times. Default: 128')
-@click.option('-r', '--runs', type=int, default=5,
+@click.option('--runs', '--r', type=int, default=5,
               help='Number of times to repeat each benchmark. Default: 5')
 @click.pass_context
 def bench(ctx, model_name, input_tokens, max_tokens, runs):
