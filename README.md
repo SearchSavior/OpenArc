@@ -86,7 +86,9 @@ New Features:
 
 ## Quickstart 
 
-### Linux
+<details id="linux">
+<summary><strong style="font-size: 1.2em;">Linux</strong></summary>
+
 <br>
 
 1. OpenVINO requires **device specifc drivers**.
@@ -135,7 +137,12 @@ uv pip install --pre -U openvino-genai --extra-index-url https://storage.openvin
 openarc --help
 ```
 
-### Windows
+</details>
+
+<details id="windows">
+<summary><strong style="font-size: 1.2em;">Windows</strong></summary>
+
+<br>
 
 1. OpenVINO requires **device specifc drivers**.
  
@@ -181,6 +188,8 @@ openarc --help
 
 > [!NOTE] 
 > uv has a [pip interface](https://docs.astral.sh/uv/pip/) which is a drop in replacement for pip, but faster. Pretty cool, and a good place to start.
+
+</details>
 
 <div align="right">
 
