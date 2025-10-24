@@ -430,7 +430,9 @@ There are a few sources of preconverted models which can be used with OpenArc;
 
 #### More models to get you started!
 
-### LLMs
+<details id="llms">
+<summary>LLMs</summary>
+
 <br>
 
 | **Models** |
@@ -448,7 +450,11 @@ There are a few sources of preconverted models which can be used with OpenArc;
 | [Echo9Zulu/Qwen2.5-Coder-32B-Instruct-int4_sym-awq-ov](https://huggingface.co/Echo9Zulu/Qwen2.5-Coder-32B-Instruct-int4_sym-awq-ov) |
 | [Echo9Zulu/Qwen3-32B-Instruct-int4_sym-awq-ov](https://huggingface.co/Echo9Zulu/Qwen3-32B-Instruct-int4_sym-awq-ov) |
 
-### VLMs
+</details>
+
+<details id="vlms">
+<summary>VLMs</summary>
+
 <br>
 
 | **Models** |
@@ -458,8 +464,11 @@ There are a few sources of preconverted models which can be used with OpenArc;
 | [Echo9Zulu/Qwen2.5-VL-7B-Instruct-int4_sym-ov](https://huggingface.co/Echo9Zulu/Qwen2.5-VL-7B-Instruct-int4_sym-ov/tree/main) |
 | [Echo9Zulu/Nanonets-OCR2-3B-LM-INT4_ASYM-VE-FP16-ov](https://huggingface.co/Echo9Zulu/Nanonets-OCR2-3B-LM-INT4_ASYM-VE-FP16-ov) |
 
+</details>
 
-### Whisper
+<details id="whisper">
+<summary>Whisper</summary>
+
 <br>
 
 | **Models** |
@@ -469,28 +478,40 @@ There are a few sources of preconverted models which can be used with OpenArc;
 | [OpenVINO/whisper-large-v3-int8-ov](https://huggingface.co/OpenVINO/whisper-large-v3-int8-ov/tree/main) |
 | [OpenVINO/openai-whisper-large-v3-fp16-ov](https://huggingface.co/OpenVINO/openai-whisper-large-v3-fp16-ov/tree/main) |
 
-### Kokoro
+</details>
+
+<details id="kokoro">
+<summary>Kokoro</summary>
+
 <br>
 
 | **Models** |
 | --- |
 | [Echo9Zulu/Kokoro-82M-FP16-OpenVINO](https://huggingface.co/Echo9Zulu/Kokoro-82M-FP16-OpenVINO) |
 
-### Embedding
+</details>
+
+<details id="embedding">
+<summary>Embedding</summary>
+
 <br>
 
 | **Models** |
 | --- |
 | [Echo9Zulu/Qwen3-Embedding-0.6B-int8_asym-ov](https://huggingface.co/Echo9Zulu/Qwen3-Embedding-0.6B-int8_asym-ov) |
 
-### Reranker
+</details>
+
+<details id="reranker">
+<summary>Reranker</summary>
+
 <br>
 
 | **Models** |
 | --- |
 | [OpenVINO/Qwen3-Reranker-0.6B-fp16-ov](https://huggingface.co/OpenVINO/Qwen3-Reranker-0.6B-fp16-ov) |
 
-
+</details>
 
 <div align="right">
 
