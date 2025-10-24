@@ -4,7 +4,6 @@
 [![Hugging Face](https://img.shields.io/badge/🤗%20Hugging%20Face-Echo9Zulu-yellow)](https://huggingface.co/Echo9Zulu)
 [![Devices](https://img.shields.io/badge/Devices-CPU%2FGPU%2FNPU-blue)](https://github.com/openvinotoolkit/openvino)
 
-
 > [!NOTE]
 > OpenArc is under active development.
 
@@ -14,7 +13,9 @@
 
 Drawing on ideas from `llama.cpp`, `vLLM`, `transformers`, `OpenVINO Model Server`, `Ray`, `Lemonade`, and other projects cited below, OpenArc has been a way for me to learn about inference engines by trying to build one myself. 
 
-Along the way a Discord community has formed around this project, which was unexpected! If you are interested in Arc for AI and machine learning, feel free to stop by.
+Along the way a Discord community has formed around this project, which was unexpected! If you are interested in Arc for AI and machine learning, feel free to stop by. 
+
+Thanks to everyone on Discord for their continued support!
 
 ## Table of Contents
 
@@ -151,6 +152,12 @@ openarc --help
   uv sync
   ```
 
+4. Activate your environment with:
+
+```
+.venv\Scripts\activate
+```
+
 Build latest optimum
 ```
 uv pip install "optimum-intel[openvino] @ git+https://github.com/huggingface/optimum-intel"
@@ -161,12 +168,12 @@ Build latest OpenVINO and OpenVINO GenAI from nightly wheels
 uv pip install --pre -U openvino-genai --extra-index-url https://storage.openvinotoolkit.org/simple/wheels/nightly
 ```
 
-4. Set your API key as an environment variable:
+5. Set your API key as an environment variable:
 ```
 setx OPENARC_API_KEY openarc-api-key
 ```
 
-5. To get started, run:
+6. To get started, run:
 
 ```
 openarc --help
@@ -187,7 +194,10 @@ This section documents the CLI commands available to you.
 
 All commands have aliases but are written here for clarity.
 
-## openarc add
+
+<details id="openarc-add">
+<summary><code>openarc add</code></summary>
+
 <br>
 
 Add a model to `openarc_config.json` for easy loading with ```openarc load```.
@@ -249,7 +259,12 @@ openarc add --model-name <model-name> --model-path <path/to/model> --engine ovge
 openarc add --model-name <model-name> -model-path <path/to/model> --engine ovgenai --model-type llm --device <HETERO:GPU.0,CPU> --runtime-config {"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}
 ```
 
-## openarc list
+</details>
+
+
+<details id="openarc-list">
+<summary><code>openarc list</code></summary>
+
 <br>
 
 Reads added configurations from `openarc_config.json`.
@@ -264,9 +279,13 @@ Remove a configuration:
 openarc list --remove --model-name <model-name>
 ```
 
-## openarc serve
-<br>
+</details>
 
+
+<details id="openarc-serve">
+<summary><code>openarc serve</code></summary>
+
+<br>
 
 Starts the server.
 
@@ -286,9 +305,13 @@ To load models on startup:
 openarc serve start --load-models model1 model2
 ```
 
-### openarc load
-<br>
+</details>
 
+
+<details id="openarc-load">
+<summary><code>openarc load</code></summary>
+
+<br>
 
 After using ```openarc add``` you can use ```openarc load``` to read the added configuration and load models onto the OpenArc server. 
 
@@ -308,9 +331,13 @@ Be mindful of your resources; loading models can be resource intensive! On the f
 
 When `openarc load` fails, the CLI tool displays a full stack trace to help you figure out why.
 
-## openarc status
-<br>
+</details>
 
+
+<details id="openarc-status">
+<summary><code>openarc status</code></summary>
+
+<br>
 
 Calls /openarc/status endpoint and returns a report. Shows loaded models.
 
@@ -318,7 +345,12 @@ Calls /openarc/status endpoint and returns a report. Shows loaded models.
 openarc status
 ```
 
-### openarc bench
+</details>
+
+
+<details id="openarc-bench">
+<summary><code>openarc bench</code></summary>
+
 <br>
 
 Benchmark `llm` performance with pseudo-random input tokens.
@@ -340,11 +372,13 @@ Which gives:
 
 `openarc bench` also records metrics in a sqlite database `openarc_bench.db` for easy analysis.
 
+</details>
 
 
-### openarc tool
+<details id="openarc-tool">
+<summary><code>openarc tool</code></summary>
+
 <br>
-
 
 Utility scripts.
 
@@ -361,6 +395,8 @@ openarc tool device-detect
 ```
 
 ![device-detect](assets/cli_tool_device-detect.png)
+
+</details>
 
 ---
 
