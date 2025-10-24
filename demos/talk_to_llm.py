@@ -17,7 +17,7 @@ BASE_URL = "http://localhost:8000/v1"
 SAMPLE_RATE = 16000
 MODELS = {
     "whisper": "whisper",
-    "llm": "Impish_Nemo_12B",
+    "llm": "Cydonia-24B",
     "tts": "kokoro"
 }
 TTS_CONFIG = {
@@ -26,8 +26,8 @@ TTS_CONFIG = {
     "language": "a",
     "response_format": "wav"
 }
-SYSTEM_PROMPT = "You were a helpful assistant... once."
-
+# SYSTEM_PROMPT = "You are a text adventure model. Your job is to keep the story moving forward in a natural way. Use the second person when referring to the users actions. Try not to present choices- instead, describe the situation, and use language to communicate where the story has potential to go."
+SYSTEM_PROMPT = "You are a text adventure game narrator. Write all narration in second person (you). Keep responses brief (2-4 paragraphs max) and always end with a vivid situation that invites action. Never stall—always introduce new developments, encounters, or complications. Describe what the player sees, hears, and can interact with. When the player acts, show immediate consequences and move the story forward. Maintain consistent world rules and remember previous events. Let players decide their own actions—describe the scene, not the options."
 
 def initialize_client() -> OpenAI:
     """Initialize OpenAI client with OpenArc server."""
@@ -115,22 +115,17 @@ def transcribe_audio(client: OpenAI, audio_b64: str) -> tuple[str, dict]:
     return text, metrics
 
 def get_llm_response(client: OpenAI, messages: list[dict]) -> str:
-    """Get streaming response from LLM."""
+    """Get response from LLM."""
     print("\n🤖 Thinking...")
-    stream_response = client.chat.completions.create(
+    response = client.chat.completions.create(
         model=MODELS["llm"],
         messages=messages,
-        stream=True
+        stream=False,
+        max_tokens=16384
     )
     
-    print("\nLLM Response: ", end="")
-    full_response = ""
-    for chunk in stream_response:
-        content = chunk.choices[0].delta.content
-        if content is not None:
-            print(content, end="", flush=True)
-            full_response += content
-    print("\n")
+    full_response = response.choices[0].message.content
+    print(f"\nLLM Response:\n{full_response}\n")
     
     return full_response
 

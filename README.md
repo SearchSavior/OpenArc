@@ -12,7 +12,9 @@
 
 **OpenArc 2.0** arrives with more endpoints, better UX, pipeline paralell, NPU support and much more!
 
-Drawing on ideas from `llama.cpp`, `vLLM`, `transformers`, `OpenVINO Model Server`, `Ray`, `Lemonade`, and other projects cited below, OpenArc has been a way for me to learn about state of the art inference engines by trying to build one myself to get better performance on the only hardware I could afford. 
+Drawing on ideas from `llama.cpp`, `vLLM`, `transformers`, `OpenVINO Model Server`, `Ray`, `Lemonade`, and other projects cited below, OpenArc has been a way for me to learn about inference engines by trying to build one myself. 
+
+Along the way a Discord community has formed around this project, which was unexpected! If you are interested in Arc for AI and machine learning, feel free to stop by.
 
 ## Table of Contents
 
@@ -30,7 +32,6 @@ Drawing on ideas from `llama.cpp`, `vLLM`, `transformers`, `OpenVINO Model Serve
   - [openarc bench](#openarc-bench)
   - [openarc tool](#openarc-tool)
 
-
 - [Model Sources](#model-sources)
   - [LLMs](#llms)
   - [VLMs](#vlms)
@@ -44,7 +45,6 @@ Drawing on ideas from `llama.cpp`, `vLLM`, `transformers`, `OpenVINO Model Serve
 - [Acknowledgments](#acknowledgments)
 
 ## What's new?
-
 
 New Features:
   - Multi GPU Pipeline Paralell
@@ -318,16 +318,16 @@ Calls /openarc/status endpoint and returns a report. Shows loaded models.
 openarc status
 ```
 
-![device-detect](assets/openarc_status.png)
-
 ### openarc bench
 <br>
 
-Benchmark model performance with pseudo-random input tokens.
+Benchmark `llm` performance with pseudo-random input tokens.
 
-This approach follows [llama-bench](https://github.com/ggml-org/llama.cpp/blob/683fa6ba/tools/llama-bench/llama-bench.cpp#L1922), providing a baseline for the community to assess inference performance between `llama.cpp` backends and `openvino`
+This approach follows [llama-bench](https://github.com/ggml-org/llama.cpp/blob/683fa6ba/tools/llama-bench/llama-bench.cpp#L1922), providing a baseline for the community to assess inference performance between `llama.cpp` backends and `openvino`.
 
-To support different `llm` tokenizers, we use `input_tokens` to collect `p` a pseaudrandom number of tokens directly using `AutoTokenizer`. 
+To support different `llm` tokenizers, we need to standardize how tokens are chosen for benchmark inference. When you set `--p` we select `512` pseudo-random tokens as input_ids from the set of all tokens in the vocabulary. 
+
+`--n` controls the maximum amount of tokens we allow the model to generate; this bypasses `eos` and sets a hard upper limit.
 
 Default values are:
 ```
@@ -396,6 +396,8 @@ There are a few sources of preconverted models which can be used with OpenArc;
 | [Echo9Zulu/Dolphin-X1-8B-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Dolphin-X1-8B-int4_asym-awq-ov) |
 | [Echo9Zulu/Qwen3-8B-ShiningValiant3-int4-asym-ov](https://huggingface.co/Echo9Zulu/Qwen3-8B-ShiningValiant3-int4-asym-ov) |
 | [Echo9Zulu/Qwen3-14B-int4_sym-ov](https://huggingface.co/Echo9Zulu/Qwen3-14B-int4_sym-ov/tree/main) |
+| [Echo9Zulu/Cydonia-24B-v4.2.0-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Cydonia-24B-v4.2.0-int4_asym-awq-ov) |
+| [Echo9Zulu/Qwen2.5-Microsoft-NextCoder-Soar-Instruct-FUSED-CODER-Fast-11B-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Qwen2.5-Microsoft-NextCoder-Soar-Instruct-FUSED-CODER-Fast-11B-int4_asym-awq-ov) |
 | [Echo9Zulu/Magistral-Small-2509-Text-Only-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Magistral-Small-2509-Text-Only-int4_asym-awq-ov) |
 | [Echo9Zulu/Hermes-4-70B-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Hermes-4-70B-int4_asym-awq-ov) |
 | [Echo9Zulu/Qwen2.5-Coder-32B-Instruct-int4_sym-awq-ov](https://huggingface.co/Echo9Zulu/Qwen2.5-Coder-32B-Instruct-int4_sym-awq-ov) |
