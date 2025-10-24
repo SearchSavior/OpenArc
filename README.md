@@ -7,7 +7,7 @@
 > [!NOTE]
 > OpenArc is under active development.
 
-**OpenArc** is an inference engine for Intel devices. Serve LLMs, VLMs, Whisper, Kokoro-TTS, Embedding and Reranker models over OpenAI compatible endpoints, powered by OpenVINO.
+**OpenArc** is an inference engine for Intel devices. Serve LLMs, VLMs, Whisper, Kokoro-TTS, Embedding and Reranker models over OpenAI compatible endpoints, powered by OpenVINO on your device. Local, private, open source AI.
 
 **OpenArc 2.0** arrives with more endpoints, better UX, pipeline paralell, NPU support and much more!
 
@@ -24,7 +24,6 @@ Thanks to everyone on Discord for their continued support!
   - [Linux](#linux)
   - [Windows](#windows)
 - [OpenArc CLI](#openarc-cli)
-
   - [openarc add](#openarc-add)
   - [openarc list](#openarc-list)
   - [openarc serve](#openarc-serve)
@@ -32,7 +31,6 @@ Thanks to everyone on Discord for their continued support!
   - [openarc status](#openarc-status)
   - [openarc bench](#openarc-bench)
   - [openarc tool](#openarc-tool)
-
 - [Model Sources](#model-sources)
   - [LLMs](#llms)
   - [VLMs](#vlms)
@@ -40,10 +38,10 @@ Thanks to everyone on Discord for their continued support!
   - [Kokoro](#kokoro)
   - [Embedding](#embedding)
   - [Reranker](#reranker)
-
 - [Converting Models to OpenVINO IR](#converting-models-to-openvino-ir)
 - [Learning Resources](#learning-resources)
 - [Acknowledgments](#acknowledgments)
+
 
 ## What's new?
 
@@ -536,6 +534,21 @@ Intel provides a suite of tools you can use to apply different post training opt
 [↑ Top](#table-of-contents)
 
 </div>
+
+### Hackables
+
+Hackables help illustrate what you can do with OpenArc and are meant to be extended!
+
+[talk_to_llm.py](hackables/talk_to_llm.py) sets up a "chain" between whisper, an LLM, and kokoro. Talk with any LLM you can run on your PC from the command line. Accumulates context and does not filter reasoning (very interesting). 
+
+[whisper_button.py](hackables/whisper_button.py) use spacebar to record audio with whisper and see the transcription right in the terminal. NPU users should probably start here. 
+
+[duck_duck_go_agent](hackables/duck_duck_go_agent.py) Run a search on duck duck go
+
+
+
+
+
 
 ### Learning Resources
 

@@ -6,16 +6,16 @@ Tests proper accumulation of tool call deltas and integration with actual tool e
 import os
 import json
 from openai import OpenAI
+import ddgs
 
 def ddg_search(query: str) -> list[dict]:
     """Execute a DuckDuckGo search using ddgs library."""
     try:
-        import ddgs
         
         print(f"  [SEARCH] Executing: query='{query}'")
         
-        with ddgs.DDGS() as ddgs:
-            results = list(ddgs.text(query, max_results=5))
+        with ddgs.DDGS() as search_client:
+            results = list(search_client.text(query, max_results=5))
         
         # Format results
         formatted_results = []

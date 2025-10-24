@@ -11,6 +11,7 @@ requires-python = ">=3.11"
 
 dependencies = [
     "click>=8.2.1",
+    "ddgs>=9.6.1",
     "fastapi>=0.116.1",
     "huggingface-hub[cli]>=0.33.4",
     "ipykernel>=7.0.1",
@@ -55,6 +56,5 @@ explicit = true
 [tool.uv.sources]
 torch = { index = "pytorch-cpu" }
 torchvision = { index = "pytorch-cpu" }
-optimum-intel = { git = "https://github.com/huggingface/optimum-intel" }
 
 
