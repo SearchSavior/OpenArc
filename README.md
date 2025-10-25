@@ -195,7 +195,7 @@ openarc --help
 
 </div>
 
-# OpenArc CLI
+## OpenArc CLI
 
 This section documents the CLI commands available to you.
 
@@ -222,7 +222,7 @@ openarc add --model-name <model-name> --model-path <path/to/model> --engine <eng
 ```
 Getting VLM to work the way I wanted required using VLMPipeline in ways that are not well documented. You can look at the [code](src/engine/ov_genai/vlm.py#L33) to see where the magic happens. 
 
-`vlm-type` maps a vision token for a given architecture using strings like `qwen25vl`, `phi4mm`. Use `openarc add --help` to see the available options. The server will complain if you get anything wrong, so it should be easy to figure out.
+`vlm-type` maps a vision token for a given architecture using strings like `qwen25vl`, `phi4mm` and more. Use `openarc add --help` to see the available options. The server will complain if you get anything wrong, so it should be easy to figure out.
 
 ### Whisper
 
@@ -415,7 +415,7 @@ openarc tool device-detect
 
 </div>
 
-### Model Sources
+## Model Sources
 
 There are a few sources of preconverted models which can be used with OpenArc;
 
@@ -426,7 +426,7 @@ There are a few sources of preconverted models which can be used with OpenArc;
 [LLMs optimized for NPU](https://huggingface.co/collections/OpenVINO/llms-optimized-for-npu-686e7f0bf7bc184bd71f8ba0)
 
 
-#### More models to get you started!
+### More models to get you started!
 
 <details id="llms">
 <summary>LLMs</summary>
