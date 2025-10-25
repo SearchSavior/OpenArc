@@ -4,9 +4,7 @@ The goal with this project has been to make using Intel devices as accelerators 
 
 ## Contributing
 
-- Open an issue before beginning work
-- Be open to feedback and changes
-- Don't be afraid to push back
+- Open an issue before beginning work 
 
 ## Guidelines
 
