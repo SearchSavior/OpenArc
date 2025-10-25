@@ -10,9 +10,15 @@ __pycache__/
 *.pyc
 *.log
 *.env
-openarc-cli-config.yaml
 openarc_api.log
+openarc_config.json
+CONTRIBUTING-wip.md
+docker-compose.yaml
+docker-compose.override.yaml
 .pytest_cache/
 .mypy_cache/
 .venv/
 .vscode/
+.builds/
+.cursor/
+openarc_bench.db
