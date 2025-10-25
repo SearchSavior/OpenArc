@@ -14,11 +14,10 @@ from rich.table import Table
 from rich.text import Text
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from .launch import start_server
-from .device_query import DeviceDataQuery, DeviceDiagnosticQuery
-from .openarc_bench import random_input_ids
+from .launch_server import start_server
 from .server_config import ServerConfig
-from .bench_db import BenchmarkDB
+from .device_query import DeviceDataQuery, DeviceDiagnosticQuery
+from .benchmark import OpenArcBenchmarks, BenchmarkDB
 
 click.rich_click.STYLE_OPTIONS_TABLE_LEADING = 1
 click.rich_click.STYLE_OPTIONS_TABLE_BOX = "SIMPLE"
@@ -518,7 +517,7 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs):
                     
                     try:
                         # Generate random input tokens
-                        input_ids = random_input_ids(model_path, p)
+                        input_ids = OpenArcBenchmarks.random_input_ids(model_path, p)
                         
                         # Make benchmark request
                         bench_url = f"{cli_instance.base_url}/openarc/bench"

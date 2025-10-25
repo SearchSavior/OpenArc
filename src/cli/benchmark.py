@@ -1,12 +1,10 @@
-"""
-BenchmarkDB - Centralized benchmark database management for OpenArc.
-
-This module handles all benchmark database operations without any CLI/presentation logic.
-"""
+import random
 import sqlite3
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
+
+from transformers import AutoTokenizer
 
 
 class BenchmarkDB:
@@ -95,3 +93,42 @@ class BenchmarkDB:
         conn.commit()
         conn.close()
 
+
+class OpenArcBenchmarks:
+    """Utilities for OpenArc benchmarking operations."""
+    
+    @staticmethod
+    def random_input_ids(model_path: str, num_tokens: int) -> list:
+        """
+        Generate random input tokens for benchmarking.
+        Follows llama.cpp approach.
+        https://github.com/ggml-org/llama.cpp/blob/683fa6ba/tools/llama-bench/llama-bench.cpp#L1922
+        
+        Args:
+            model_path: Path to the model.
+            num_tokens: Number of tokens to generate.
+            
+        Returns:
+            List of random token IDs.
+        """
+        tokenizer = AutoTokenizer.from_pretrained(model_path)
+        vocab_size = len(tokenizer)
+        
+        special_token_ids = set(tokenizer.all_special_ids)
+        valid_token_ids = [i for i in range(vocab_size) if i not in special_token_ids]
+        
+        # Generate random tokens (not repeated)
+        input_ids = [random.choice(valid_token_ids) for _ in range(num_tokens)]
+        
+        return input_ids
+
+
+# Example usage:
+# if __name__ == "__main__":
+#     model_path = "/mnt/Ironwolf-4TB/Models/OpenVINO/Mistral/Impish_Nemo_12B-int4_asym-awq-ov"
+#     num_tokens = 512
+#     
+#     input_ids = OpenArcBenchmarks.random_input_ids(model_path, num_tokens)
+#     print(f"Generated {len(input_ids)} random tokens")
+#     print(f"Sample tokens: {input_ids[:10]}")
+    
