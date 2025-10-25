@@ -53,10 +53,10 @@ Thanks to everyone on Discord for their continued support!
       - `/v1/models`
       - `/v1/completions`: `llm` only
       - `/v1/chat/completions`
-      - `/v1/embeddings`: `qwen3-embedding` only
       - `/v1/audio/transcriptions`: `whisper` only
       - `/v1/audio/speech`: `kokoro` only       
-      - `/v1/rerank`: `qwen3-reranker` only
+      - `/v1/embeddings`: `qwen3-embedding` #33 by @mwrothbe
+      - `/v1/rerank`: `qwen3-reranker` only #39 by @mwrothbe
   - `jinja` templating with `AutoTokenizers` for LLM and VLM
   - OpenAI Compatible tool calls with streaming and paralell 
     - tool call parser currently reads "name", "argument" 
