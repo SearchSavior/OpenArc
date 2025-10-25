@@ -14,11 +14,11 @@ from rich.table import Table
 from rich.text import Text
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from src.server.launch import start_server
-from src.cli.device_query import DeviceDataQuery, DeviceDiagnosticQuery
-from src.cli.openarc_bench import random_input_ids
-from src.cli.server_config import ServerConfig
-from src.cli.bench_db import BenchmarkDB
+from .launch import start_server
+from .device_query import DeviceDataQuery, DeviceDiagnosticQuery
+from .openarc_bench import random_input_ids
+from .server_config import ServerConfig
+from .bench_db import BenchmarkDB
 
 click.rich_click.STYLE_OPTIONS_TABLE_LEADING = 1
 click.rich_click.STYLE_OPTIONS_TABLE_BOX = "SIMPLE"
