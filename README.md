@@ -535,30 +535,30 @@ Intel provides a suite of tools you can use to apply different post training opt
 
 </div>
 
-### Hackables
+### Demos
 
-Hackables help illustrate what you can do with OpenArc and are meant to be extended!
+Demos help illustrate what you can do with OpenArc and are meant to be extended. I will continue adding to these, but for now they are a good start.
 
 [talk_to_llm.py](hackables/talk_to_llm.py) sets up a "chain" between whisper, an LLM, and kokoro. Talk with any LLM you can run on your PC from the command line. Accumulates context and does not filter reasoning (very interesting). 
 
 [whisper_button.py](hackables/whisper_button.py) use spacebar to record audio with whisper and see the transcription right in the terminal. NPU users should probably start here. 
 
-[duck_duck_go_agent](hackables/duck_duck_go_agent.py) Run a search on duck duck go
 
-
-
-
-
-
-### Learning Resources
+### Resources
 
 Learn more about how to leverage your Intel devices for Machine Learning:
 
+[Install OpenVINO](https://docs.openvino.ai/2025/get-started/install-openvino.html?PACKAGE=OPENVINO_GENAI&VERSION=NIGHTLY&OP_SYSTEM=LINUX&DISTRIBUTION=PIP)
+
 [openvino_notebooks](https://github.com/openvinotoolkit/openvino_notebooks)
+
+[OpenVINO Python API](https://docs.openvino.ai/2025/api/ie_python_api/api.html)
+
+[OpenVINO GenAI Python API](https://docs.openvino.ai/2025/api/genai_api/_autosummary/openvino_genai.html)
 
 [Inference with Optimum-Intel](https://github.com/huggingface/optimum-intel/blob/main/notebooks/openvino/optimum_openvino_inference.ipynb)
 
-[Optimum-Intel Transformers](https://huggingface.co/docs/optimum/main/en/intel/index)
+[Optimum-Intel](https://huggingface.co/docs/optimum/main/en/intel/index)
 
 [NPU Devices](https://docs.openvino.ai/2025/openvino-workflow/running-inference/inference-devices-and-modes/npu-device.html)
 
@@ -566,6 +566,7 @@ Learn more about how to leverage your Intel devices for Machine Learning:
 
 [Mutli GPU Pipeline Paralell with OpenVINO Model Server](https://docs.openvino.ai/2025/model-server/ovms_demos_continuous_batching_scaling.html#multi-gpu-configuration-loading-models-exceeding-a-single-card-vram)
 
+[Transformers Auto Classes](https://huggingface.co/docs/transformers/en/model_doc/auto#auto-classes)
 
 <div align="right">
 
@@ -595,6 +596,14 @@ OpenArc stands on the shoulders of many other projects:
 
 [rich-click](https://github.com/ewels/rich-click)
 
+```
+@article{zhou2024survey,
+  title={A Survey on Efficient Inference for Large Language Models},
+  author={Zhou, Zixuan and Ning, Xuefei and Hong, Ke and Fu, Tianyu and Xu, Jiaming and Li, Shiyao and Lou, Yuming and Wang, Luning and Yuan, Zhihang and Li, Xiuhong and Yan, Shengen and Dai, Guohao and Zhang, Xiao-Ping and Dong, Yuhan and Wang, Yu},
+  journal={arXiv preprint arXiv:2404.14294},
+  year={2024}
+}
+```
 Thanks for your work!!
 
 
