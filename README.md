@@ -96,13 +96,7 @@ Thanks to everyone on Discord for their continued support!
  
 - Visit [OpenVINO System Requirments](https://docs.openvino.ai/2025/about-openvino/release-notes-openvino/system-requirements.html#cpu) for the latest information on drivers.
 
-> [!NOTE] 
-> Need help installing drivers? [Join our Discord](https://discord.gg/Bzz9hax9Jq) or open an issue.
-
 2. Install uv from [astral](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)
-
-> [!NOTE] 
-> uv has a [pip interface](https://docs.astral.sh/uv/pip/) which is a drop in replacement for pip, but faster. Pretty cool, and a good place to start learning uv.
 
 3. After cloning use:
 
@@ -148,14 +142,7 @@ openarc --help
  
 - Visit [OpenVINO System Requirments](https://docs.openvino.ai/2025/about-openvino/release-notes-openvino/system-requirements.html#cpu) to get the latest information on drivers.
 
-> [!NOTE]
-> Need help installing drivers? [Join our Discord](https://discord.gg/Bzz9hax9Jq) or open an issue.
-
-
 2. Install uv from [astral](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)
-
-> [!NOTE] 
-> uv has a [pip interface](https://docs.astral.sh/uv/pip/) which is a drop in replacement for pip, but faster. Pretty cool, and a good place to start.
 
 3. Clone OpenArc, enter the directory and run:
   ```
@@ -189,14 +176,14 @@ setx OPENARC_API_KEY openarc-api-key
 openarc --help
 ```
 
-
 </details>
 
-<div align="right">
 
-[↑ Top](#table-of-contents)
+> [!NOTE]
+> Need help installing drivers? [Join our Discord](https://discord.gg/Bzz9hax9Jq) or open an issue.
 
-</div>
+> [!NOTE] 
+> uv has a [pip interface](https://docs.astral.sh/uv/pip/) which is a drop in replacement for pip, but faster. Pretty cool, and a good place to start.
 
 ## OpenArc CLI
 
