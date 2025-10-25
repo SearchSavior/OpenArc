@@ -7,11 +7,11 @@
 > [!NOTE]
 > OpenArc is under active development.
 
-**OpenArc** is an inference engine for Intel devices. Serve LLMs, VLMs, Whisper, Kokoro-TTS, Embedding and Reranker models over OpenAI compatible endpoints, powered by OpenVINO on your device. Local, private, open source AI.
+**OpenArc** is an inference engine for Intel devices. Serve LLMs, VLMs, Whisper, Kokoro-TTS, Embedding and Reranker models over OpenAI compatible endpoints, powered by OpenVINO on your device. Local, private, open source AI that 
 
 **OpenArc 2.0** arrives with more endpoints, better UX, pipeline paralell, NPU support and much more!
 
-Drawing on ideas from `llama.cpp`, `vLLM`, `transformers`, `OpenVINO Model Server`, `Ray`, `Lemonade`, and other projects cited below, OpenArc has been a way for me to learn about inference engines by trying to build one myself. 
+Drawing on ideas from `llama.cpp`, `vLLM`, `transformers`, `OpenVINO Model Server`, `Ray`, `Lemonade`, and other projects cited below, OpenArc has been a way for me to learn about inference engines by trying to build one myself.
 
 Along the way a Discord community has formed around this project, which was unexpected! If you are interested in using Intel devices for AI and machine learning, feel free to stop by. 
 
@@ -19,7 +19,7 @@ Thanks to everyone on Discord for their continued support!
 
 ## Table of Contents
 
-- [What's new?](#whats-new)
+- [Features](#features)
 - [Quickstart](#quickstart)
   - [Linux](#linux)
   - [Windows](#windows)
@@ -42,10 +42,10 @@ Thanks to everyone on Discord for their continued support!
 - [Learning Resources](#learning-resources)
 - [Acknowledgments](#acknowledgments)
 
+## Features
 
-## What's new?
+**OpenArc 2.0** arrives with more endpoints, better UX, pipeline paralell, NPU support and much more! 
 
-New Features:
   - Multi GPU Pipeline Paralell
   - CPU offload/Hybrid device
   - NPU device support
@@ -54,24 +54,27 @@ New Features:
       - `/v1/completions`: `llm` only
       - `/v1/chat/completions`
       - `/v1/embeddings`: `qwen3-embedding` only
-      - `/v1/rerank`: `qwen3-reranker` only
       - `/v1/audio/transcriptions`: `whisper` only
       - `/v1/audio/speech`: `kokoro` only       
-  - `jinja` templating with `AutoTokenizers`
-  - tool use with streaming
+      - `/v1/rerank`: `qwen3-reranker` only
+  - `jinja` templating with `AutoTokenizers` for LLM and VLM
+  - OpenAI Compatible tool calls with streaming and paralell 
+    - tool call parser currently reads "name", "argument" 
   - Fully async multi engine, multi task architecture
   - Model concurrency: load and infer multiple models at once
-  - `llama-bench` style benchmarking for `llm`
+  - Automatic unload on inference failure
+  - `llama-bench` style benchmarking for `llm` w/automatic database sqlite
   - metrics on every request
-    - prefill_throughput
     - ttft
+    - prefill_throughput
     - decode_throughput
     - decode_duration
     - tpot
     - load time
     - stream mode
   - More OpenVINO [examples](examples\)
-  - OpenArc demos 
+  - OpenVINO implementation of [hexgrad/Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M)
+  
 
 > [!NOTE] 
 > Interested in contributing? Please open an issue before submitting a PR!
@@ -98,6 +101,9 @@ New Features:
 
 2. Install uv from [astral](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)
 
+> [!NOTE] 
+> uv has a [pip interface](https://docs.astral.sh/uv/pip/) which is a drop in replacement for pip, but faster. Pretty cool, and a good place to start learning uv.
+
 3. After cloning use:
 
 ```
@@ -120,14 +126,10 @@ Build latest OpenVINO and OpenVINO GenAI from nightly wheels
 uv pip install --pre -U openvino-genai --extra-index-url https://storage.openvinotoolkit.org/simple/wheels/nightly
 ```
 
-
 5. Set your API key as an environment variable:
-
+```
 	export OPENARC_API_KEY=<api-key>
-
-> [!NOTE] 
-> uv has a [pip interface](https://docs.astral.sh/uv/pip/) which is a drop in replacement for pip, but faster. Pretty cool, and a good place to start.
-
+```
 
 6. To get started, run:
 
@@ -151,6 +153,9 @@ openarc --help
 
 
 2. Install uv from [astral](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)
+
+> [!NOTE] 
+> uv has a [pip interface](https://docs.astral.sh/uv/pip/) which is a drop in replacement for pip, but faster. Pretty cool, and a good place to start.
 
 3. Clone OpenArc, enter the directory and run:
   ```
@@ -184,8 +189,6 @@ setx OPENARC_API_KEY openarc-api-key
 openarc --help
 ```
 
-> [!NOTE] 
-> uv has a [pip interface](https://docs.astral.sh/uv/pip/) which is a drop in replacement for pip, but faster. Pretty cool, and a good place to start.
 
 </details>
 
