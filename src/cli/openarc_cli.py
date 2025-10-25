@@ -47,20 +47,40 @@ class OpenArcCLI:
         return headers
 
 class ColoredAsciiArtGroup(click.RichGroup):
+    """Custom Click group with cached ASCII art banner for performance."""
+    
+    # Cache ASCII art as class attribute (built once, reused forever)
+    _ascii_art_cache = None
+    
+    @classmethod
+    def _build_ascii_art(cls) -> Text:
+        """Build and cache the ASCII art banner."""
+        if cls._ascii_art_cache is None:
+            # Build entire ASCII art in one go for better performance
+            ascii_lines = [
+                (" _____                   ___           \n", "blue"),
+                ("|  _  |                 / _ \\          \n", "blue"),
+                ("| | | |_ __   ___ _ __ / /_\\ \\_ __ ___ \n", "blue"),
+                ("| | | | '_ \\ / _ \\ '_ \\|  _  | '__/ __|\n", "blue"),
+                ("\\ \\_/ / |_) |  __/ | | | | | | | | (__ \n", "blue"),
+                (" \\___/| .__/ \\___|_| |_\\_| |_/_|  \\___|\n", "blue"),
+                ("      | |                              \n", "blue"),
+                ("      |_|                              \n", "blue"),
+                (" \n", "white"),
+                (" Making AI go brr since 2025   \n", "white"),
+            ]
+            
+            art = Text()
+            for line, style in ascii_lines:
+                art.append(line, style=style)
+            
+            cls._ascii_art_cache = art
+        
+        return cls._ascii_art_cache
+    
     def get_help(self, ctx):
-        console = Console()
-        art = Text()
-        art.append(" _____                   ___           \n", style="blue")
-        art.append("|  _  |                 / _ \\          \n", style="blue")
-        art.append("| | | |_ __   ___ _ __ / /_\\ \\_ __ ___ \n", style="blue")
-        art.append("| | | | '_ \\ / _ \\ '_ \\|  _  | '__/ __|\n", style="blue")
-        art.append("\\ \\_/ / |_) |  __/ | | | | | | | | (__ \n", style="blue")
-        art.append(" \\___/| .__/ \\___|_| |_\\_| |_/_|  \\___|\n", style="blue")
-        art.append("      | |                              \n", style="blue")
-        art.append("      |_|                              \n", style="blue")
-        art.append(" \n", style="white")
-        art.append(" Making AI go brr since 2025   \n", style="white")
-        console.print(art)
+        """Display help with pre-cached ASCII art banner."""
+        console.print(self._build_ascii_art())
         return super().get_help(ctx)
 
 @click.group(cls=ColoredAsciiArtGroup)
