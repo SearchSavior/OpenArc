@@ -3,9 +3,6 @@
 OpenArc CLI Tool - Command-line interface for OpenArc server operations.
 """
 import os
-import json
-import sqlite3
-from datetime import datetime
 from pathlib import Path
 import uuid
 
@@ -20,6 +17,8 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from src.server.launch import start_server
 from src.cli.device_query import DeviceDataQuery, DeviceDiagnosticQuery
 from src.cli.openarc_bench import random_input_ids
+from src.cli.server_config import ServerConfig
+from src.cli.bench_db import BenchmarkDB
 
 click.rich_click.STYLE_OPTIONS_TABLE_LEADING = 1
 click.rich_click.STYLE_OPTIONS_TABLE_BOX = "SIMPLE"
@@ -28,148 +27,15 @@ click.rich_click.STYLE_COMMANDS_TABLE_BORDER_STYLE = "red"
 click.rich_click.STYLE_COMMANDS_TABLE_ROW_STYLES = ["magenta", "yellow", "cyan", "green"]
 
 console = Console()
+# Initialize managers
+server_config = ServerConfig()
+benchmark_db = BenchmarkDB()
 
-PROJECT_ROOT = Path(__file__).parent.parent.parent
-CONFIG_FILE = PROJECT_ROOT / "openarc_config.json"
-BENCH_DB = PROJECT_ROOT / "openarc_bench.db"
-
-def init_bench_db():
-    """Initialize benchmark database and create table if it doesn't exist."""
-    conn = sqlite3.connect(BENCH_DB)
-    cursor = conn.cursor()
-    
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS benchmark_results (
-            bench_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            run_id TEXT NOT NULL,
-            timestamp TEXT NOT NULL,
-            model_name TEXT NOT NULL,
-            input_tokens INTEGER NOT NULL,
-            max_tokens INTEGER NOT NULL,
-            run_number INTEGER NOT NULL,
-            ttft_s TEXT,
-            tpot_ms TEXT,
-            prefill_throughput_tokens_s TEXT,
-            decode_throughput_tokens_s TEXT,
-            decode_duration_s TEXT,
-            input_token_count TEXT,
-            new_token_count TEXT,
-            total_token_count TEXT
-        )
-    """)
-    
-    conn.commit()
-    conn.close()
-
-def save_bench_result(model_name: str, result: dict, run_id: str):
-    """Save a single benchmark result to the database."""
-    conn = sqlite3.connect(BENCH_DB)
-    cursor = conn.cursor()
-    
-    cursor.execute("""
-        INSERT INTO benchmark_results (
-            run_id, timestamp, model_name, input_tokens, max_tokens, run_number,
-            ttft_s, tpot_ms, prefill_throughput_tokens_s, decode_throughput_tokens_s,
-            decode_duration_s, input_token_count, new_token_count, total_token_count
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        run_id,
-        datetime.now().isoformat(),
-        model_name,
-        result['p'],
-        result['n'],
-        result['run'],
-        str(result['ttft']),
-        str(result['tpot']),
-        str(result['prefill_throughput']),
-        str(result['decode_throughput']),
-        str(result['decode_duration']),
-        result['input_token'],
-        result['new_token'],
-        result['total_token']
-    ))
-    
-    conn.commit()
-    conn.close()
-
-def save_cli_config(host: str, port: int):
-    """Save server configuration to JSON config file."""
-    config = load_full_config()  # Load existing config first
-    config.update({
-        "server": {
-            "host": host,
-            "port": port
-        },
-        "created_by": "openarc-cli",
-        "version": "1.0"
-    })
-    
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(config, f, indent=2)
-    
-    console.print(f"📝 [dim]Configuration saved to: {CONFIG_FILE}[/dim]")
-
-def save_model_config(model_name: str, load_config: dict):
-    """Save model configuration to JSON config file."""
-    config = load_full_config()
-    
-    if "models" not in config:
-        config["models"] = {}
-    
-    config["models"][model_name] = load_config
-    
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(config, f, indent=2)
-    
-    console.print(f"💾 [green]Model configuration saved:[/green] {model_name}")
-
-def load_full_config():
-    """Load full configuration from JSON config file."""
-    if CONFIG_FILE.exists():
-        try:
-            with open(CONFIG_FILE, "r") as f:
-                config = json.load(f)
-                return config if config else {}
-        except (json.JSONDecodeError, FileNotFoundError):
-            console.print(f"[yellow]Warning: Could not read config file {CONFIG_FILE}[/yellow]")
-    
-    return {}
-
-def get_model_config(model_name: str):
-    """Get model configuration by name."""
-    config = load_full_config()
-    models = config.get("models", {})
-    return models.get(model_name)
-
-def remove_model_config(model_name: str):
-    """Remove model configuration by name."""
-    config = load_full_config()
-    models = config.get("models", {})
-    
-    if model_name not in models:
-        return False
-    
-    del models[model_name]
-    config["models"] = models
-    
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(config, f, indent=2)
-    
-    return True
-
-def load_cli_config():
-    """Load server configuration from YAML config file."""
-    config = load_full_config()
-    if config and "server" in config:
-        return config["server"]
-    
-    return {"host": "localhost", "port": 8000}  # defaults
 
 class OpenArcCLI:
     def __init__(self, base_url=None, api_key=None):
         if base_url is None:
-            config = load_cli_config()
-            base_url = f"http://{config['host']}:{config['port']}"
+            base_url = server_config.get_base_url()
         self.base_url = base_url
         self.api_key = api_key or os.getenv('OPENARC_API_KEY')
         
@@ -190,10 +56,10 @@ class ColoredAsciiArtGroup(click.RichGroup):
         art.append("| | | | '_ \\ / _ \\ '_ \\|  _  | '__/ __|\n", style="blue")
         art.append("\\ \\_/ / |_) |  __/ | | | | | | | | (__ \n", style="blue")
         art.append(" \\___/| .__/ \\___|_| |_\\_| |_/_|  \\___|\n", style="blue")
-        art.append("      | |                              \n", style="white")
-        art.append("      |_|                              \n", style="white")
+        art.append("      | |                              \n", style="blue")
+        art.append("      |_|                              \n", style="blue")
         art.append(" \n", style="white")
-        art.append(" The CLI application   \n", style="white")
+        art.append(" Making AI go brr since 2025   \n", style="white")
         console.print(art)
         return super().get_help(ctx)
 
@@ -265,8 +131,8 @@ def add(ctx, model_path, model_name, engine, model_type, device, runtime_config,
         "vlm_type": vlm_type if vlm_type else None
     }
     
-    save_model_config(model_name, load_config)
-    console.print(f"✅ [green]Saved configuration for:[/green] {model_name}")
+    server_config.save_model_config(model_name, load_config)
+    console.print(f"[green]Model configuration saved:[/green] {model_name}")
     console.print(f"[dim]Use 'openarc load {model_name}' to load this model.[/dim]")
 
 @cli.command()
@@ -289,7 +155,7 @@ def load(ctx, model_names):
     
     # Start loading queue
     if len(model_names) > 1:
-        console.print(f"🚀 [blue]Starting load queue...[/blue] ({len(model_names)} models)\n")
+        console.print(f"[blue]Starting load queue...[/blue] ({len(model_names)} models)\n")
     
     # Load each model
     for idx, name in enumerate(model_names, 1):
@@ -300,10 +166,10 @@ def load(ctx, model_names):
             console.print(f"[blue]loading[/blue] {name}")
         
         # Get saved configuration
-        saved_config = get_model_config(name)
+        saved_config = server_config.get_model_config(name)
         
         if not saved_config:
-            console.print(f"❌ [red]Model configuration not found:[/red] {name}")
+            console.print(f"[red]Model configuration not found:[/red] {name}")
             console.print("[yellow]Tip: Use 'openarc list' to see saved configurations.[/yellow]\n")
             failed_loads.append(name)
             continue
@@ -318,27 +184,27 @@ def load(ctx, model_names):
             response = requests.post(url, json=load_config, headers=cli_instance.get_headers())
             
             if response.status_code == 200:
-                console.print(f"✅ [green]{name} loaded![/green]\n")
+                console.print(f"[green]{name} loaded![/green]\n")
                 successful_loads.append(name)
             else:
-                console.print(f"❌ [red]error: {response.status_code}[/red]")
+                console.print(f"[red]error: {response.status_code}[/red]")
                 console.print(f"[red]Response:[/red] {response.text}\n")
                 failed_loads.append(name)
                 
         except requests.exceptions.RequestException as e:
-            console.print(f"❌ [red]Request failed:[/red] {e}\n")
+            console.print(f"[red]Request failed:[/red] {e}\n")
             failed_loads.append(name)
     
     # Summary
     console.print("─" * 60)
     if successful_loads and not failed_loads:
-        console.print(f"🎉 [green]All models loaded![/green] ({len(successful_loads)}/{len(model_names)})")
+        console.print(f"[green]All models loaded![/green] ({len(successful_loads)}/{len(model_names)})")
     elif successful_loads and failed_loads:
-        console.print(f"⚠️  [yellow]Partial success:[/yellow] {len(successful_loads)}/{len(model_names)} models loaded")
+        console.print(f"[yellow]Partial success:[/yellow] {len(successful_loads)}/{len(model_names)} models loaded")
         console.print(f"   [green]✓ Loaded:[/green] {', '.join(successful_loads)}")
         console.print(f"   [red]✗ Failed:[/red] {', '.join(failed_loads)}")
     else:
-        console.print(f"❌ [red]All models failed to load![/red] (0/{len(model_names)})")
+        console.print(f"[red]All models failed to load![/red] (0/{len(model_names)})")
         console.print(f"   [red]✗ Failed:[/red] {', '.join(failed_loads)}")
     
     console.print("[dim]Use 'openarc status' to see loaded models.[/dim]")
@@ -368,7 +234,7 @@ def unload(ctx, model_names):
     
     # Start unloading queue
     if len(model_names) > 1:
-        console.print(f"🗑️  [blue]Starting unload queue...[/blue] ({len(model_names)} models)\n")
+        console.print(f"[blue]Starting unload queue...[/blue] ({len(model_names)} models)\n")
     
     # Unload each model
     for idx, name in enumerate(model_names, 1):
@@ -388,27 +254,27 @@ def unload(ctx, model_names):
             if response.status_code == 200:
                 result = response.json()
                 message = result.get('message', f"Model '{name}' unloaded successfully")
-                console.print(f"✅ [green]{message}[/green]\n")
+                console.print(f"[green]{message}[/green]\n")
                 successful_unloads.append(name)
             else:
-                console.print(f"❌ [red]error: {response.status_code}[/red]")
+                console.print(f"[red]error: {response.status_code}[/red]")
                 console.print(f"[red]Response:[/red] {response.text}\n")
                 failed_unloads.append(name)
                 
         except requests.exceptions.RequestException as e:
-            console.print(f"❌ [red]Request failed:[/red] {e}\n")
+            console.print(f"[red]Request failed:[/red] {e}\n")
             failed_unloads.append(name)
     
     # Summary
     console.print("─" * 60)
     if successful_unloads and not failed_unloads:
-        console.print(f"🎉 [green]All models unloaded![/green] ({len(successful_unloads)}/{len(model_names)})")
+        console.print(f"[green]All models unloaded![/green] ({len(successful_unloads)}/{len(model_names)})")
     elif successful_unloads and failed_unloads:
-        console.print(f"⚠️  [yellow]Partial success:[/yellow] {len(successful_unloads)}/{len(model_names)} models unloaded")
+        console.print(f"[yellow]Partial success:[/yellow] {len(successful_unloads)}/{len(model_names)} models unloaded")
         console.print(f"   [green]✓ Unloaded:[/green] {', '.join(successful_unloads)}")
         console.print(f"   [red]✗ Failed:[/red] {', '.join(failed_unloads)}")
     else:
-        console.print(f"❌ [red]All models failed to unload![/red] (0/{len(model_names)})")
+        console.print(f"[red]All models failed to unload![/red] (0/{len(model_names)})")
         console.print(f"   [red]✗ Failed:[/red] {', '.join(failed_unloads)}")
     
     console.print("[dim]Use 'openarc status' to see loaded models.[/dim]")
@@ -427,34 +293,32 @@ def list_configs(ctx, remove, model_name):
        - Remove a model configuration."""
     if remove:
         if not model_name:
-            console.print("❌ [red]Error:[/red] --model-name is required when using --remove")
+            console.print("[red]Error:[/red] --model-name is required when using --remove")
 
             ctx.exit(1)
         
         # Check if model exists before trying to remove
-        existing_config = get_model_config(model_name)
-        if not existing_config:
-            console.print(f"❌ {model_name}[red] not found:[/red]")
+        if not server_config.model_exists(model_name):
+            console.print(f"{model_name}[red] not found:[/red]")
             console.print("[yellow]Use 'openarc list' to see available configurations.[/yellow]")
             ctx.exit(1)
         
         # Remove the configuration
-        if remove_model_config(model_name):
-            console.print(f"🗑️  [green]Model configuration removed:[/green] {model_name}")
+        if server_config.remove_model_config(model_name):
+            console.print(f"[green]Model configuration removed:[/green] {model_name}")
         else:
-            console.print(f"❌ [red]Failed to remove model configuration:[/red] {model_name}")
+            console.print(f"[red]Failed to remove model configuration:[/red] {model_name}")
             ctx.exit(1)
         return
     
-    config = load_full_config()
-    models = config.get("models", {})
+    models = server_config.get_all_models()
     
     if not models:
         console.print("[yellow]No model configurations found.[/yellow]")
         console.print("[dim]Use 'openarc add --help' to see how to save configurations.[/dim]")
         return
     
-    console.print(f"📋 [blue]Saved Model Configurations ({len(models)}):[/blue]\n")
+    console.print(f"[blue]Saved Model Configurations ({len(models)}):[/blue]\n")
     
     for model_name, model_config in models.items():
         # Create a table for each model configuration
@@ -492,7 +356,7 @@ def status(ctx):
     url = f"{cli_instance.base_url}/openarc/status"
     
     try:
-        console.print("📊 [blue]Getting model status...[/blue]")
+        console.print("[blue]Getting model status...[/blue]")
         response = requests.get(url, headers=cli_instance.get_headers())
         
         if response.status_code == 200:
@@ -504,7 +368,7 @@ def status(ctx):
                 console.print("[yellow]No models currently loaded.[/yellow]")
             else:
                 # Create a table for all models
-                status_table = Table(title=f"📊 Loaded Models ({total_models})")
+                status_table = Table(title=f"Loaded Models ({total_models})")
                 status_table.add_column("model_name", style="cyan", width=20)
                 status_table.add_column("device", style="blue", width=10)
                 status_table.add_column("model_type", style="magenta", width=15)
@@ -533,12 +397,12 @@ def status(ctx):
                 console.print(f"\n[green]Total models loaded: {total_models}[/green]")
             
         else:
-            console.print(f"❌ [red]Error getting status: {response.status_code}[/red]")
+            console.print(f"[red]Error getting status: {response.status_code}[/red]")
             console.print(f"[red]Response:[/red] {response.text}")
             ctx.exit(1)
             
     except requests.exceptions.RequestException as e:
-        console.print(f"❌ [red]Request failed:[/red] {e}")
+        console.print(f"[red]Request failed:[/red] {e}")
         ctx.exit(1)
 
 @cli.command()
@@ -559,9 +423,6 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs):
         openarc bench Dolphin-X1 --p 16,32,64 --n 128,256
         openarc bench Dolphin-X1 -p 16 -p 32 -n 128 -n 256
     """
-    # Initialize benchmark database
-    init_bench_db()
-    
     cli_instance = OpenArcCLI()
     
     # Parse input_tokens and max_tokens (handle comma-separated and multiple invocations)
@@ -580,34 +441,34 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs):
         models_response = requests.get(models_url, headers=cli_instance.get_headers())
         
         if models_response.status_code != 200:
-            console.print(f"❌ [red]Failed to get model list: {models_response.status_code}[/red]")
+            console.print(f"[red]Failed to get model list: {models_response.status_code}[/red]")
             ctx.exit(1)
         
         models_data = models_response.json()
         available_models = [m['id'] for m in models_data.get('data', [])]
         
         if model_name not in available_models:
-            console.print(f"❌ [red]'{model_name}' not found in loaded models[/red]")
+            console.print(f"[red]'{model_name}' not found in loaded models[/red]")
             console.print(f"[yellow]Available models: {', '.join(available_models)}[/yellow]")
             console.print("[dim]Use 'openarc status' to see loaded models.[/dim]")
             ctx.exit(1)
         
         
     except requests.exceptions.RequestException as e:
-        console.print(f"❌ [red]Request failed:[/red] {e}")
+        console.print(f"[red]Request failed:[/red] {e}")
         ctx.exit(1)
     
     # Get model path from config to generate input tokens
-    model_config = get_model_config(model_name)
+    model_config = server_config.get_model_config(model_name)
     if not model_config:
-        console.print(f"❌ [red]Model configuration not found for '{model_name}'[/red]")
+        console.print(f"[red]Model configuration not found for '{model_name}'[/red]")
         console.print("[yellow]Cannot generate random tokens without model path.[/yellow]")
         console.print("[blue]Use 'openarc list' to see saved configurations.[/blue]")
         ctx.exit(1)
     
     model_path = model_config.get('model_path')
     if not model_path:
-        console.print("❌ [red]model_path not found in configuration[/red]")
+        console.print("[red]model_path not found in configuration[/red]")
         ctx.exit(1)
     
     # Run benchmarks
@@ -652,7 +513,7 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs):
                         )
                         
                         if bench_response.status_code != 200:
-                            console.print(f"\n❌ [red]Benchmark request failed: {bench_response.status_code}[/red]")
+                            console.print(f"\n[red]Benchmark request failed: {bench_response.status_code}[/red]")
                             console.print(f"[red]Response:[/red] {bench_response.text}")
                             continue
                         
@@ -675,10 +536,10 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs):
                         results.append(result)
                         
                         # Save result to database
-                        save_bench_result(model_name, result, run_id)
+                        benchmark_db.save_result(model_name, result, run_id)
                         
                     except Exception as e:
-                        console.print(f"\n⚠️  [yellow]Error in run {r+1}: {e}[/yellow]")
+                        console.print(f"\n[yellow]Error in run {r+1}: {e}[/yellow]")
                         continue
                     
                     progress.advance(task)
@@ -739,14 +600,14 @@ def device_properties(ctx):
     """
     
     try:
-        console.print("🔍 [blue]Querying device data for all devices...[/blue]")
+        console.print("[blue]Querying device data for all devices...[/blue]")
         device_query = DeviceDataQuery()
         available_devices = device_query.get_available_devices()
         
-        console.print(f"\n📊 [green]Available Devices ({len(available_devices)}):[/green]")
+        console.print(f"\n[green]Available Devices ({len(available_devices)}):[/green]")
         
         if not available_devices:
-            console.print("❌ [red]No devices found![/red]")
+            console.print("[red]No devices found![/red]")
             ctx.exit(1)
         
         for device in available_devices:
@@ -756,16 +617,16 @@ def device_properties(ctx):
             
             panel = Panel(
                 properties_text,
-                title=f"🔹 Device: {device}",
+                title=f"Device: {device}",
                 title_align="left",
                 border_style="blue"
             )
             console.print(panel)
         
-        console.print(f"\n✅ [green]Found {len(available_devices)} device(s)[/green]")
+        console.print(f"\n[green]Found {len(available_devices)} device(s)[/green]")
         
     except Exception as e:
-        console.print(f"❌ [red]Error querying device data:[/red] {e}")
+        console.print(f"[red]Error querying device data:[/red] {e}")
         ctx.exit(1)
 
 @tool.command('device-detect')
@@ -776,7 +637,7 @@ def device_detect(ctx):
     """
     
     try:
-        console.print("🔍 [blue]Detecting OpenVINO devices...[/blue]")
+        console.print("[blue]Detecting OpenVINO devices...[/blue]")
         diagnostic = DeviceDiagnosticQuery()
         available_devices = diagnostic.get_available_devices()
         
@@ -785,17 +646,17 @@ def device_detect(ctx):
         table.add_column("Device", style="green")
         
         if not available_devices:
-            console.print("❌ [red] Sanity test failed: No OpenVINO devices found! Maybe check your drivers?[/red]")
+            console.print("[red] Sanity test failed: No OpenVINO devices found! Maybe check your drivers?[/red]")
             ctx.exit(1)
         
         for i, device in enumerate(available_devices, 1):
             table.add_row(str(i), device)
         
         console.print(table)
-        console.print(f"\n✅ [green] Sanity test passed: found {len(available_devices)} device(s)[/green]")
+        console.print(f"\n[green] Sanity test passed: found {len(available_devices)} device(s)[/green]")
             
     except Exception as e:
-        console.print(f"❌ [red]Sanity test failed: No OpenVINO devices found! Maybe check your drivers?[/red] {e}")
+        console.print(f"[red]Sanity test failed: No OpenVINO devices found! Maybe check your drivers?[/red] {e}")
         ctx.exit(1)
 
 @cli.group()
@@ -831,7 +692,8 @@ def start(host, openarc_port, load_models, startup_models):
         openarc serve start --lm Dolphin-X1 kokoro whisper
     """
     # Save server configuration for other CLI commands to use
-    save_cli_config(host, openarc_port)
+    config_path = server_config.save_server_config(host, openarc_port)
+    console.print(f"[dim]Configuration saved to: {config_path}[/dim]")
     
     # Handle startup models
     models_to_load = []
@@ -841,20 +703,19 @@ def start(host, openarc_port, load_models, startup_models):
         models_to_load.extend(startup_models)
     
     if models_to_load:
-        config = load_full_config()
-        saved_models = config.get("models", {})
-        missing = [m for m in models_to_load if m not in saved_models]
+        saved_model_names = server_config.get_model_names()
+        missing = [m for m in models_to_load if m not in saved_model_names]
         
         if missing:
-            console.print("⚠️  [yellow]Warning: Models not in config (will be skipped):[/yellow]")
+            console.print("[yellow]Warning: Models not in config (will be skipped):[/yellow]")
             for m in missing:
                 console.print(f"   • {m}")
             console.print("[dim]Use 'openarc list' to see saved configurations.[/dim]\n")
         
         os.environ["OPENARC_STARTUP_MODELS"] = ",".join(models_to_load)
-        console.print(f"📋 [blue]Models to load on startup:[/blue] {', '.join(models_to_load)}\n")
+        console.print(f"[blue]Models to load on startup:[/blue] {', '.join(models_to_load)}\n")
     
-    console.print(f"🚀 [green]Starting OpenArc server on {host}:{openarc_port}[/green]")
+    console.print(f"[green]Starting OpenArc server on {host}:{openarc_port}[/green]")
     start_server(host=host, openarc_port=openarc_port)
 
 

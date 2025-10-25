@@ -13,7 +13,7 @@
 
 Drawing on ideas from `llama.cpp`, `vLLM`, `transformers`, `OpenVINO Model Server`, `Ray`, `Lemonade`, and other projects cited below, OpenArc has been a way for me to learn about inference engines by trying to build one myself. 
 
-Along the way a Discord community has formed around this project, which was unexpected! If you are interested in Arc for AI and machine learning, feel free to stop by. 
+Along the way a Discord community has formed around this project, which was unexpected! If you are interested in using Intel devices for AI and machine learning, feel free to stop by. 
 
 Thanks to everyone on Discord for their continued support!
 
