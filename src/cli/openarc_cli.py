@@ -14,11 +14,6 @@ from rich.table import Table
 from rich.text import Text
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from .launch_server import start_server
-from .server_config import ServerConfig
-from .device_query import DeviceDataQuery, DeviceDiagnosticQuery
-from .benchmark import OpenArcBenchmarks, BenchmarkDB
-
 click.rich_click.STYLE_OPTIONS_TABLE_LEADING = 1
 click.rich_click.STYLE_OPTIONS_TABLE_BOX = "SIMPLE"
 click.rich_click.STYLE_COMMANDS_TABLE_SHOW_LINES = True
@@ -26,14 +21,36 @@ click.rich_click.STYLE_COMMANDS_TABLE_BORDER_STYLE = "red"
 click.rich_click.STYLE_COMMANDS_TABLE_ROW_STYLES = ["magenta", "yellow", "cyan", "green"]
 
 console = Console()
-# Initialize managers
-server_config = ServerConfig()
-benchmark_db = BenchmarkDB()
+
+
+class CLIContext:
+    """Context object for lazy-loading heavy dependencies."""
+    __slots__ = ('_server_config', '_benchmark_db')
+    
+    def __init__(self):
+        self._server_config = None
+        self._benchmark_db = None
+    
+    @property
+    def server_config(self):
+        """Lazy-load ServerConfig only when needed."""
+        if self._server_config is None:
+            from .server_config import ServerConfig
+            self._server_config = ServerConfig()
+        return self._server_config
+    
+    @property
+    def benchmark_db(self):
+        """Lazy-load BenchmarkDB only when needed."""
+        if self._benchmark_db is None:
+            from .benchmark import BenchmarkDB
+            self._benchmark_db = BenchmarkDB()
+        return self._benchmark_db
 
 
 class OpenArcCLI:
-    def __init__(self, base_url=None, api_key=None):
-        if base_url is None:
+    def __init__(self, base_url=None, api_key=None, server_config=None):
+        if base_url is None and server_config is not None:
             base_url = server_config.get_base_url()
         self.base_url = base_url
         self.api_key = api_key or os.getenv('OPENARC_API_KEY')
@@ -83,7 +100,8 @@ class ColoredAsciiArtGroup(click.RichGroup):
         return super().get_help(ctx)
 
 @click.group(cls=ColoredAsciiArtGroup)
-def cli():
+@click.pass_context
+def cli(ctx):
     """
     Use this application to interface with the OpenArc server.
     
@@ -108,6 +126,7 @@ def cli():
 
     To get started add --help to one of the commands below to view its documentation.
     """
+    ctx.ensure_object(CLIContext)
 
 @cli.command()
 @click.option('--model-name', '--mn',
@@ -150,7 +169,7 @@ def add(ctx, model_path, model_name, engine, model_type, device, runtime_config,
         "vlm_type": vlm_type if vlm_type else None
     }
     
-    server_config.save_model_config(model_name, load_config)
+    ctx.obj.server_config.save_model_config(model_name, load_config)
     console.print(f"[green]Model configuration saved:[/green] {model_name}")
     console.print(f"[dim]Use 'openarc load {model_name}' to load this model.[/dim]")
 
@@ -164,7 +183,7 @@ def load(ctx, model_names):
         openarc load model1
         openarc load Dolphin-X1 kokoro whisper
     """
-    cli_instance = OpenArcCLI()
+    cli_instance = OpenArcCLI(server_config=ctx.obj.server_config)
     
     model_names = list(model_names)
     
@@ -185,7 +204,7 @@ def load(ctx, model_names):
             console.print(f"[blue]loading[/blue] {name}")
         
         # Get saved configuration
-        saved_config = server_config.get_model_config(name)
+        saved_config = ctx.obj.server_config.get_model_config(name)
         
         if not saved_config:
             console.print(f"[red]Model configuration not found:[/red] {name}")
@@ -243,7 +262,7 @@ def unload(ctx, model_names):
         openarc unload model1
         openarc unload Dolphin-X1 kokoro whisper
     """
-    cli_instance = OpenArcCLI()
+    cli_instance = OpenArcCLI(server_config=ctx.obj.server_config)
 
     model_names = list(model_names)
     
@@ -317,20 +336,20 @@ def list_configs(ctx, remove, model_name):
             ctx.exit(1)
         
         # Check if model exists before trying to remove
-        if not server_config.model_exists(model_name):
+        if not ctx.obj.server_config.model_exists(model_name):
             console.print(f"{model_name}[red] not found:[/red]")
             console.print("[yellow]Use 'openarc list' to see available configurations.[/yellow]")
             ctx.exit(1)
         
         # Remove the configuration
-        if server_config.remove_model_config(model_name):
+        if ctx.obj.server_config.remove_model_config(model_name):
             console.print(f"[green]Model configuration removed:[/green] {model_name}")
         else:
             console.print(f"[red]Failed to remove model configuration:[/red] {model_name}")
             ctx.exit(1)
         return
     
-    models = server_config.get_all_models()
+    models = ctx.obj.server_config.get_all_models()
     
     if not models:
         console.print("[yellow]No model configurations found.[/yellow]")
@@ -370,7 +389,7 @@ def list_configs(ctx, remove, model_name):
 @click.pass_context
 def status(ctx):
     """- GET Status of loaded models."""
-    cli_instance = OpenArcCLI()
+    cli_instance = OpenArcCLI(server_config=ctx.obj.server_config)
     
     url = f"{cli_instance.base_url}/openarc/status"
     
@@ -442,7 +461,7 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs):
         openarc bench Dolphin-X1 --p 16,32,64 --n 128,256
         openarc bench Dolphin-X1 -p 16 -p 32 -n 128 -n 256
     """
-    cli_instance = OpenArcCLI()
+    cli_instance = OpenArcCLI(server_config=ctx.obj.server_config)
     
     # Parse input_tokens and max_tokens (handle comma-separated and multiple invocations)
     p_values = []
@@ -478,7 +497,7 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs):
         ctx.exit(1)
     
     # Get model path from config to generate input tokens
-    model_config = server_config.get_model_config(model_name)
+    model_config = ctx.obj.server_config.get_model_config(model_name)
     if not model_config:
         console.print(f"[red]Model configuration not found for '{model_name}'[/red]")
         console.print("[yellow]Cannot generate random tokens without model path.[/yellow]")
@@ -494,6 +513,9 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs):
     console.print(f"input tokens: {p_values}")
     console.print(f"max tokens:   {n_values}")
     console.print(f"runs: {runs}\n")
+    
+    # Lazy load OpenArcBenchmarks
+    from .benchmark import OpenArcBenchmarks
     
     # Generate unique run_id for this benchmark session
     run_id = str(uuid.uuid4())
@@ -555,7 +577,7 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs):
                         results.append(result)
                         
                         # Save result to database
-                        benchmark_db.save_result(model_name, result, run_id)
+                        ctx.obj.benchmark_db.save_result(model_name, result, run_id)
                         
                     except Exception as e:
                         console.print(f"\n[yellow]Error in run {r+1}: {e}[/yellow]")
@@ -619,6 +641,7 @@ def device_properties(ctx):
     """
     
     try:
+        from .device_query import DeviceDataQuery
         console.print("[blue]Querying device data for all devices...[/blue]")
         device_query = DeviceDataQuery()
         available_devices = device_query.get_available_devices()
@@ -656,6 +679,7 @@ def device_detect(ctx):
     """
     
     try:
+        from .device_query import DeviceDiagnosticQuery
         console.print("[blue]Detecting OpenVINO devices...[/blue]")
         diagnostic = DeviceDiagnosticQuery()
         available_devices = diagnostic.get_available_devices()
@@ -701,7 +725,8 @@ def serve():
               required=False,
               help="Load models on startup. Specify once followed by space-separated model names.")
 @click.argument('startup_models', nargs=-1, required=False)
-def start(host, openarc_port, load_models, startup_models):
+@click.pass_context
+def start(ctx, host, openarc_port, load_models, startup_models):
     """
     - 'start' reads --host and --openarc-port from config or defaults to 0.0.0.0:8000
     
@@ -711,7 +736,7 @@ def start(host, openarc_port, load_models, startup_models):
         openarc serve start --lm Dolphin-X1 kokoro whisper
     """
     # Save server configuration for other CLI commands to use
-    config_path = server_config.save_server_config(host, openarc_port)
+    config_path = ctx.obj.server_config.save_server_config(host, openarc_port)
     console.print(f"[dim]Configuration saved to: {config_path}[/dim]")
     
     # Handle startup models
@@ -722,7 +747,7 @@ def start(host, openarc_port, load_models, startup_models):
         models_to_load.extend(startup_models)
     
     if models_to_load:
-        saved_model_names = server_config.get_model_names()
+        saved_model_names = ctx.obj.server_config.get_model_names()
         missing = [m for m in models_to_load if m not in saved_model_names]
         
         if missing:
@@ -735,6 +760,7 @@ def start(host, openarc_port, load_models, startup_models):
         console.print(f"[blue]Models to load on startup:[/blue] {', '.join(models_to_load)}\n")
     
     console.print(f"[green]Starting OpenArc server on {host}:{openarc_port}[/green]")
+    from .launch_server import start_server
     start_server(host=host, openarc_port=openarc_port)
 
 
