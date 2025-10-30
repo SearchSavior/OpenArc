@@ -189,21 +189,57 @@ openarc --help
 
 This section documents the CLI commands available to you.
 
-All commands have aliases but are written here for clarity.
+OpenArc command line tool helps you manage the server by packaging requests; every operation the command line does can be scripted programmatically, but using the command tool will help you get a feel for what the server does and how you can use it.  
 
+## Getting Started
+
+After choosing a model, use commands in this order:
+
+- Add model configurations with `openarc add`, 
+
+Here's an example for Gemma 3 VLM on GPU:
+
+```
+openarc add --model-name <model-name> --model-path <path/to/model> --engine ovgenai --model-type vlm --device GPU.0 --vlm-type gemma3
+```
+
+And all LLM on GPU:
+
+```
+openarc add --model-name <model-name> --model-path <path/to/model> --engine ovgenai --model-type llm --device GPU.0
+```
+
+Next up:
+
+- Show added configurations with `openarc list`, 
+- Launch the server with `openarc serve`, 
+- Load models with `openarc load` 
+- Check a model's status using `openarc status`. 
+- Benchmark performance like llama-bench with `openarc-bench`
+- Call utility scripts with `openarc tool`
+
+Each command has groups of options which offer fine-grained control of both server behavior and performance optimizations, which are documented here with examples to get you started. Remember to use this as reference.
+
+Use `openarc [OPTION] --help` to see available arguments at any time as you work through the reference. 
+
+
+## Reference
 
 <details id="openarc-add">
 <summary><code>openarc add</code></summary>
 
 <br>
 
-Add a model to `openarc_config.json` for easy loading with ```openarc load```.
+Add a model to `openarc_config.json` for easy loading with `openarc load`. 
+
 
 ### Single device
 
 ```
 openarc add --model-name <model-name> --model-path <path/to/model> --engine <engine> --model-type <model-type> --device <target-device>
 ```
+
+To see what options you have for `--device`, use `openarc tool device-detect`.
 
 ### VLM
 
@@ -226,14 +262,15 @@ openarc add --model-name <model-name> --model-path <path/to/whisper> --engine ov
 openarc add --model-name <model-name> --model-path <path/to/kokoro> --engine openvino --model-type kokoro --device CPU 
 ```
 
-### ```runtime-config```
+### Advanced Configuration Options
 
-Accepts many options to modify `openvino` runtime behavior for different inference scenarios. OpenArc reports c++ errors to the server when these fail, making experimentation easy. 
+`runtime-config` accepts many options to modify `openvino` runtime behavior for different inference scenarios. OpenArc reports c++ errors to the server when these fail, making experimentation easy. 
 
-See OpenVINO documentation on [Inference Optimization](https://docs.openvino.ai/2025/openvino-workflow/running-inference/optimize-inference.html) to learn more about what can be customized. 
+See OpenVINO documentation on [Inference Optimization](https://docs.openvino.ai/2025/openvino-workflow/running-inference/optimize-inference.html) to learn more about what can be customized.
+
+Most options get really deep into OpenVINO concepts that are way out of scope for the README; however `runtime-config` is the entrypoint for *all* of them. Broadly, what you set in `runtime-config` Unfortunately, not all options are designed for transformers, so `runtime-config` was implemented in a way where you immediately get feedback. Add a kwarg, load the model, get feedback from the server, run `openarc bench`. Overall, it's a clean way to handle the hardest part of OpenVINO documentation.
 
 Review [pipeline-paralellism preview](https://docs.openvino.ai/2025/openvino-workflow/running-inference/inference-devices-and-modes/hetero-execution.html#pipeline-parallelism-preview) to learn how you can customize multi device inference using HETERO device plugin. Some example commands are provided for a few difference scenarios:
-
 
 ### Multi-GPU Pipeline Paralell
 
@@ -327,6 +364,7 @@ openarc load <model-name1> <model-name2> <model-name3>
 Be mindful of your resources; loading models can be resource intensive! On the first load, OpenVINO performs model compilation for the target `--device`.
 
 When `openarc load` fails, the CLI tool displays a full stack trace to help you figure out why.
+
 
 </details>
 
