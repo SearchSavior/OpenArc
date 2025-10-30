@@ -3,16 +3,16 @@
 OpenArc CLI Tool - Command-line interface for OpenArc server operations.
 """
 import os
-from pathlib import Path
 import uuid
+from pathlib import Path
 
 import requests
 import rich_click as click
 from rich.console import Console
 from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 from rich.text import Text
-from rich.progress import Progress, SpinnerColumn, TextColumn
 
 click.rich_click.STYLE_OPTIONS_TABLE_LEADING = 1
 click.rich_click.STYLE_OPTIONS_TABLE_BOX = "SIMPLE"
@@ -21,7 +21,6 @@ click.rich_click.STYLE_COMMANDS_TABLE_BORDER_STYLE = "red"
 click.rich_click.STYLE_COMMANDS_TABLE_ROW_STYLES = ["magenta", "yellow", "cyan", "green"]
 
 console = Console()
-
 
 class CLIContext:
     """Context object for lazy-loading heavy dependencies."""
