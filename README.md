@@ -42,6 +42,7 @@ Thanks to everyone on Discord for their continued support!
 - [Converting Models to OpenVINO IR](#converting-models-to-openvino-ir)
 - [Learning Resources](#learning-resources)
 - [Acknowledgments](#acknowledgments)
+- [Codebase Documentation](./docs/index.md)
 
 ## Features
 

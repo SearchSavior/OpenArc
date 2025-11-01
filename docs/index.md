@@ -72,11 +72,7 @@ This document collects information about the codebase structure, APIs, architect
 - **Optimum**: Optimum-Intel (Embedding, Reranker)
 - **OpenVINO**: Native OpenVINO runtime (Kokoro TTS)
 
-This project is about intel devices, so expect this to expand in the future.
+This project is about intel devices, so expect we may expand to other frameworks/libraries in the future.
 
-## Getting Started
 
-See the [README.md](../README.md) for installation and usage instructions.
-
-For detailed API documentation, see [Server Documentation](./server.md).
 
