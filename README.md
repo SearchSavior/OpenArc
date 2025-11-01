@@ -3,6 +3,7 @@
 [![Discord](https://img.shields.io/discord/1341627368581628004?logo=Discord&logoColor=%23ffffff&label=Discord&link=https%3A%2F%2Fdiscord.gg%2FmaMY7QjG)](https://discord.gg/Bzz9hax9Jq)
 [![Hugging Face](https://img.shields.io/badge/🤗%20Hugging%20Face-Echo9Zulu-yellow)](https://huggingface.co/Echo9Zulu)
 [![Devices](https://img.shields.io/badge/Devices-CPU%2FGPU%2FNPU-blue)](https://github.com/openvinotoolkit/openvino)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/SearchSavior/OpenArc)
 
 > [!NOTE]
 > OpenArc is under active development.
@@ -41,10 +42,9 @@ Thanks to everyone on Discord for their continued support!
 - [Converting Models to OpenVINO IR](#converting-models-to-openvino-ir)
 - [Learning Resources](#learning-resources)
 - [Acknowledgments](#acknowledgments)
+- [Codebase Documentation](./docs/index.md)
 
 ## Features
-
-**OpenArc 2.0** arrives with more endpoints, better UX, pipeline paralell, NPU support and much more! 
 
   - Multi GPU Pipeline Paralell
   - CPU offload/Hybrid device
@@ -183,7 +183,7 @@ openarc --help
 > Need help installing drivers? [Join our Discord](https://discord.gg/Bzz9hax9Jq) or open an issue.
 
 > [!NOTE] 
-> uv has a [pip interface](https://docs.astral.sh/uv/pip/) which is a drop in replacement for pip, but faster. Pretty cool, and a good place to start.
+> uv has a [pip interface](https://docs.astral.sh/uv/pip/) which is a drop in replacement for pip, but faster. Pretty cool, and a good place to start learning uv.
 
 ## OpenArc CLI
 
