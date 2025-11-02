@@ -56,10 +56,10 @@ def time_inference(fn, *args, **kwargs):
 # Example usage
 # =====================================================================
 if __name__ == "__main__":
-    model_path = Path("path/to/model")
+    model_path = Path("/mnt/Ironwolf-4TB/Models/OpenVINO/Kokoro-82M-FP16-OpenVINO")
 
     # Initialize model + pipeline
-    ov_model = OVKModel(model_path, device="CPU")
+    ov_model = OVKModel(model_path, device="GPU.2")
     print(f"Compile time: {ov_model.compile_time_s * 1000:.2f} ms")
     pipeline = KPipeline(model=ov_model, lang_code="a")
 

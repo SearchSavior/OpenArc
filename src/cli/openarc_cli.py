@@ -13,7 +13,7 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 from rich.text import Text
-
+ 
 click.rich_click.STYLE_OPTIONS_TABLE_LEADING = 1
 click.rich_click.STYLE_OPTIONS_TABLE_BOX = "SIMPLE"
 click.rich_click.STYLE_COMMANDS_TABLE_SHOW_LINES = True
@@ -21,6 +21,43 @@ click.rich_click.STYLE_COMMANDS_TABLE_BORDER_STYLE = "red"
 click.rich_click.STYLE_COMMANDS_TABLE_ROW_STYLES = ["magenta", "yellow", "cyan", "green"]
 
 console = Console()
+
+def validate_model_path(model_path):
+    """
+    Validate that model_path contains OpenVINO model files.
+    Checks for at least one file with "_model.bin" and one file with "_model.xml" in filename.
+    Returns True if valid, False otherwise.
+    """
+    path = Path(model_path)
+    
+    # Resolve the path
+    if not path.exists():
+        return False
+    
+    # Determine search directory - if path is a file, use its parent; if directory, use it
+    if path.is_file():
+        search_dir = path.parent
+    else:
+        search_dir = path
+    
+    # Check for required files
+    has_bin = False
+    has_xml = False
+    
+    try:
+        for file_path in search_dir.rglob("*"):
+            if file_path.is_file():
+                filename = file_path.name
+                if "_model.bin" in filename:
+                    has_bin = True
+                if "_model.xml" in filename:
+                    has_xml = True
+                if has_bin and has_xml:
+                    return True
+    except (OSError, PermissionError):
+        return False
+    
+    return False
 
 class CLIContext:
     """Context object for lazy-loading heavy dependencies."""
@@ -157,6 +194,11 @@ def cli(ctx):
 def add(ctx, model_path, model_name, engine, model_type, device, runtime_config, vlm_type):
     """- Add a model configuration to the config file."""
     
+    # Validate model path
+    if not validate_model_path(model_path):
+        console.print(f"[red]Model file check failed! {model_path} does not contain openvino model files OR your chosen path is malformed. Verify chosen path is correct and acquired model files match source on the hub, or the destination of converted model.[/red]")
+        ctx.exit(1)
+    
     # Build and save configuration
     load_config = {
         "model_name": model_name,
@@ -212,6 +254,13 @@ def load(ctx, model_names):
             continue
         
         load_config = saved_config.copy()
+        
+        # Validate model path
+        model_path = load_config.get('model_path')
+        if model_path and not validate_model_path(model_path):
+            console.print(f"[red]Model file check failed! {model_path} does not contain openvino model files OR your chosen path is malformed. Verify chosen path is correct and acquired model files match source on the hub, or the destination of converted model.[/red]")
+            failed_loads.append(name)
+            continue
         
         # Make API request to load the model
         url = f"{cli_instance.base_url}/openarc/load"
@@ -506,6 +555,11 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs):
     model_path = model_config.get('model_path')
     if not model_path:
         console.print("[red]model_path not found in configuration[/red]")
+        ctx.exit(1)
+    
+    # Validate model path
+    if not validate_model_path(model_path):
+        console.print(f"[red]Model file check failed! {model_path} does not contain openvino model files OR your chosen path is malformed. Verify chosen path is correct and acquired model files match source on the hub, or the destination of converted model.[/red]")
         ctx.exit(1)
     
     # Run benchmarks
