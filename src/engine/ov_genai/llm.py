@@ -1,7 +1,7 @@
 import asyncio
 import gc
 import logging
-from typing import Any, AsyncIterator, Dict, List, Union
+from typing import Any, AsyncIterator, Dict, List, Optional, Union
 
 import openvino as ov
 from openvino_genai import (
@@ -13,6 +13,7 @@ from transformers import AutoTokenizer
 from src.server.models.ov_genai import OVGenAI_GenConfig
 from src.server.model_registry import ModelLoadConfig, ModelRegistry
 from src.engine.ov_genai.streamers import ChunkStreamer
+from src.server.utils.chat import flatten_messages
 
 logging.basicConfig(
     level=logging.ERROR,
@@ -27,9 +28,9 @@ class OVGenAI_LLM:
         self.encoder_tokenizer = None
         self.load_config = load_config
 
-    def prepare_inputs(self, 
-        messages: List[Dict[str, str]], 
-        tools: List[Dict[str, Any]] = []) -> ov.Tensor:
+    def prepare_inputs(self,
+        messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]] = None) -> ov.Tensor:
         """
         Convert a messages (list of {role, content}) into ov.Tensor using the cached AutoTokenizer
         and its chat template.
@@ -38,15 +39,15 @@ class OVGenAI_LLM:
         which we then convert to an ov.Tensor the runtime can accept
 
         Args:
-            messages: List[Dict[str, str]]
-            tools: List[Dict[str, Any]] - List of tools/functions available to the model
+            messages: List[Dict[str, Any]]
+            tools: Optional[List[Dict[str, Any]]] - List of tools/functions available to the model
 
         returns:
             prompt_token_ids: 
         """
         prompt_token_ids = self.encoder_tokenizer.apply_chat_template(
-            messages, 
-            tools=tools if tools else None,
+            flatten_messages(messages),
+            tools=tools,
             add_generation_prompt=True,
             skip_special_tokens=True,
             return_tensors="np"

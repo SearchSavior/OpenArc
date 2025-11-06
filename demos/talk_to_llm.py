@@ -22,7 +22,7 @@ MODELS = {
     "tts": "kokoro"
 }
 TTS_CONFIG = {
-    "voice": "af_sarah",
+    "voice": "af_heart",
     "speed": 1.25,
     "language": "a",
     "response_format": "wav"
@@ -31,14 +31,15 @@ LLM_CONFIG = {
     "temperature": 0.8,
     "max_tokens": 16384,
     "top_p": 1.0,
-   # "top_k": 50,
     "repetition_penalty": 1.05
 }
 
 SYSTEM_PROMPT = """
-- You're a masterful storyteller and gamemaster. Write in second person present tense (You are), crafting vivid, engaging narratives with authority and confidence. 
+COMMISION: 
+- You're a masterful adventure gamemaster. Write in second person present tense (You are), engaging narratives with authority and confidence. 
 - Do not make choices for the user.
-
+WORLD:
+- 
 """
 
 def initialize_client() -> OpenAI:
