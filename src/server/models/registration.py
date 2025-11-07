@@ -7,7 +7,7 @@ from src.server.models.ov_genai import VLM_VISION_TOKENS
 
 
 class ModelStatus(str, Enum):
-    """Model loading status.
+    """loading status.
     
     Options:
     - LOADING: Model is currently being loaded in the background

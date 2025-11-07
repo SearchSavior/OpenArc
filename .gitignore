@@ -22,3 +22,5 @@ docker-compose.override.yaml
 .builds/
 .cursor/
 openarc_bench.db
+gpt-oss.ipynb
+gpt_oss_convert.py

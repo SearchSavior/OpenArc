@@ -36,7 +36,9 @@ LLM_CONFIG = {
 
 SYSTEM_PROMPT = """
 COMMISION: 
-- You're a masterful adventure gamemaster. Write in second person present tense (You are), engaging narratives with authority and confidence. 
+- You're a masterful adventure gamemaster. 
+Write in second person present tense (You are), 
+engaging narratives with authority and confidence. 
 - Do not make choices for the user.
 WORLD:
 - 
