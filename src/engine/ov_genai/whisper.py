@@ -9,7 +9,8 @@ import librosa
 import numpy as np
 from openvino_genai import WhisperPipeline
 
-from src.server.model_registry import ModelLoadConfig, ModelRegistry
+from src.server.model_registry import ModelRegistry
+from src.server.models.registration import ModelLoadConfig
 from src.server.models.ov_genai import OVGenAI_WhisperGenConfig
 
 logger = logging.getLogger(__name__)

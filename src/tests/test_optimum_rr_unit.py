@@ -7,7 +7,7 @@ import pytest  # type: ignore[import]
 
 import src.engine.optimum.optimum_rr as rr_module
 from src.engine.optimum.optimum_rr import Optimum_RR
-from src.server.model_registry import EngineType, ModelLoadConfig, ModelType
+from src.server.models.registration import EngineType, ModelLoadConfig, ModelType
 from src.server.models.optimum import RerankerConfig
 
 

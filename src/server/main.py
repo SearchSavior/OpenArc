@@ -10,7 +10,7 @@ import time
 import traceback
 import uuid
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator, Dict, List, Optional, Union
+from typing import Any, AsyncIterator, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -19,12 +19,20 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from pydantic import BaseModel
-
-from src.server.model_registry import ModelLoadConfig, ModelRegistry, ModelUnloadConfig
+from src.server.model_registry import ModelRegistry
+from src.server.models.registration import ModelLoadConfig, ModelUnloadConfig
 from src.server.models.openvino import OV_KokoroGenConfig
 from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
 from src.server.models.optimum import PreTrainedTokenizerConfig, RerankerConfig
+from src.server.models.requests_internal import OpenArcBenchRequest
+from src.server.models.requests_openai import (
+    EmbeddingsRequest,
+    OpenAIChatCompletionRequest,
+    OpenAICompletionRequest,
+    OpenAIKokoroRequest,
+    OpenAIWhisperRequest,
+    RerankRequest,
+)
 from src.server.worker_registry import WorkerRegistry
 
 logger = logging.getLogger(__name__)
@@ -172,19 +180,6 @@ def parse_tool_calls(text: str) -> Optional[List[Dict[str, Any]]]:
     return tool_calls if tool_calls else None
 
 #===============================================================#
-# Request Models
-#===============================================================#
-
-class OpenArcBenchRequest(BaseModel):
-    model: str
-    input_ids: List[int]
-    max_tokens: Optional[int] = 512
-    temperature: Optional[float] = None
-    top_p: Optional[float] = None
-    top_k: Optional[int] = None
-    repetition_penalty: Optional[float] = None
-
-#===============================================================#
 # OpenArc internal
 #===============================================================#
 
@@ -247,66 +242,6 @@ async def benchmark(request: OpenArcBenchRequest):
 #===============================================================#
 # OpenAI-compatible endpoints
 #===============================================================#
-
-class OpenAIChatCompletionRequest(BaseModel):
-    model: str
-    messages: Any
-    tools: Optional[List[Dict[str, Any]]] = None
-    stream: Optional[bool] = None
-    
-    temperature: Optional[float] = None
-    max_tokens: Optional[int] = None
-    stop: Optional[List[str]] = None
-    top_p: Optional[float] = None
-    top_k: Optional[int] = None
-    repetition_penalty: Optional[float] = None
-    do_sample: Optional[bool] = None
-    num_return_sequences: Optional[int] = None
-
-class OpenAICompletionRequest(BaseModel):
-    model: str
-    prompt: Union[str, List[str]]
-    stream: Optional[bool] = None
-    
-    temperature: Optional[float] = None
-    max_tokens: Optional[int] = None
-    stop: Optional[List[str]] = None
-    top_p: Optional[float] = None
-    top_k: Optional[int] = None
-    repetition_penalty: Optional[float] = None
-    do_sample: Optional[bool] = None
-    num_return_sequences: Optional[int] = None
-
-class OpenAIWhisperRequest(BaseModel):
-    model: str
-    audio_base64: str
-
-class OpenAIKokoroRequest(BaseModel):
-    model: str
-    input: str
-    voice: Optional[str] = None
-    speed: Optional[float] = None
-    language: Optional[str] = None
-    response_format: Optional[str] = "wav"
-
-# https://platform.openai.com/docs/api-reference/embeddings
-class EmbeddingsRequest(BaseModel):
-    model: str
-    input: Union[str, List[str], List[List[str]]]
-    dimensions: Optional[int] = None
-    encoding_format: Optional[str] = "float" #not implemented
-    user: Optional[str] = None, #not implemented
-    #end of openai api
-    config: Optional[PreTrainedTokenizerConfig] = None
-
-# No openai api to reference
-class RerankRequest(BaseModel):
-    model: str
-    query: str
-    documents: List[str]
-    prefix:Optional[str] = None
-    suffix:Optional[str] = None
-    instruction:Optional[str] = None
 
 @app.get("/v1/models", dependencies=[Depends(verify_api_key)])
 async def openai_list_models():

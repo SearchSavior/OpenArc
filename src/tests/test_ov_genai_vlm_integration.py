@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest  # type: ignore[import]
 
 from src.engine.ov_genai.vlm import OVGenAI_VLM
-from src.server.model_registry import EngineType, ModelLoadConfig, ModelType
+from src.server.models.registration import EngineType, ModelLoadConfig, ModelType
 from src.server.models.ov_genai import OVGenAI_GenConfig
 
 

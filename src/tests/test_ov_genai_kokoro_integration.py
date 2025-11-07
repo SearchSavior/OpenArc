@@ -7,7 +7,7 @@ import pytest  # type: ignore[import]
 import torch
 
 from src.engine.openvino.kokoro import OV_Kokoro
-from src.server.model_registry import EngineType, ModelLoadConfig, ModelType
+from src.server.models.registration import EngineType, ModelLoadConfig, ModelType
 from src.server.models.openvino import KokoroLanguage, KokoroVoice, OV_KokoroGenConfig
 
 

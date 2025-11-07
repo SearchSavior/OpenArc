@@ -4,7 +4,8 @@ import pytest  # type: ignore[import]
 
 import src.server.model_registry as model_registry_module
 import src.server.worker_registry as worker_module
-from src.server.model_registry import EngineType, ModelLoadConfig, ModelRegistry, ModelType
+from src.server.model_registry import ModelRegistry
+from src.server.models.registration import EngineType, ModelLoadConfig, ModelType
 from src.server.models.openvino import KokoroLanguage, KokoroVoice, OV_KokoroGenConfig
 from src.server.models.optimum import PreTrainedTokenizerConfig, RerankerConfig
 from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig

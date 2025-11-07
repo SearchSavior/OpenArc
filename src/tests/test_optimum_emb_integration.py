@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest  # type: ignore[import]
 
 from src.engine.optimum.optimum_emb import Optimum_EMB
-from src.server.model_registry import EngineType, ModelLoadConfig, ModelType
+from src.server.models.registration import EngineType, ModelLoadConfig, ModelType
 from src.server.models.optimum import PreTrainedTokenizerConfig
 
 

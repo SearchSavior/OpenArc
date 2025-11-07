@@ -4,7 +4,7 @@ import pytest  # type: ignore[import]
 
 import src.engine.ov_genai.llm as llm_module
 from src.engine.ov_genai.llm import OVGenAI_LLM
-from src.server.model_registry import EngineType, ModelLoadConfig, ModelType
+from src.server.models.registration import EngineType, ModelLoadConfig, ModelType
 from src.server.models.ov_genai import OVGenAI_GenConfig
 
 

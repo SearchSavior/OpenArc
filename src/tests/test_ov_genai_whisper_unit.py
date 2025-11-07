@@ -7,7 +7,7 @@ import pytest  # type: ignore[import]
 
 import src.engine.ov_genai.whisper as whisper_module
 from src.engine.ov_genai.whisper import OVGenAI_Whisper
-from src.server.model_registry import EngineType, ModelLoadConfig, ModelType
+from src.server.models.registration import EngineType, ModelLoadConfig, ModelType
 from src.server.models.ov_genai import OVGenAI_WhisperGenConfig
 
 

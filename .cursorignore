@@ -3,6 +3,5 @@
 assets/
 benchmarks/
 examples/
-models/
 openarc_bench.db
 openarc.log

@@ -11,7 +11,8 @@ from openvino_genai import (
 from transformers import AutoTokenizer
 
 from src.server.models.ov_genai import OVGenAI_GenConfig
-from src.server.model_registry import ModelLoadConfig, ModelRegistry
+from src.server.model_registry import ModelRegistry
+from src.server.models.registration import ModelLoadConfig
 from src.engine.ov_genai.streamers import ChunkStreamer
 from src.server.utils.chat import flatten_messages
 

@@ -17,7 +17,8 @@ from transformers import AutoTokenizer
 
 from src.server.models.ov_genai import OVGenAI_GenConfig, VLM_VISION_TOKENS
 from src.server.utils.chat import flatten_message_content
-from src.server.model_registry import ModelLoadConfig, ModelRegistry
+from src.server.model_registry import ModelRegistry
+from src.server.models.registration import ModelLoadConfig
 from src.engine.ov_genai.streamers import ChunkStreamer
 
 logger = logging.getLogger(__name__)

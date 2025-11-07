@@ -10,7 +10,8 @@ from transformers import AutoTokenizer
 from optimum.intel import OVModelForCausalLM
 
 from src.server.models.optimum import RerankerConfig
-from src.server.model_registry import ModelLoadConfig, ModelRegistry
+from src.server.model_registry import ModelRegistry
+from src.server.models.registration import ModelLoadConfig
 
 class Optimum_RR:
     
