@@ -17,6 +17,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from pydantic import BaseModel
 
@@ -35,6 +36,34 @@ logger = logging.getLogger(__name__)
 # Initialize registries
 _registry = ModelRegistry()
 _workers = WorkerRegistry(_registry)
+
+# Request logging middleware
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        start_time = time.time()
+        client_ip = request.client.host if request.client else "unknown"
+        
+        # Log incoming request
+        logger.info(f"Request received: {request.method} {request.url.path} from {client_ip}")
+        
+        try:
+            response = await call_next(request)
+            process_time = time.time() - start_time
+            
+            # Log response
+            logger.info(
+                f"Request completed: {request.method} {request.url.path} "
+                f"status={response.status_code} duration={process_time:.3f}s"
+            )
+            
+            return response
+        except Exception as e:
+            process_time = time.time() - start_time
+            logger.error(
+                f"Request failed: {request.method} {request.url.path} "
+                f"error={str(e)} duration={process_time:.3f}s"
+            )
+            raise
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -68,6 +97,9 @@ app = FastAPI(lifespan=lifespan)
 # API key authentication
 API_KEY = os.getenv("OPENARC_API_KEY")
 security = HTTPBearer()
+
+# Add request logging middleware (before CORS so it logs all requests)
+app.add_middleware(RequestLoggingMiddleware)
 
 # Configure CORS
 app.add_middleware(
