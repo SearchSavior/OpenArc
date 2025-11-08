@@ -2,6 +2,7 @@
 """
 OpenArc CLI Tool - Command-line interface for OpenArc server operations.
 """
+import json
 import os
 import uuid
 from pathlib import Path
@@ -184,7 +185,7 @@ def cli(ctx):
     help='Device(s) to load the model on.')
 @click.option("--runtime-config", "--rtc",
     default=None,
-    help='OpenVINO runtime configuration (e.g., performance hints). These are checked serverside at runtime.')
+    help='OpenVINO runtime configuration as JSON string (e.g., \'{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}\').')
 @click.option('--vlm-type', '--vt',
     type=click.Choice(['internvl2', 'llava15', 'llavanext', 'minicpmv26', 'phi3vision', 'phi4mm', 'qwen2vl', 'qwen25vl', 'gemma3']),
     required=False,
@@ -199,6 +200,20 @@ def add(ctx, model_path, model_name, engine, model_type, device, runtime_config,
         console.print(f"[red]Model file check failed! {model_path} does not contain openvino model files OR your chosen path is malformed. Verify chosen path is correct and acquired model files match source on the hub, or the destination of converted model.[/red]")
         ctx.exit(1)
     
+    # Parse runtime_config if provided
+    parsed_runtime_config = {}
+    if runtime_config:
+        try:
+            parsed_runtime_config = json.loads(runtime_config)
+            if not isinstance(parsed_runtime_config, dict):
+                console.print(f"[red]Error: runtime_config must be a JSON object (dictionary), got {type(parsed_runtime_config).__name__}[/red]")
+                console.print('[yellow]Example format: \'{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}\'[/yellow]')
+                ctx.exit(1)
+        except json.JSONDecodeError as e:
+            console.print(f"[red]Error parsing runtime_config JSON:[/red] {e}")
+            console.print('[yellow]Example format: \'{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}\'[/yellow]')
+            ctx.exit(1)
+    
     # Build and save configuration
     load_config = {
         "model_name": model_name,
@@ -206,7 +221,7 @@ def add(ctx, model_path, model_name, engine, model_type, device, runtime_config,
         "model_type": model_type,  
         "engine": engine,    
         "device": device,
-        "runtime_config": runtime_config if runtime_config else {},
+        "runtime_config": parsed_runtime_config,
         "vlm_type": vlm_type if vlm_type else None
     }
     
