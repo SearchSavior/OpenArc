@@ -1,6 +1,8 @@
 # The first implementation of the OpenAI-like API was contributed by @gapeleon.
 # They are one hero among many future heroes working to make OpenArc better. 
 
+import asyncio
+import base64
 import datetime
 import json
 import logging
@@ -10,7 +12,11 @@ import time
 import traceback
 import uuid
 from contextlib import asynccontextmanager
+from io import BytesIO
+from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional, Union
+
+from PIL import Image
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -138,6 +144,176 @@ def parse_tool_calls(text: str) -> Optional[List[Dict[str, Any]]]:
             pass
     
     return tool_calls if tool_calls else None
+
+#===============================================================#
+# Utility Functions for Template Application and Tokenization
+#===============================================================#
+
+def _load_openarc_config() -> dict:
+    """Load openarc_config.json from project root."""
+    config_file = Path(__file__).parent.parent.parent / "openarc_config.json"
+    if not config_file.exists():
+        raise ValueError(f"Config not found: {config_file}")
+
+    with open(config_file) as f:
+        return json.load(f)
+
+
+def _process_vlm_messages(
+    messages: List[Dict[str, Any]],
+    vlm_type: str
+) -> List[Dict[str, Any]]:
+    """
+    Process multimodal messages for VLM models, extracting images and inserting vision tokens.
+
+    Args:
+        messages: OpenAI-format messages with potential image content
+        vlm_type: Vision token type (e.g., "qwen2vl", "llava15")
+
+    Returns:
+        Processed messages with vision tokens inserted
+
+    Raises:
+        ValueError: If unknown VLM type or invalid image format
+    """
+    from src.server.models.ov_genai import VLM_VISION_TOKENS
+
+    vision_token = VLM_VISION_TOKENS.get(vlm_type)
+    if not vision_token:
+        raise ValueError(f"Unknown VLM type: {vlm_type}. Supported: {list(VLM_VISION_TOKENS.keys())}")
+
+    processed_messages = []
+    image_count = 0
+
+    for message in messages:
+        content = message.get("content", "")
+
+        # Handle multimodal content (list format)
+        if isinstance(content, list):
+            text_parts = []
+            for item in content:
+                if isinstance(item, dict):
+                    if item.get("type") == "image_url":
+                        # Extract base64 image (we don't actually process it for template application)
+                        image_url = item.get("image_url", {})
+                        if isinstance(image_url, dict) and isinstance(image_url.get("url", ""), str):
+                            url = image_url["url"]
+                            if url.startswith("data:image/"):
+                                # Valid image data URL found
+                                image_count += 1
+
+                                # Insert vision token
+                                token_str = vision_token.replace("{i}", str(image_count - 1)) if "{i}" in vision_token else vision_token
+                                text_parts.append(f"{token_str}")
+                            else:
+                                logger.warning(f"[VLM] Non-data URL images not supported: {url[:50]}...")
+
+                    elif item.get("type") == "text":
+                        text_parts.append(item.get("text", ""))
+                    else:
+                        logger.warning(f"[VLM] Unknown content type: {item.get('type')}")
+
+            # Reconstruct message with text only
+            new_message = message.copy()
+            new_message["content"] = " ".join(text_parts)
+            processed_messages.append(new_message)
+        else:
+            # Text-only message
+            processed_messages.append(message)
+
+    logger.info(f"[VLM] Processed {len(messages)} messages, found {image_count} images")
+    return processed_messages
+
+
+async def load_tokenizer_for_model(model_path: str):
+    """
+    Load tokenizer from model path (async, cached by HuggingFace).
+
+    Args:
+        model_path: Path to model directory containing tokenizer files
+
+    Returns:
+        AutoTokenizer instance
+
+    Raises:
+        ValueError: If model path doesn't exist
+    """
+    from transformers import AutoTokenizer
+
+    if not Path(model_path).exists():
+        raise ValueError(f"Model path does not exist: {model_path}")
+
+    return await asyncio.to_thread(AutoTokenizer.from_pretrained, model_path)
+
+
+async def apply_chat_template_for_model(
+    model_path: str,
+    messages: List[Dict[str, Any]],
+    tools: Optional[List[Dict[str, Any]]] = None,
+    add_generation_prompt: bool = True,
+    chat_template_kwargs: Optional[Dict[str, Any]] = None,
+    vlm_type: Optional[str] = None
+) -> str:
+    """
+    Apply chat template to messages using the model's tokenizer.
+
+    Args:
+        model_path: Path to model directory
+        messages: OpenAI-format chat messages
+        tools: Optional tool definitions for function calling
+        add_generation_prompt: Whether to add generation prompt tag (e.g., <|assistant|>)
+        chat_template_kwargs: Additional parameters passed to template system
+        vlm_type: Optional VLM type for multimodal support (e.g., "qwen2vl", "gemma3")
+
+    Returns:
+        Formatted prompt string
+
+    Raises:
+        ValueError: If model path is invalid or tokenizer can't be loaded
+        RuntimeError: If chat template application fails
+    """
+    try:
+        # Process VLM messages if this is a multimodal model
+        if vlm_type:
+            messages = _process_vlm_messages(messages, vlm_type)
+
+        tokenizer = await load_tokenizer_for_model(model_path)
+
+        kwargs = chat_template_kwargs or {}
+        return tokenizer.apply_chat_template(
+            messages,
+            tools=tools if tools else None,
+            add_generation_prompt=add_generation_prompt,
+            tokenize=False,  # Return string, not token IDs
+            **kwargs
+        )
+    except Exception as e:
+        if isinstance(e, ValueError):
+            raise
+        raise RuntimeError(f"Failed to apply chat template: {str(e)}")
+
+
+async def tokenize_content(
+    model_path: str,
+    content: str,
+    add_special: bool = True
+) -> List[int]:
+    """
+    Tokenize text content and return token IDs.
+
+    Args:
+        model_path: Path to model directory
+        content: Text content to tokenize
+        add_special: Whether to add special tokens
+
+    Returns:
+        List of token IDs
+
+    Raises:
+        ValueError: If model path is invalid or tokenizer can't be loaded
+    """
+    tokenizer = await load_tokenizer_for_model(model_path)
+    return tokenizer.encode(content, add_special_tokens=add_special)
 
 #===============================================================#
 # Request Models
@@ -275,6 +451,29 @@ class RerankRequest(BaseModel):
     prefix:Optional[str] = None
     suffix:Optional[str] = None
     instruction:Optional[str] = None
+
+# Template application and tokenization endpoints (llama.cpp compatible)
+class ApplyTemplateRequest(BaseModel):
+    """Request model for /apply-template endpoint."""
+    model: Optional[str] = None
+    messages: List[Dict[str, Any]]
+    tools: Optional[List[Dict[str, Any]]] = None
+    add_generation_prompt: Optional[bool] = True
+    chat_template_kwargs: Optional[Dict[str, Any]] = {}
+
+class ApplyTemplateResponse(BaseModel):
+    """Response model for /apply-template endpoint."""
+    prompt: str
+
+class TokenizeRequest(BaseModel):
+    """Request model for /tokenize endpoint."""
+    model: Optional[str] = None
+    content: str
+    add_special: Optional[bool] = True
+
+class TokenizeResponse(BaseModel):
+    """Response model for /tokenize endpoint."""
+    tokens: List[int]
 
 @app.get("/v1/models", dependencies=[Depends(verify_api_key)])
 async def openai_list_models():
@@ -743,3 +942,171 @@ async def rerank(request: RerankRequest):
     except Exception as exc:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Reranking failed: {str(exc)}")
+
+#===============================================================#
+# Template Application and Tokenization Endpoints
+#===============================================================#
+
+@app.post("/apply-template", dependencies=[Depends(verify_api_key)])
+async def apply_template(request: ApplyTemplateRequest):
+    """
+    Apply chat template to messages without performing inference.
+
+    This endpoint formats OpenAI-compatible chat messages according to the model's
+    chat template, returning only the formatted prompt string. It matches the
+    llama.cpp /apply-template specification.
+
+    The endpoint works independently of model loading - it loads only the tokenizer
+    on-demand, making it lightweight and fast.
+
+    Returns:
+        {"prompt": "formatted prompt string"}
+
+    Raises:
+        400: Invalid request (missing messages, bad model path, etc.)
+        500: Template application failed
+    """
+    try:
+        # Load config to get model_path
+        config = _load_openarc_config()
+
+        # If model not specified, use first available model
+        if not request.model:
+            models = list(config.get("models", {}).keys())
+            if not models:
+                raise HTTPException(status_code=400, detail="No models configured")
+            request.model = models[0]
+            logger.info(f"[apply-template] No model specified, using first available: {request.model}")
+
+        model_config = config.get("models", {}).get(request.model)
+
+        if not model_config:
+            available_models = list(config.get("models", {}).keys())
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model '{request.model}' not found in configuration. Available models: {available_models}"
+            )
+
+        model_path = model_config.get("model_path")
+        if not model_path:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model '{request.model}' has no model_path configured"
+            )
+
+        # Get vlm_type for multimodal support (None for LLM-only models)
+        vlm_type = model_config.get("vlm_type")
+
+        # Apply chat template
+        formatted_prompt = await apply_chat_template_for_model(
+            model_path=model_path,
+            messages=request.messages,
+            tools=request.tools,
+            add_generation_prompt=request.add_generation_prompt,
+            chat_template_kwargs=request.chat_template_kwargs,
+            vlm_type=vlm_type
+        )
+
+        logger.info(
+            f"[apply-template] model={request.model} messages={len(request.messages)} "
+            f"tools={len(request.tools) if request.tools else 0} "
+            f"add_generation_prompt={request.add_generation_prompt} "
+            f"vlm_type={vlm_type or 'none'} "
+            f"prompt_length={len(formatted_prompt)}"
+        )
+
+        return {"prompt": formatted_prompt}
+
+    except ValueError as exc:
+        # User error (bad model, bad path, etc.)
+        raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError as exc:
+        # Template application error
+        raise HTTPException(status_code=500, detail=str(exc))
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as exc:
+        # Unexpected error
+        logger.error(f"[apply-template] Unexpected error: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Template application failed: {str(exc)}")
+
+
+@app.post("/v1/apply-template", dependencies=[Depends(verify_api_key)])
+async def apply_template_v1(request: ApplyTemplateRequest):
+    """OpenAI-style path alias for /apply-template."""
+    return await apply_template(request)
+
+
+@app.post("/tokenize", dependencies=[Depends(verify_api_key)])
+async def tokenize(request: TokenizeRequest):
+    """
+    Tokenize text content and return token IDs.
+
+    This endpoint tokenizes text using the model's tokenizer and returns
+    a list of token IDs. Useful for token counting, prompt analysis, and benchmarking.
+
+    Returns:
+        {"tokens": [list of token IDs]}
+
+    Raises:
+        400: Invalid request (missing content, bad model, etc.)
+        500: Tokenization failed
+    """
+    try:
+        # Load config to get model_path
+        config = _load_openarc_config()
+
+        # If model not specified, use first available model
+        if not request.model:
+            models = list(config.get("models", {}).keys())
+            if not models:
+                raise HTTPException(status_code=400, detail="No models configured")
+            request.model = models[0]
+            logger.info(f"[tokenize] No model specified, using first available: {request.model}")
+
+        model_config = config.get("models", {}).get(request.model)
+        if not model_config:
+            available_models = list(config.get("models", {}).keys())
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model '{request.model}' not found in configuration. Available models: {available_models}"
+            )
+
+        model_path = model_config.get("model_path")
+        if not model_path:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model '{request.model}' has no model_path configured"
+            )
+
+        # Tokenize content
+        tokens = await tokenize_content(
+            model_path=model_path,
+            content=request.content,
+            add_special=request.add_special
+        )
+
+        logger.info(
+            f"[tokenize] model={request.model} content_len={len(request.content)} "
+            f"tokens={len(tokens)} add_special={request.add_special}"
+        )
+
+        return {"tokens": tokens}
+
+    except ValueError as exc:
+        # User error (bad model, bad path, etc.)
+        raise HTTPException(status_code=400, detail=str(exc))
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as exc:
+        # Unexpected error
+        logger.error(f"[tokenize] Unexpected error: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Tokenization failed: {str(exc)}")
+
+
+@app.post("/v1/tokenize", dependencies=[Depends(verify_api_key)])
+async def tokenize_v1(request: TokenizeRequest):
+    """OpenAI-style path alias for /tokenize."""
+    return await tokenize(request)

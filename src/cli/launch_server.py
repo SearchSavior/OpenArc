@@ -96,6 +96,8 @@ def start_server(host: str = "0.0.0.0", openarc_port: int = 8001, reload: bool =
     logger.info("  - POST   /v1/audio/speech: Kokoro only")
     logger.info("  - POST   /v1/embeddings")
     logger.info("  - POST   /v1/rerank")
+    logger.info("  - POST   /v1/apply-template: llama.cpp compatible")
+    logger.info("  - POST   /v1/tokenize: llama.cpp compatible")
     
 
     uvicorn.run(
