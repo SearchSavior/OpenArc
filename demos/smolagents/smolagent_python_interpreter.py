@@ -7,7 +7,7 @@ def main():
     """Main entrypoint for interactive smolagent."""
     # Initialize the model using LiteLLM with OpenAI provider
     model = LiteLLMModel(
-        model_id="openai/qwen25vl-3b",
+        model_id="openai/Muse-12B",
         api_key=os.getenv("OPENARC_API_KEY"),
         api_base="http://localhost:8000/v1"
     )
@@ -51,7 +51,6 @@ def main():
             print(f"\n❌ Error: {e}\n")
             import traceback
             traceback.print_exc()
-
 
 if __name__ == "__main__":
     main()
