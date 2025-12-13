@@ -2,11 +2,11 @@ import openvino as ov
 from openvino_genai import GenerationConfig, LLMPipeline
 from transformers import AutoTokenizer
 
-model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/gpt-oss-ov/1"
+model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Qwen3-REAP-25B-A3B-int4_asym-ov"
 
 pipe = LLMPipeline(
     model_dir,       # Path to the model directory. Remember this will not pull from hub like in transformers
-    device="CPU"
+    device="GPU.0"
 
 )
 tokenizer = AutoTokenizer.from_pretrained(model_dir)
@@ -15,7 +15,7 @@ generation_config = GenerationConfig(
     max_new_tokens=128
 )
 
-prompt = "You're the fastest Llama this side of the equator. What's your favorite food? tell me now"
+prompt = "You're the fastest Llama this side of the equator. What's your favorite food? try to imagine"
 
 messages = [{"role": "user", "content": prompt}]
 # Build proper chat prompt for Qwen-style instruct models and get prompt_token_ids directly
