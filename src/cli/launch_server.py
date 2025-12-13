@@ -52,7 +52,7 @@ LOG_CONFIG = {
         },
         "uvicorn.access": {
             "handlers": ["access", "access_file"],
-            "level": "INFO",
+            "level": "WARNING",  # Disabled - using custom RequestLoggingMiddleware instead
             "propagate": False,
         },
     },

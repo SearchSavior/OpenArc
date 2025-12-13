@@ -1,7 +1,8 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
+from src.server.utils.chat import flatten_messages
 
 class OVGenAI_GenConfig(BaseModel):
     """
@@ -53,10 +54,16 @@ class OVGenAI_GenConfig(BaseModel):
         default=1,
         description="Stream chunk size in tokens. Must be greater than 0. If set > 1, stream output in chunks of this many tokens using ChunkStreamer."
     )
-    tools: List[Dict[str, Any]] = Field(
-        default=[],
-        description="List of tools/functions available to the model. Empty list by default."
+    tools: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="List of tools/functions available to the model. None by default."
     )
+
+    @property
+    def text_messages(self) -> List[Dict[str, Any]]:
+        """Messages with their `content` coerced to plain strings for text models."""
+
+        return flatten_messages(self.messages)
 
 class OVGenAI_WhisperGenConfig(BaseModel):
     audio_base64: str = Field(..., description="Base64 encoded audio")

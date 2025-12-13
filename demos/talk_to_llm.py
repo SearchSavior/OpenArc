@@ -1,6 +1,8 @@
 import base64
 import io
 import os
+import threading
+import time
 from typing import Optional
 
 import numpy as np
@@ -8,7 +10,6 @@ import requests
 import sounddevice as sd
 import soundfile as sf
 from openai import OpenAI
-from pynput import keyboard
 
 
 # Configuration
@@ -17,17 +18,34 @@ BASE_URL = "http://localhost:8000/v1"
 SAMPLE_RATE = 16000
 MODELS = {
     "whisper": "whisper",
-    "llm": "Cydonia-24B",
+    "llm": "Muse-12B",
     "tts": "kokoro"
 }
 TTS_CONFIG = {
-    "voice": "af_sarah",
+    "voice": "af_heart",
     "speed": 1.25,
     "language": "a",
     "response_format": "wav"
 }
-# SYSTEM_PROMPT = "You are a text adventure model. Your job is to keep the story moving forward in a natural way. Use the second person when referring to the users actions. Try not to present choices- instead, describe the situation, and use language to communicate where the story has potential to go."
-SYSTEM_PROMPT = "You are a text adventure game narrator. Write all narration in second person (you). Keep responses brief (2-4 paragraphs max) and always end with a vivid situation that invites action. Never stall—always introduce new developments, encounters, or complications. Describe what the player sees, hears, and can interact with. When the player acts, show immediate consequences and move the story forward. Maintain consistent world rules and remember previous events. Let players decide their own actions—describe the scene, not the options."
+LLM_CONFIG = {
+    "temperature": 0.8,
+    "max_tokens": 16384,
+    "top_p": 1.0,
+    "repetition_penalty": 1.05
+}
+
+SYSTEM_PROMPT = """
+# COMMISION: 
+- You're a masterful adventure gamemaster. 
+- ALways make the story interactive, and dont tell to much.
+- Use second person (you are)
+
+## STYLE
+Any time the user harms a character it should be very violent; executions are always brutal.
+
+## Player
+My name is Leandro.
+"""
 
 def initialize_client() -> OpenAI:
     """Initialize OpenAI client with OpenArc server."""
@@ -36,54 +54,110 @@ def initialize_client() -> OpenAI:
     return OpenAI(api_key=API_KEY, base_url=BASE_URL)
 
 def record_audio() -> tuple[Optional[np.ndarray], bool]:
-    """Record audio from microphone until spacebar is released or ESC is pressed.
+    """Record audio from microphone using terminal input (works in remote desktop).
+    
+    Press ENTER to start recording, press ENTER again to stop.
+    Type 'q' + ENTER to quit.
     
     Returns:
         Tuple of (audio_data, exit_program)
     """
     recording = []
-    is_recording = False
+    recording_lock = threading.Lock()
+    is_recording = threading.Event()
     exit_program = False
+    recording_stopped = threading.Event()
     
-    def on_press(key):
-        nonlocal is_recording, recording
-        if key == keyboard.Key.space and not is_recording:
-            is_recording = True
-            recording = []
-            print("\n🎤 Recording... (release spacebar to stop)")
-    
-    def on_release(key):
-        nonlocal is_recording, exit_program
-        if key == keyboard.Key.space and is_recording:
-            is_recording = False
-            print("⏹️  Recording stopped. Processing...")
-            return False
-        elif key == keyboard.Key.esc:
-            print("\n❌ Exiting conversation")
-            exit_program = True
-            return False
-    
-    print("\nPress and hold SPACEBAR to record your message (ESC to exit)")
+    print("\n" + "="*60)
+    print("  🎤 Audio Recording Control")
+    print("="*60)
+    print("  [ENTER] - Start/Stop recording")
+    print("  [q + ENTER] - Quit conversation")
+    print("="*60)
     
     def audio_callback(indata, frames, time, status):
-        if is_recording:
-            recording.append(indata.copy())
+        if status:
+            print(f"Audio callback status: {status}")
+        if is_recording.is_set():
+            with recording_lock:
+                recording.append(indata.copy())
     
-    # Record audio
-    stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=1, callback=audio_callback)
-    stream.start()
+    def input_thread():
+        """Thread that waits for user input."""
+        nonlocal exit_program, recording_stopped
+        
+        while not recording_stopped.is_set():
+            try:
+                if not is_recording.is_set():
+                    # Waiting to start recording
+                    print("\nPress ENTER to start recording (or 'q' + ENTER to quit)...")
+                else:
+                    # Recording in progress
+                    print("\n🎤 Recording... Press ENTER to stop...")
+                
+                user_text = input().strip().lower()
+                
+                if user_text == 'q':
+                    print("\n❌ Exiting conversation")
+                    exit_program = True
+                    is_recording.clear()
+                    recording_stopped.set()
+                    break
+                elif not is_recording.is_set():
+                    # Start recording
+                    with recording_lock:
+                        recording.clear()
+                    is_recording.set()
+                    print("\n🎤 Recording started!")
+                else:
+                    # Stop recording
+                    is_recording.clear()
+                    recording_stopped.set()
+                    print("\n⏹️  Recording stopped. Processing...")
+                    break
+            except (EOFError, KeyboardInterrupt):
+                exit_program = True
+                is_recording.clear()
+                recording_stopped.set()
+                break
     
-    with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
-        listener.join()
+    # Start audio stream
+    try:
+        stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=1, callback=audio_callback)
+        stream.start()
+        # Give stream a moment to initialize
+        time.sleep(0.1)
+    except Exception as e:
+        print(f"Error starting audio stream: {e}")
+        print("Available audio devices:")
+        print(sd.query_devices())
+        return None, False
     
-    stream.stop()
-    stream.close()
+    # Start input thread
+    input_handler = threading.Thread(target=input_thread, daemon=True)
+    input_handler.start()
+    
+    try:
+        # Wait for recording to stop or exit
+        recording_stopped.wait()
+    finally:
+        stream.stop()
+        stream.close()
     
     # Convert to numpy array if audio was recorded
-    if not recording:
+    with recording_lock:
+        recording_copy = recording.copy()
+    
+    if exit_program:
         return None, exit_program
     
-    audio_data = np.concatenate(recording, axis=0)
+    if not recording_copy or len(recording_copy) == 0:
+        print("Warning: No audio data was recorded")
+        return None, exit_program
+    
+    print(f"Recorded {len(recording_copy)} audio chunks")
+    audio_data = np.concatenate(recording_copy, axis=0)
+    print(f"Total audio length: {len(audio_data) / SAMPLE_RATE:.2f} seconds")
     return audio_data, exit_program
 
 def encode_audio_to_base64(audio_data: np.ndarray) -> str:
@@ -114,17 +188,28 @@ def transcribe_audio(client: OpenAI, audio_b64: str) -> tuple[str, dict]:
     metrics = response.get("metrics", {})
     return text, metrics
 
-def get_llm_response(client: OpenAI, messages: list[dict]) -> str:
+def get_llm_response(messages: list[dict]) -> str:
     """Get response from LLM."""
     print("\n🤖 Thinking...")
-    response = client.chat.completions.create(
-        model=MODELS["llm"],
-        messages=messages,
-        stream=False,
-        max_tokens=16384
-    )
     
-    full_response = response.choices[0].message.content
+    # Use direct HTTP request to ensure custom parameters (repetition_penalty, top_k) are sent correctly
+    url = f"{BASE_URL}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "model": MODELS["llm"],
+        "messages": messages,
+        "stream": False,
+        **LLM_CONFIG
+    }
+    
+    response = requests.post(url, headers=headers, json=data)
+    response.raise_for_status()
+    result = response.json()
+    
+    full_response = result["choices"][0]["message"]["content"]
     print(f"\nLLM Response:\n{full_response}\n")
     
     return full_response
@@ -198,7 +283,7 @@ def talk_to_llm():
             
             # Get LLM response
             messages.append({"role": "user", "content": text})
-            llm_response = get_llm_response(client, messages)
+            llm_response = get_llm_response(messages)
             
             if llm_response.strip():
                 messages.append({"role": "assistant", "content": llm_response})

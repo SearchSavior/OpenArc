@@ -275,7 +275,7 @@ Review [pipeline-paralellism preview](https://docs.openvino.ai/2025/openvino-wor
 ### Multi-GPU Pipeline Paralell
 
 ```
-openarc add --model-name <model-name> --model-path <path/to/model> --engine ovgenai --model-type llm --device <HETERO:GPU.0,GPU.1> --runtime-config {"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}
+openarc add --model-name <model-name> --model-path <path/to/model> --engine ovgenai --model-type llm --device HETERO:GPU.0,GPU.1 --runtime-config "{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}"
 ```
 
 ### Tensor Paralell (CPU only)
@@ -283,14 +283,14 @@ openarc add --model-name <model-name> --model-path <path/to/model> --engine ovge
 Requires more than one CPU socket in a single node.
 
 ```
-openarc add --model-name <model-name> --model-path <path/to/model> --engine ovgenai --model-type llm --device CPU --runtime-config {"MODEL_DISTRIBUTION_POLICY": "TENSOR_PARALLEL"}
+openarc add --model-name <model-name> --model-path <path/to/model> --engine ovgenai --model-type llm --device CPU --runtime-config "{"MODEL_DISTRIBUTION_POLICY": "TENSOR_PARALLEL"}"
 ```
 ---
 
 ### Hybrid Mode/CPU Offload
 
 ```
-openarc add --model-name <model-name> -model-path <path/to/model> --engine ovgenai --model-type llm --device <HETERO:GPU.0,CPU> --runtime-config {"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}
+openarc add --model-name <model-name> -model-path <path/to/model> --engine ovgenai --model-type llm --device HETERO:GPU.0,CPU --runtime-config "{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}"
 ```
 
 </details>

@@ -4,7 +4,7 @@ from transformers import AutoProcessor, TextStreamer
 from optimum.intel.openvino import OVModelForVisualCausalLM
 
 
-model_id = "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Qwen2.5-VL-7B-Instruct-int4_sym-ov"
+model_id = "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Apriel-1.5-15b-Thinker-int4_asym-ov"
 
 ov_config = {"PERFORMANCE_HINT": "LATENCY"}
 

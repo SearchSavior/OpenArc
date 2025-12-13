@@ -5,8 +5,8 @@ from transformers import AutoTokenizer
 from typing import List
 
 # Define model paths
-draft_model_path = r"/mnt/Ironwolf-4TB/Models/OpenVINO/Phi/Phi-4-mini-FastDraft-120M-int8-ov"
-main_model_path = r"/mnt/Ironwolf-4TB/Models/OpenVINO/Phi/Phi-4-mini-instruct-int4_asym-awq-se-ov"
+draft_model_path = r"/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Qwen3-pruned-6L-from-0.6B-int8-ov"
+main_model_path = r"/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Qwen3-30B-A3B-Instruct-2507-int4_asym-ov"
 
 # Initialize tokenizers for accurate token counting
 print("Loading tokenizers...")
@@ -35,13 +35,13 @@ test_prompts = [
 ]
 
 config = ov_genai.GenerationConfig()
-config.num_assistant_tokens = 5
+config.num_assistant_tokens = 64
 config.max_new_tokens = 128
 config.apply_chat_template = False
 # config.assistant_confidence_threshold = 0.05
 
-main_device = "GPU.0"
-draft_device = "CPU"
+main_device = "CPU"
+draft_device = "GPU.0"
 
 def count_tokens(text: str) -> int:
     """Count tokens in text using the model's tokenizer"""

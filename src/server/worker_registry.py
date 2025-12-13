@@ -18,7 +18,8 @@ from src.engine.optimum.optimum_rr import Optimum_RR
 from src.server.models.openvino import OV_KokoroGenConfig
 from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
 from src.server.models.optimum import PreTrainedTokenizerConfig, RerankerConfig
-from src.server.model_registry import ModelRecord, ModelRegistry, ModelType
+from src.server.model_registry import ModelRecord, ModelRegistry
+from src.server.models.registration import ModelType
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

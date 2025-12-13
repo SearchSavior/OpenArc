@@ -16,7 +16,8 @@ from src.server.models.optimum import PreTrainedTokenizerConfig
 
 from typing import Any, AsyncIterator, Dict
 
-from src.server.model_registry import ModelLoadConfig, ModelRegistry
+from src.server.model_registry import ModelRegistry
+from src.server.models.registration import ModelLoadConfig
 
 
 

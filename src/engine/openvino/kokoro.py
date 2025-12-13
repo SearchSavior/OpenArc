@@ -18,7 +18,8 @@ import torch
 from kokoro.model import KModel
 
 
-from src.server.model_registry import ModelLoadConfig, ModelRegistry
+from src.server.model_registry import ModelRegistry
+from src.server.models.registration import ModelLoadConfig
 from src.server.models.openvino import KokoroLanguage, KokoroVoice, OV_KokoroGenConfig
 
 

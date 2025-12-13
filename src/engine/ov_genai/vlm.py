@@ -4,7 +4,7 @@ import gc
 
 import logging
 from io import BytesIO
-from typing import Any, AsyncIterator, Dict, List, Tuple, Union
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import openvino as ov
@@ -16,7 +16,9 @@ from PIL import Image
 from transformers import AutoTokenizer
 
 from src.server.models.ov_genai import OVGenAI_GenConfig, VLM_VISION_TOKENS
-from src.server.model_registry import ModelLoadConfig, ModelRegistry
+from src.server.utils.chat import flatten_message_content
+from src.server.model_registry import ModelRegistry
+from src.server.models.registration import ModelLoadConfig
 from src.engine.ov_genai.streamers import ChunkStreamer
 
 logger = logging.getLogger(__name__)
@@ -42,7 +44,7 @@ class OVGenAI_VLM:
 
     def prepare_inputs(self,
         messages: List[Dict[str, Any]],
-        tools: List[Dict[str, Any]] = []
+        tools: Optional[List[Dict[str, Any]]] = None
     ) -> Tuple[str, List[ov.Tensor]]:
         """
         Parse a messages list and prepare text prompt + image tensors for VLM inference.
@@ -92,21 +94,23 @@ class OVGenAI_VLM:
 
                 # Combine extracted text back into a unified string
                 text_message = message.copy()
-                text_message["content"] = (
+                text_message["content"] = flatten_message_content(
                     " ".join([t for t in text_parts if isinstance(t, str)]) if text_parts else ""
                 )
                 text_messages.append(text_message)
 
             # Simple text-only message
             else:
-                text_messages.append(message)
+                text_messages.append(
+                    {**message, "content": flatten_message_content(message.get("content"))}
+                )
 
         # Step 2: Build the chat template prompt using cached tokenizer
         tokenizer = self.tokenizer
         tokenized_messages: str = tokenizer.apply_chat_template(
             text_messages,
             tokenize=False,
-            tools=tools if tools else None,
+            tools=tools,
             add_generation_prompt=True
         )
 
