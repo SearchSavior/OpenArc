@@ -1,0 +1,198 @@
+# ============================================================================
+# OpenARC Docker - Clean Production Build
+# ============================================================================
+# This Dockerfile is designed to be minimal and bloat-free for OpenARC
+#
+# KEY PRINCIPLES:
+# 1. NO IPEX - OpenARC uses OpenVINO GenAI, not PyTorch inference
+# 2. NO CUDA/NVIDIA dependencies - CPU PyTorch wheel has ZERO CUDA deps
+# 3. Minimal layers - each RUN combines related operations
+# 4. Explicit ordering - dependencies installed in correct sequence
+# ============================================================================
+
+FROM ubuntu:24.04
+
+# Avoid interactive prompts during build
+ENV DEBIAN_FRONTEND=noninteractive
+
+# ============================================================================
+# System Dependencies - Single Layer
+# ============================================================================
+RUN apt-get update && apt-get install -y \
+    # Core utilities
+    ca-certificates \
+    curl \
+    git \
+    gpg \
+    gpg-agent \
+    wget \
+    # Python essentials
+    python3 \
+    python3-venv \
+    python3-dev \
+    python3-pip \
+    && \
+    # Setup python symlink
+    update-alternatives --install /usr/bin/python python /usr/bin/python3 1 && \
+    # Cleanup
+    rm -rf /var/lib/apt/lists/*
+
+# ============================================================================
+# Intel GPU Drivers - Single Layer
+# ============================================================================
+RUN wget -qO - https://repositories.intel.com/gpu/intel-graphics.key | \
+    gpg --dearmor --output /usr/share/keyrings/intel-graphics.gpg && \
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://repositories.intel.com/gpu/ubuntu noble client" | \
+    tee /etc/apt/sources.list.d/intel-gpu-noble.list && \
+    apt-get update && apt-get install -y \
+    intel-opencl-icd \
+    intel-level-zero-gpu \
+    level-zero \
+    level-zero-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# ============================================================================
+# Application Setup
+# ============================================================================
+WORKDIR /app
+
+# Clone OpenArc - pulls latest from main (includes v2.0.2+)
+RUN git clone https://github.com/SearchSavior/OpenArc.git . && \
+    git log --oneline -1
+
+# ============================================================================
+# Python Dependencies - Carefully Ordered
+# ============================================================================
+
+# STEP 1: Install vanilla PyTorch (CPU-only)
+# This wheel contains ZERO CUDA/NVIDIA dependencies
+# Confirmed: https://download.pytorch.org/whl/cpu contains pure CPU builds
+RUN pip install --break-system-packages \
+    torch \
+    torchvision \
+    --index-url https://download.pytorch.org/whl/cpu
+
+# STEP 2: Install OpenVINO GenAI (nightly for latest Arc GPU support)
+# This is the actual inference engine OpenARC uses
+RUN pip install --break-system-packages --pre -U \
+    openvino-genai \
+    openvino-tokenizers \
+    --extra-index-url https://storage.openvinotoolkit.org/simple/wheels/nightly
+
+# STEP 3: Install optimum-intel with OpenVINO extras
+# This brings in openvino, nncf, and other optimization tools
+# Installing from git ensures latest bug fixes
+RUN pip install --break-system-packages \
+    "optimum-intel[openvino] @ git+https://github.com/huggingface/optimum-intel"
+
+# STEP 4: Install OpenArc application dependencies
+# From OpenArc's pyproject.toml
+RUN pip install --break-system-packages \
+    click>=8.2.1 \
+    ddgs>=9.6.1 \
+    fastapi>=0.116.1 \
+    "huggingface-hub[cli]>=0.33.4" \
+    ipykernel>=7.0.1 \
+    ipywidgets>=8.1.7 \
+    kokoro>=0.9.4 \
+    librosa>=0.11.0 \
+    "misaki[en]>=0.9.4" \
+    "openai>1.109.1" \
+    pydantic>=2.11.7 \
+    pynput>=1.8.1 \
+    pyyaml>=6.0.2 \
+    rich-click>=1.8.9 \
+    sounddevice>=0.5.2 \
+    soundfile>=0.13.1 \
+    uvicorn>=0.35.0
+
+# STEP 5: Install OpenArc itself (no deps - already installed)
+RUN pip install --break-system-packages --no-deps -e .
+
+# ============================================================================
+# Version Logging
+# ============================================================================
+
+# Capture installed versions at build time for runtime display
+RUN echo "=== Build Information ===" > /app/BUILD_INFO.txt && \
+    echo "Build Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> /app/BUILD_INFO.txt && \
+    echo "OpenARC Version: $(git describe --tags --always)" >> /app/BUILD_INFO.txt && \
+    echo "" >> /app/BUILD_INFO.txt && \
+    echo "=== Intel Package Versions ===" >> /app/BUILD_INFO.txt && \
+    pip list --format=freeze | grep -E "(openvino|optimum|torch)" >> /app/BUILD_INFO.txt && \
+    echo "" >> /app/BUILD_INFO.txt && \
+    echo "=== System Package Versions ===" >> /app/BUILD_INFO.txt && \
+    dpkg -l | grep -E "intel-opencl|level-zero" | awk '{print $2 " " $3}' >> /app/BUILD_INFO.txt
+
+# ============================================================================
+# Runtime Configuration
+# ============================================================================
+
+# Create persistent config directory and symlink
+RUN mkdir -p /persist && \
+    ln -sf /persist/openarc_config.json /app/openarc_config.json
+
+# Intel GPU environment variables
+ENV NEOReadDebugKeys=1
+ENV OverrideGpuAddressSpace=48
+ENV EnableImplicitScaling=1
+
+# Application defaults
+ENV OPENARC_API_KEY=openarc-default-key
+ENV OPENARC_AUTOLOAD_MODEL=""
+
+# Create startup script with proper health check loop (race condition fix)
+RUN echo '#!/bin/bash\n\
+set -e\n\
+\n\
+echo "================================================"\n\
+echo "=== Starting OpenArc Server ==="\n\
+echo "================================================"\n\
+echo ""\n\
+\n\
+# Display build information\n\
+if [ -f /app/BUILD_INFO.txt ]; then\n\
+  cat /app/BUILD_INFO.txt\n\
+  echo ""\n\
+fi\n\
+\n\
+echo "=== Runtime Configuration ==="\n\
+echo "Port: 8000"\n\
+echo "API Key: ${OPENARC_API_KEY:0:10}..."\n\
+echo "Auto-load Model: ${OPENARC_AUTOLOAD_MODEL:-none}"\n\
+echo ""\n\
+echo "================================================"\n\
+echo ""\n\
+\n\
+# Start server in background\n\
+openarc serve start --host 0.0.0.0 --openarc-port 8000 &\n\
+SERVER_PID=$!\n\
+\n\
+# Auto-load model if specified\n\
+if [ -n "$OPENARC_AUTOLOAD_MODEL" ]; then\n\
+  echo "Waiting for server to start..."\n\
+  # Wait for server to actually be ready (race condition fix)\n\
+  for i in {1..30}; do\n\
+    if curl -s -f -H "Authorization: Bearer ${OPENARC_API_KEY}" http://localhost:8000/v1/models > /dev/null 2>&1; then\n\
+      echo "Server ready after $i seconds"\n\
+      break\n\
+    fi\n\
+    sleep 1\n\
+  done\n\
+  echo "Auto-loading model: $OPENARC_AUTOLOAD_MODEL"\n\
+  openarc load "$OPENARC_AUTOLOAD_MODEL" || echo "Failed to auto-load model"\n\
+fi\n\
+\n\
+# Wait for server\n\
+wait $SERVER_PID\n\
+' > /usr/local/bin/start-openarc.sh && \
+chmod +x /usr/local/bin/start-openarc.sh
+
+EXPOSE 8000
+
+# Healthcheck with API key authentication
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+  CMD curl -f -H "Authorization: Bearer ${OPENARC_API_KEY}" http://localhost:8000/v1/models || exit 1
+
+# Use CMD instead of ENTRYPOINT so commands can be overridden
+CMD ["/usr/local/bin/start-openarc.sh"]
