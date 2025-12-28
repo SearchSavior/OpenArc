@@ -38,7 +38,12 @@ class OpenAICompletionRequest(BaseModel):
 
 class OpenAIWhisperRequest(BaseModel):
     model: str
-    audio_base64: str
+    audio_base64: Optional[str] = None  # For internal use only
+    language: Optional[str] = None
+    prompt: Optional[str] = None
+    response_format: Optional[str] = "json"
+    temperature: Optional[float] = 0.0
+
 
 
 class OpenAIKokoroRequest(BaseModel):
