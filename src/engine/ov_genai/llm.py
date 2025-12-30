@@ -4,6 +4,7 @@ import logging
 from typing import Any, AsyncIterator, Dict, List, Optional, Union
 
 import openvino as ov
+import openvino_genai
 from openvino_genai import (
     GenerationConfig,
     LLMPipeline,
@@ -85,6 +86,21 @@ class OVGenAI_LLM:
             repetition_penalty=gen_config.repetition_penalty,
         )
 
+        # Add speculative decoding parameters (mutually exclusive per OpenVINO docs)
+        import os
+        if gen_config.num_assistant_tokens is not None:
+            generation_kwargs.num_assistant_tokens = gen_config.num_assistant_tokens
+        elif gen_config.assistant_confidence_threshold is not None:
+            generation_kwargs.assistant_confidence_threshold = gen_config.assistant_confidence_threshold
+        elif getattr(self, 'draft_model_loaded', False):
+            if self.model_num_assistant_tokens is not None:
+                generation_kwargs.num_assistant_tokens = self.model_num_assistant_tokens
+            elif self.model_assistant_confidence_threshold is not None:
+                generation_kwargs.assistant_confidence_threshold = self.model_assistant_confidence_threshold
+            else:
+                default_tokens = int(os.getenv('OPENARC_DEFAULT_NUM_ASSISTANT_TOKENS', '3'))
+                generation_kwargs.num_assistant_tokens = default_tokens
+        
         # Support pre-encoded input_ids, raw prompts, and chat messages
         if gen_config.input_ids:
             # Pre-encoded input IDs (used by /openarc/bench endpoint for benchmarking)
@@ -200,10 +216,36 @@ class OVGenAI_LLM:
         logger.info(f"{loader.model_name} loading...")
         logger.info(f"{loader.model_type} on {loader.device} with {loader.runtime_config}")
 
+        # Load draft model for speculative decoding if provided
+        draft_model = None
+        if loader.draft_model_path:
+            try:
+                draft_model = openvino_genai.draft_model(
+                    loader.draft_model_path,
+                    loader.draft_device
+                )
+                logger.info(f"Loaded draft model from {loader.draft_model_path} on {loader.draft_device}")
+                self.draft_model_loaded = True
+                self.model_num_assistant_tokens = loader.num_assistant_tokens
+                self.model_assistant_confidence_threshold = loader.assistant_confidence_threshold
+            except Exception as e:
+                logger.warning(f"Failed to load draft model: {e}, continuing without speculative decoding")
+                self.draft_model_loaded = False
+                self.model_num_assistant_tokens = None
+                self.model_assistant_confidence_threshold = None
+        else:
+            self.draft_model_loaded = False
+            self.model_num_assistant_tokens = None
+            self.model_assistant_confidence_threshold = None
+        
+        pipeline_kwargs = {**(loader.runtime_config or {})}
+        if draft_model is not None:
+            pipeline_kwargs['draft_model'] = draft_model
+        
         self.model = LLMPipeline(
             loader.model_path,
             loader.device,
-            **(loader.runtime_config or {})
+            **pipeline_kwargs
         )
 
         self.encoder_tokenizer = AutoTokenizer.from_pretrained(loader.model_path)
