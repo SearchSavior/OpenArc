@@ -68,7 +68,7 @@ class ModelLoadConfig(BaseModel):
     vlm_type: Optional[str] = Field(
         default=None,
         description=f"Vision token type for VLM models. Supported: {list(VLM_VISION_TOKENS.keys())}"
-    )
+        )
     engine: EngineType = Field(...)
     device: str = Field(
         ...,
@@ -79,6 +79,23 @@ class ModelLoadConfig(BaseModel):
     runtime_config: Dict[str, Any] = Field(
         default_factory=dict,
         description="Optional OpenVINO runtime properties.")
+
+    draft_model_path: Optional[str] = Field(
+        default=None,
+        description="Path to draft model for speculative decoding. Enables 1.3-1.4x speedup."
+        )
+    draft_device: Optional[str] = Field(
+        default="CPU",
+        description="Device for draft model (CPU, GPU, GPU.0, GPU.1)"
+        )
+    num_assistant_tokens: Optional[int] = Field(
+        default=None,
+        description="Default num_assistant_tokens for speculative decoding with this model"
+        )
+    assistant_confidence_threshold: Optional[float] = Field(
+        default=None,
+        description="Default assistant_confidence_threshold for speculative decoding with this model"
+        )
     
     @field_validator('vlm_type')
     @classmethod
