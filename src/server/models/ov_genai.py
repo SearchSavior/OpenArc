@@ -45,6 +45,15 @@ class OVGenAI_GenConfig(BaseModel):
         default=1.0,
         description="Penalty for repeating tokens."
     )
+
+    num_assistant_tokens: Optional[int] = Field(
+        default=None,
+        description="Number of tokens draft model generates per step (typically 2-5)"
+    )
+    assistant_confidence_threshold: Optional[float] = Field(
+        default=None,
+        description="Confidence threshold for accepting draft tokens (typically 0.3-0.5)"
+    )
     
     stream: bool = Field(
         default=False,
