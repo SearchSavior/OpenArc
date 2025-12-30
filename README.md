@@ -293,6 +293,14 @@ openarc add --model-name <model-name> --model-path <path/to/model> --engine ovge
 openarc add --model-name <model-name> -model-path <path/to/model> --engine ovgenai --model-type llm --device HETERO:GPU.0,CPU --runtime-config "{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}"
 ```
 
+### Speculative Decoding
+
+```
+openarc add --model-name <model-name> --model-path <path/to/model> --engine ovgenai --model-type llm --device GPU.0 --draft-model-path <path/to/draftmodel> --draft-device CPU --num-assistant-tokens 5
+```
+
+
+
 </details>
 
 
