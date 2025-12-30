@@ -9,10 +9,11 @@ import re
 import time
 import traceback
 import uuid
+import base64
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Dict, List, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, File, Form, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -550,21 +551,50 @@ async def openai_completions(request: OpenAICompletionRequest):
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Completion failed: {str(exc)}")
-
 @app.post("/v1/audio/transcriptions", dependencies=[Depends(verify_api_key)])
-async def openai_audio_transcriptions(request: OpenAIWhisperRequest):
+async def openai_audio_transcriptions(
+    file: UploadFile = File(..., description="The audio file to transcribe"),
+    model: str = Form(..., description="ID of the model to use"),
+    language: Optional[str] = Form(None, description="Language of the input audio"),
+    prompt: Optional[str] = Form(None, description="Optional text to guide the model"),
+    response_format: Optional[str] = Form("json", description="Format of output"),
+    temperature: Optional[float] = Form(0.0, description="Sampling temperature")
+):
     try:
-        gen_config = OVGenAI_WhisperGenConfig(audio_base64=request.audio_base64)
-        result = await _workers.transcribe_whisper(request.model, gen_config)
+        # Read the uploaded audio file
+        audio_bytes = await file.read()
+
+        # Convert to base64 for internal processing
+        audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
+
+        # Create generation config with base64 audio
+        gen_config = OVGenAI_WhisperGenConfig(audio_base64=audio_base64)
+
+        # Process transcription
+        result = await _workers.transcribe_whisper(model, gen_config)
         metrics = result.get("metrics", {})
-        
-        logger.info(f"[audio/transcriptions] model={request.model} metrics={metrics}")
-        
-        return {"text": result.get("text", ""), "metrics": metrics}
+
+        logger.info(f"[audio/transcriptions] model={model} metrics={metrics}")
+
+        # Return based on response_format
+        if response_format == "json":
+            return {"text": result.get("text", "")}
+        elif response_format == "verbose_json":
+            return {
+                "text": result.get("text", ""),
+                "language": language,
+                "duration": metrics.get("duration"),
+                "metrics": metrics
+            }
+        else:  # text, srt, vtt
+            return result.get("text", "")
+
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
+        logger.error(f"Transcription failed: {exc}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Transcription failed: {str(exc)}")
+
 
 @app.post("/v1/audio/speech", dependencies=[Depends(verify_api_key)])
 async def openai_audio_speech(request: OpenAIKokoroRequest):
