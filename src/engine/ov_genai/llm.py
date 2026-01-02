@@ -226,8 +226,21 @@ class OVGenAI_LLM:
                 )
                 logger.info(f"Loaded draft model from {loader.draft_model_path} on {loader.draft_device}")
                 self.draft_model_loaded = True
-                self.model_num_assistant_tokens = loader.num_assistant_tokens
-                self.model_assistant_confidence_threshold = loader.assistant_confidence_threshold
+                
+                # Ensure we always have exactly one parameter set (XOR requirement)
+                if loader.num_assistant_tokens is not None:
+                    self.model_num_assistant_tokens = loader.num_assistant_tokens
+                    self.model_assistant_confidence_threshold = None
+                elif loader.assistant_confidence_threshold is not None:
+                    self.model_num_assistant_tokens = None
+                    self.model_assistant_confidence_threshold = loader.assistant_confidence_threshold
+                else:
+                    import os
+                    default_tokens = int(os.getenv('OPENARC_DEFAULT_NUM_ASSISTANT_TOKENS', '3'))
+                    self.model_num_assistant_tokens = default_tokens
+                    self.model_assistant_confidence_threshold = None
+                    logger.info(f"Using default num_assistant_tokens={default_tokens} for speculative decoding")
+                    
             except Exception as e:
                 logger.warning(f"Failed to load draft model: {e}, continuing without speculative decoding")
                 self.draft_model_loaded = False
