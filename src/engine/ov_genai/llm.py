@@ -136,6 +136,21 @@ class OVGenAI_LLM:
             repetition_penalty=gen_config.repetition_penalty
         )
 
+        # Add speculative decoding parameters (mutually exclusive per OpenVINO docs)
+        import os
+        if gen_config.num_assistant_tokens is not None:
+            generation_kwargs.num_assistant_tokens = gen_config.num_assistant_tokens
+        elif gen_config.assistant_confidence_threshold is not None:
+            generation_kwargs.assistant_confidence_threshold = gen_config.assistant_confidence_threshold
+        elif getattr(self, 'draft_model_loaded', False):
+            if self.model_num_assistant_tokens is not None:
+                generation_kwargs.num_assistant_tokens = self.model_num_assistant_tokens
+            elif self.model_assistant_confidence_threshold is not None:
+                generation_kwargs.assistant_confidence_threshold = self.model_assistant_confidence_threshold
+            else:
+                default_tokens = int(os.getenv('OPENARC_DEFAULT_NUM_ASSISTANT_TOKENS', '3'))
+                generation_kwargs.num_assistant_tokens = default_tokens
+        
         decoder_tokenizer = self.model.get_tokenizer()
         streamer = ChunkStreamer(decoder_tokenizer, gen_config)
         
@@ -147,6 +162,13 @@ class OVGenAI_LLM:
             # Chat template tokenization for messages (used by /v1/chat/completions endpoint)
             prompt_token_ids = self.prepare_inputs(gen_config.messages, gen_config.tools)
 
+        # DEBUG: Log what we're about to send
+        logger.error(f"[DEBUG] draft_model_loaded: {getattr(self, 'draft_model_loaded', False)}")
+        logger.error(f"[DEBUG] self.model_num_assistant_tokens: {getattr(self, 'model_num_assistant_tokens', 'NOT SET')}")
+        logger.error(f"[DEBUG] generation_kwargs.num_assistant_tokens: {getattr(generation_kwargs, 'num_assistant_tokens', 'NOT SET')}")
+        logger.error(f"[DEBUG] generation_kwargs.assistant_confidence_threshold: {getattr(generation_kwargs, 'assistant_confidence_threshold', 'NOT SET')}")
+
+        
         async def _run_generation():
             return await asyncio.to_thread(
                 self.model.generate,
