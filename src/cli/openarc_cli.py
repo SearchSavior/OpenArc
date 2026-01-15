@@ -427,11 +427,20 @@ def list_configs(ctx, remove, model_name):
         
 
         config_table.add_row("model_name", f"[cyan]{model_name}[/cyan]")
+        config_table.add_row("model_path", f"[yellow]{model_config.get('model_path')}[/yellow]")
         config_table.add_row("device", f"[blue]{model_config.get('device')}[/blue]")
         config_table.add_row("engine", f"[green]{model_config.get('engine')}[/green]")
         config_table.add_row("model_type", f"[magenta]{model_config.get('model_type')}[/magenta]")
-        
-        
+
+        # Display optional fields when available
+        if model_config.get('draft_model_path'):
+            config_table.add_row("draft_model_path", f"[red]{model_config.get('draft_model_path')}[/red]")
+        if model_config.get('draft_device'):
+            config_table.add_row("draft_device", f"[red]{model_config.get('draft_device')}[/red]")
+        if model_config.get('num_assistant_tokens') is not None:
+            config_table.add_row("num_assistant_tokens", f"[red]{model_config.get('num_assistant_tokens')}[/red]")
+
+
         rtc = model_config.get('runtime_config', {})
         if rtc:
             config_table.add_row("", "")
