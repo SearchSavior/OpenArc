@@ -3,7 +3,7 @@ from threading import Thread
 from transformers import AutoTokenizer, TextIteratorStreamer
 from optimum.intel.openvino import OVModelForCausalLM
 
-model_id = "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Hermes-4-14B-AWQ-GPTQ-SE-ov" # Can be a local path or an HF id
+model_id = "/mnt/Ironwolf-4TB/Models/OpenVINO/Shadows-Gemma/Shadows-Gemma-3-1B-fp16-ov" # Can be a local path or an HF id
 ov_config = {"PERFORMANCE_HINT": "LATENCY", 
              #"INFERENCE_NUM_THREADS": 10, 
              #"ENABLE_HYPER_THREADING": True
@@ -21,7 +21,7 @@ tokenizer = AutoTokenizer.from_pretrained(model_id)
 load_time = time.perf_counter() - load_time
 print(f"Model loaded in {load_time:.3f} seconds.") 
 
-text_prompt = "We really should join the OpenArc Discord"
+text_prompt = "If you could ask a human one question about being human, what would it be?"
 conversation = [
     {
         "role": "user",
@@ -33,7 +33,7 @@ inputs = tokenizer(text=text_prompt_templated, return_tensors="pt")
 input_token_count = inputs['input_ids'].shape[1]
 
 streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
-generation_kwargs = dict(inputs, streamer=streamer, max_new_tokens=128)
+generation_kwargs = dict(inputs, streamer=streamer, max_new_tokens=1024)
 thread = Thread(target=model.generate, kwargs=generation_kwargs)
 
 first_token_received = False

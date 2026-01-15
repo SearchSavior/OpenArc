@@ -11,7 +11,6 @@ import sounddevice as sd
 import soundfile as sf
 from openai import OpenAI
 
-
 # Configuration
 API_KEY = os.getenv("OPENARC_API_KEY")
 BASE_URL = "http://localhost:8000/v1"
