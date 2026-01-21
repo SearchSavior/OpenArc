@@ -521,10 +521,18 @@ def status(ctx):
               help='Number of prompt tokens. Can be comma-separated (e.g., --p 16,32) or specified multiple times (e.g., -p 16 -p 32). Default: 512')
 @click.option('--max_tokens', '--n', multiple=True, default=['128'],
               help='Number of tokens to generate. Can be comma-separated or specified multiple times. Default: 128')
-@click.option('--runs', '--r', type=int, default=5,
+@click.option('--runs', '--r', default=5, type=int,
               help='Number of times to repeat each benchmark. Default: 5')
+@click.option('--temperature', '--temp', default=None, type=float,
+              help='Sampling temperature (default: 1.0)')
+@click.option('--top-k', '--k', default=None, type=int,
+              help='Top-k sampling (default: 50)')
+@click.option('--top-p', '--p-nucleus', default=None, type=float,
+              help='Top-p nucleus sampling (default: 1.0)')
+@click.option('--repetition-penalty', '--rep', default=None, type=float,
+              help='Repetition penalty (default: 1.0)')
 @click.pass_context
-def bench(ctx, model_name, input_tokens, max_tokens, runs):
+def bench(ctx, model_name, input_tokens, max_tokens, runs, temperature, top_k, top_p, repetition_penalty):
     """- Benchmark inference with pseudo-random input tokens.
     
     Examples:
@@ -620,14 +628,26 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs):
                         
                         # Make benchmark request
                         bench_url = f"{cli_instance.base_url}/openarc/bench"
+                        payload = {
+                            "model": model_name,
+                            "input_ids": input_ids,
+                            "max_tokens": n
+                        }
+
+                        # Add optional parameters if provided
+                        if temperature is not None:
+                            payload["temperature"] = temperature
+                        if top_k is not None:
+                            payload["top_k"] = top_k
+                        if top_p is not None:
+                            payload["top_p"] = top_p
+                        if repetition_penalty is not None:
+                            payload["repetition_penalty"] = repetition_penalty
+
                         bench_response = requests.post(
                             bench_url,
                             headers=cli_instance.get_headers(),
-                            json={
-                                "model": model_name,
-                                "input_ids": input_ids,
-                                "max_tokens": n
-                            }
+                            json=payload
                         )
                         
                         if bench_response.status_code != 200:
