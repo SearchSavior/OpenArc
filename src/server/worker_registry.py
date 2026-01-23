@@ -6,7 +6,7 @@ import io
 import torch
 import soundfile as sf
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Dict, Optional, Union
+from typing import Any, AsyncIterator, Dict, Optional, Tuple, Union
 
 from src.engine.ov_genai.llm import OVGenAI_LLM
 from src.engine.ov_genai.vlm import OVGenAI_VLM
@@ -77,13 +77,20 @@ class InferWorker:
     """
     
     @staticmethod
-    async def infer_llm(packet: WorkerPacket, llm_instance: OVGenAI_LLM) -> WorkerPacket:
+    async def infer_llm(packet: WorkerPacket, llm_instance: OVGenAI_LLM, registry: 'WorkerRegistry' = None) -> WorkerPacket:
         """Generate text for a single packet using the OVGenAI_LLM pipeline"""
         metrics = None
         final_text = ""
 
         try:
-            async for item in llm_instance.generate_type(packet.gen_config):
+            # Register model instance for cancellation tracking
+            if registry is not None and packet.gen_config.stream:
+                async with registry._lock:
+                    if packet.request_id in registry._active_requests:
+                        model_name, _ = registry._active_requests[packet.request_id]
+                        registry._active_requests[packet.request_id] = (model_name, llm_instance)
+
+            async for item in llm_instance.generate_type(packet.gen_config, packet.request_id if packet.gen_config.stream else None):
                 if isinstance(item, dict):
                     metrics = item
                 else:
@@ -109,17 +116,29 @@ class InferWorker:
             # Signal error to stream if streaming
             if packet.gen_config.stream and packet.stream_queue is not None:
                 await packet.stream_queue.put(None)
-                
+
+        # Clean up active request tracking
+        if registry is not None and packet.gen_config.stream:
+            async with registry._lock:
+                registry._active_requests.pop(packet.request_id, None)
+
         return packet
 
     @staticmethod
-    async def infer_vlm(packet: WorkerPacket, vlm_model: OVGenAI_VLM) -> WorkerPacket:
+    async def infer_vlm(packet: WorkerPacket, vlm_model: OVGenAI_VLM, registry: 'WorkerRegistry' = None) -> WorkerPacket:
         """Generate text from image for a single packet using the OVGenAI_VLM pipeline"""
         metrics = None
         final_text = ""
 
         try:
-            async for item in vlm_model.generate_type(packet.gen_config):
+            # Register model instance for cancellation tracking
+            if registry is not None and packet.gen_config.stream:
+                async with registry._lock:
+                    if packet.request_id in registry._active_requests:
+                        model_name, _ = registry._active_requests[packet.request_id]
+                        registry._active_requests[packet.request_id] = (model_name, vlm_model)
+
+            async for item in vlm_model.generate_type(packet.gen_config, packet.request_id if packet.gen_config.stream else None):
                 if isinstance(item, dict):
                     metrics = item
                 else:
@@ -145,7 +164,12 @@ class InferWorker:
             # Signal error to stream if streaming
             if packet.gen_config.stream and packet.stream_queue is not None:
                 await packet.stream_queue.put(None)
-                
+
+        # Clean up active request tracking
+        if registry is not None and packet.gen_config.stream:
+            async with registry._lock:
+                registry._active_requests.pop(packet.request_id, None)
+
         return packet
 
     @staticmethod
@@ -293,6 +317,7 @@ class QueueWorker:
         worker_type: str,
         infer_method: callable,
         error_check_fn: callable,
+        worker_registry: 'WorkerRegistry' = None,
     ) -> None:
         """Generic worker loop that processes packets from queue using provided inference method."""
         logger.info(f"[{model_name} {worker_type} Worker] Started, waiting for packets...")
@@ -302,7 +327,8 @@ class QueueWorker:
                 logger.info(f"[{model_name} {worker_type} Worker] Shutdown signal received.")
                 break
 
-            completed_packet = await infer_method(packet, model_instance)
+            # Pass worker_registry for cancellation tracking
+            completed_packet = await infer_method(packet, model_instance, worker_registry)
 
             # Check if inference failed and trigger model unload
             if error_check_fn(completed_packet):
@@ -325,6 +351,7 @@ class QueueWorker:
         model_queue: asyncio.Queue,
         model_instance: Any,
         registry: ModelRegistry,
+        worker_registry: 'WorkerRegistry' = None,
     ) -> asyncio.Task:
         """Factory method to create the appropriate worker task based on model type."""
         # Error check functions
@@ -381,6 +408,7 @@ class QueueWorker:
                 worker_type=config["worker_type"],
                 infer_method=config["infer_method"],
                 error_check_fn=config["error_check_fn"],
+                worker_registry=worker_registry,
             )
         )
 
@@ -418,6 +446,10 @@ class WorkerRegistry:
         self._model_queues_rerank: Dict[str, asyncio.Queue] = {}
         self._model_tasks_rerank: Dict[str, asyncio.Task] = {}
 
+        # Track active streaming requests for cancellation
+        # request_id -> (model_name, model_instance)
+        self._active_requests: Dict[str, Tuple[str, Any]] = {}
+
         self._lock = asyncio.Lock()
 
         self._model_registry.add_on_loaded(self._on_model_loaded)
@@ -444,14 +476,14 @@ class WorkerRegistry:
                 if record.model_name not in self._model_queues_llm:
                     q: asyncio.Queue = asyncio.Queue()
                     self._model_queues_llm[record.model_name] = q
-                    task = QueueWorker.create_worker_queue(mt, record.model_name, q, instance, self._model_registry)
+                    task = QueueWorker.create_worker_queue(mt, record.model_name, q, instance, self._model_registry, self)
                     self._model_tasks_llm[record.model_name] = task
 
             elif mt == ModelType.VLM and isinstance(instance, OVGenAI_VLM):
                 if record.model_name not in self._model_queues_vlm:
                     q: asyncio.Queue = asyncio.Queue()
                     self._model_queues_vlm[record.model_name] = q
-                    task = QueueWorker.create_worker_queue(mt, record.model_name, q, instance, self._model_registry)
+                    task = QueueWorker.create_worker_queue(mt, record.model_name, q, instance, self._model_registry, self)
                     self._model_tasks_vlm[record.model_name] = task
 
             elif mt == ModelType.WHISPER and isinstance(instance, OVGenAI_Whisper):
@@ -582,9 +614,18 @@ class WorkerRegistry:
         completed = await result_future
         return {"text": completed.response or "", "metrics": completed.metrics or {}}
 
-    async def stream_generate(self, model_name: str, gen_config: OVGenAI_GenConfig) -> AsyncIterator[Union[str, Dict[str, Any]]]:
-        """Generate text with streaming."""
-        request_id = uuid.uuid4().hex
+    async def stream_generate(self, model_name: str, gen_config: OVGenAI_GenConfig, request_id: Optional[str] = None) -> AsyncIterator[Union[str, Dict[str, Any]]]:
+        """Generate text with streaming.
+
+        Args:
+            model_name: Target model name
+            gen_config: Generation configuration
+            request_id: Optional request ID. If not provided, a new one is generated.
+        """
+        # Use provided request_id or generate a new one
+        if request_id is None:
+            request_id = uuid.uuid4().hex
+
         stream_queue: asyncio.Queue = asyncio.Queue()
         result_future: asyncio.Future = asyncio.get_running_loop().create_future()
         packet = WorkerPacket(
@@ -594,11 +635,20 @@ class WorkerRegistry:
             stream_queue=stream_queue,
             result_future=result_future,
         )
+
+        # Register active request for cancellation tracking
+        async with self._lock:
+            self._active_requests[request_id] = (model_name, None)
+
         q = self._get_model_queue(model_name)
         await q.put(packet)
+
         while True:
             item = await stream_queue.get()
             if item is None:
+                # Clean up active request tracking
+                async with self._lock:
+                    self._active_requests.pop(request_id, None)
                 break
             yield item
 
@@ -665,3 +715,21 @@ class WorkerRegistry:
         await q.put(packet)
         completed = await result_future
         return {"data": completed.response, "metrics": completed.metrics or {}}
+
+    async def cancel(self, request_id: str) -> bool:
+        """
+        Cancel an ongoing streaming generation by request_id.
+
+        Args:
+            request_id: The request ID to cancel
+
+        Returns:
+            True if cancellation was triggered, False if request_id not found
+        """
+        if request_id in self._active_requests:
+            model_name, model_instance = self._active_requests[request_id]
+            if hasattr(model_instance, 'cancel'):
+                await model_instance.cancel(request_id)
+                logger.info(f"[WorkerRegistry] Cancelled request {request_id} on model {model_name}")
+                return True
+        return False
