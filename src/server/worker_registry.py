@@ -84,13 +84,13 @@ class InferWorker:
 
         try:
             # Register model instance for cancellation tracking
-            if registry is not None and packet.gen_config.stream:
+            if registry is not None:
                 async with registry._lock:
                     if packet.request_id in registry._active_requests:
                         model_name, _ = registry._active_requests[packet.request_id]
                         registry._active_requests[packet.request_id] = (model_name, llm_instance)
 
-            async for item in llm_instance.generate_type(packet.gen_config, packet.request_id if packet.gen_config.stream else None):
+            async for item in llm_instance.arc_infer(packet.gen_config, packet.request_id):
                 if isinstance(item, dict):
                     metrics = item
                 else:
@@ -118,7 +118,7 @@ class InferWorker:
                 await packet.stream_queue.put(None)
 
         # Clean up active request tracking
-        if registry is not None and packet.gen_config.stream:
+        if registry is not None:
             async with registry._lock:
                 registry._active_requests.pop(packet.request_id, None)
 
@@ -132,13 +132,13 @@ class InferWorker:
 
         try:
             # Register model instance for cancellation tracking
-            if registry is not None and packet.gen_config.stream:
+            if registry is not None:
                 async with registry._lock:
                     if packet.request_id in registry._active_requests:
                         model_name, _ = registry._active_requests[packet.request_id]
                         registry._active_requests[packet.request_id] = (model_name, vlm_model)
 
-            async for item in vlm_model.generate_type(packet.gen_config, packet.request_id if packet.gen_config.stream else None):
+            async for item in vlm_model.arc_infer(packet.gen_config, packet.request_id):
                 if isinstance(item, dict):
                     metrics = item
                 else:
@@ -166,7 +166,7 @@ class InferWorker:
                 await packet.stream_queue.put(None)
 
         # Clean up active request tracking
-        if registry is not None and packet.gen_config.stream:
+        if registry is not None:
             async with registry._lock:
                 registry._active_requests.pop(packet.request_id, None)
 
@@ -599,58 +599,73 @@ class WorkerRegistry:
             return q
         raise ValueError(f"Rerank model '{model_name}' is not loaded or no worker is available")
     
-    async def generate(self, model_name: str, gen_config: OVGenAI_GenConfig) -> Dict[str, Any]:
-        """Generate text without streaming."""
-        request_id = uuid.uuid4().hex
-        result_future: asyncio.Future = asyncio.get_running_loop().create_future()
-        packet = WorkerPacket(
-            request_id=request_id,
-            id_model=model_name,
-            gen_config=gen_config,
-            result_future=result_future,
-        )
-        q = self._get_model_queue(model_name)
-        await q.put(packet)
-        completed = await result_future
-        return {"text": completed.response or "", "metrics": completed.metrics or {}}
+    async def arc_generate(self, model_name: str, gen_config: OVGenAI_GenConfig) -> AsyncIterator[Union[str, Dict[str, Any]]]:
+        """Generate text using the arc_infer codepath, supporting both streaming and non-streaming.
 
-    async def stream_generate(self, model_name: str, gen_config: OVGenAI_GenConfig, request_id: Optional[str] = None) -> AsyncIterator[Union[str, Dict[str, Any]]]:
-        """Generate text with streaming.
+        Unified entry point for LLM inference that delegates to llm.py arc_infer.
+        Handles both streaming (stream=True) and non-streaming (stream=False) based on gen_config.stream.
 
         Args:
             model_name: Target model name
-            gen_config: Generation configuration
-            request_id: Optional request ID. If not provided, a new one is generated.
+            gen_config: Generation configuration with stream flag
+
+        Yields:
+            For streaming (stream=True): Text chunks followed by metrics dict
+            For non-streaming (stream=False): Single text chunk followed by metrics dict
         """
-        # Use provided request_id or generate a new one
-        if request_id is None:
-            request_id = uuid.uuid4().hex
+        request_id = uuid.uuid4().hex
 
-        stream_queue: asyncio.Queue = asyncio.Queue()
-        result_future: asyncio.Future = asyncio.get_running_loop().create_future()
-        packet = WorkerPacket(
-            request_id=request_id,
-            id_model=model_name,
-            gen_config=gen_config,
-            stream_queue=stream_queue,
-            result_future=result_future,
-        )
+        if gen_config.stream:
+            # Streaming mode: use stream_queue for async iteration
+            stream_queue: asyncio.Queue = asyncio.Queue()
+            packet = WorkerPacket(
+                request_id=request_id,
+                id_model=model_name,
+                gen_config=gen_config,
+                stream_queue=stream_queue,
+            )
 
-        # Register active request for cancellation tracking
-        async with self._lock:
-            self._active_requests[request_id] = (model_name, None)
+            # Register active request for cancellation tracking
+            async with self._lock:
+                self._active_requests[request_id] = (model_name, None)
 
-        q = self._get_model_queue(model_name)
-        await q.put(packet)
+            q = self._get_model_queue(model_name)
+            await q.put(packet)
 
-        while True:
-            item = await stream_queue.get()
-            if item is None:
-                # Clean up active request tracking
-                async with self._lock:
-                    self._active_requests.pop(request_id, None)
-                break
-            yield item
+            while True:
+                item = await stream_queue.get()
+                if item is None:
+                    # Clean up active request tracking
+                    async with self._lock:
+                        self._active_requests.pop(request_id, None)
+                    break
+                yield item
+        else:
+            # Non-streaming mode: use result_future for single response
+            result_future: asyncio.Future = asyncio.get_running_loop().create_future()
+            packet = WorkerPacket(
+                request_id=request_id,
+                id_model=model_name,
+                gen_config=gen_config,
+                result_future=result_future,
+            )
+
+            # Register active request for cancellation tracking
+            async with self._lock:
+                self._active_requests[request_id] = (model_name, None)
+
+            q = self._get_model_queue(model_name)
+            await q.put(packet)
+            completed = await result_future
+
+            # Clean up active request tracking
+            async with self._lock:
+                self._active_requests.pop(request_id, None)
+
+            # Yield the full response as a single chunk, then yield metrics
+            yield completed.response or ""
+            if completed.metrics:
+                yield completed.metrics
 
     async def transcribe_whisper(self, model_name: str, gen_config: OVGenAI_WhisperGenConfig) -> Dict[str, Any]:
         """Transcribe audio using Whisper model."""
@@ -718,7 +733,7 @@ class WorkerRegistry:
 
     async def cancel(self, request_id: str) -> bool:
         """
-        Cancel an ongoing streaming generation by request_id.
+        Cancel an ongoing generation by request_id (works for both streaming and non-streaming).
 
         Args:
             request_id: The request ID to cancel
@@ -727,9 +742,14 @@ class WorkerRegistry:
             True if cancellation was triggered, False if request_id not found
         """
         if request_id in self._active_requests:
-            model_name, model_instance = self._active_requests[request_id]
-            if hasattr(model_instance, 'cancel'):
-                await model_instance.cancel(request_id)
-                logger.info(f"[WorkerRegistry] Cancelled request {request_id} on model {model_name}")
-                return True
+            model_name, _ = self._active_requests[request_id]
+            # Look up model instance from ModelRegistry
+            async with self._model_registry._lock:
+                for record in self._model_registry._models.values():
+                    if record.model_name == model_name and record.model_instance is not None:
+                        model_instance = record.model_instance
+                        if hasattr(model_instance, 'cancel'):
+                            await model_instance.cancel(request_id)
+                            logger.info(f"[WorkerRegistry] Cancelled request {request_id} on model {model_name}")
+                            return True
         return False

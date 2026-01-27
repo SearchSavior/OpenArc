@@ -13,7 +13,7 @@ from transformers import AutoTokenizer
 from src.server.models.ov_genai import OVGenAI_GenConfig
 from src.server.model_registry import ModelRegistry
 from src.server.models.registration import ModelLoadConfig
-from src.engine.ov_genai.streamers import ChunkStreamer
+from src.engine.ov_genai.streamers import ChunkStreamer, BlockStreamer
 from src.server.utils.chat import flatten_messages
 
 logging.basicConfig(
@@ -74,32 +74,19 @@ class OVGenAI_LLM:
             return True
         return False
 
-    def generate_type(self, gen_config: OVGenAI_GenConfig, request_id: Optional[str] = None):
+    async def arc_infer(self, gen_config: OVGenAI_GenConfig, request_id: Optional[str] = None) -> AsyncIterator[Union[str, Dict[str, Any]]]:
         """
-        Unified text generation method that routes to streaming or non-streaming
-        based on the stream flag in gen_config. Both paths return an async iterator.
+        Unified inference method that uses appropriate streamer based on stream flag.
+        - stream=True: Uses ChunkStreamer for incremental token streaming
+        - stream=False: Uses BlockStreamer for single-block output
 
         Args:
-            gen_config: Configuration containing the stream flag and other parameters
-            request_id: Optional request ID for tracking cancellation (streaming only)
+            gen_config: Configuration containing generation parameters including stream flag
+            request_id: Optional request ID for tracking cancellation
 
-        Returns:
-            - Non-streaming: async iterator yielding [metrics: dict, new_text: str]
-            - Streaming: async iterator yielding token chunks (str)... then [metrics: dict, new_text: str]
-        """
-        if gen_config.stream:
-            return self.generate_stream(gen_config, request_id)
-        else:
-            return self.generate_text(gen_config, request_id)
-    
-    async def generate_text(self, gen_config: OVGenAI_GenConfig, request_id: Optional[str] = None) -> AsyncIterator[Union[Dict[str, Any], str]]:
-        """
-        Async non-streaming text generation.
-        Yields in order: metrics (dict), new_text (str).
-
-        Args:
-            gen_config: Configuration containing generation parameters
-            request_id: Optional request ID (not used in non-streaming, for signature consistency)
+        Yields:
+            Token chunks (str) as they arrive, then metrics (dict) at the end.
+            For non-streaming (stream=False), yields a single chunk with all tokens.
         """
         generation_kwargs = GenerationConfig(
             max_new_tokens=gen_config.max_tokens,
@@ -109,54 +96,29 @@ class OVGenAI_LLM:
             repetition_penalty=gen_config.repetition_penalty,
         )
 
+        decoder_tokenizer = self.model.get_tokenizer()
+
+        # Select appropriate streamer based on stream flag
+        if gen_config.stream:
+            # Streaming mode: use ChunkStreamer with configured chunk size
+            from copy import deepcopy
+            streamer_config = deepcopy(gen_config)
+            streamer_config.stream_chunk_tokens = gen_config.stream_chunk_tokens
+            streamer = ChunkStreamer(decoder_tokenizer, streamer_config)
+        else:
+            # Non-streaming mode: use BlockStreamer for single-block output
+            streamer = BlockStreamer(decoder_tokenizer)
+
+        # Track active streamer for cancellation
+        self._active_streamer = streamer
+        self._active_request_id = request_id
+
         # Support pre-encoded input_ids, raw prompts, and chat messages
         if gen_config.input_ids:
             # Pre-encoded input IDs (used by /openarc/bench endpoint for benchmarking)
             import numpy as np
             prompt_token_ids = ov.Tensor(np.array(gen_config.input_ids, dtype=np.int64).reshape(1, -1))
         elif gen_config.prompt:
-            # Direct tokenization for raw text (used by /v1/completions endpoint)
-            prompt_token_ids = ov.Tensor(self.encoder_tokenizer.encode(gen_config.prompt, return_tensors="np"))
-        else:
-            # Chat template tokenization for messages (used by /v1/chat/completions endpoint)
-            prompt_token_ids = self.prepare_inputs(gen_config.messages, gen_config.tools)
-        
-        result = await asyncio.to_thread(self.model.generate, prompt_token_ids, generation_kwargs)
-        
-        perf_metrics = result.perf_metrics
-        decoder_tokenizer = self.model.get_tokenizer()
-        text = decoder_tokenizer.decode(result.tokens)[0] if getattr(result, "tokens", None) else ""
-
-        metrics_dict = self.collect_metrics(gen_config, perf_metrics)
-        yield metrics_dict
-        yield text
-
-    async def generate_stream(self, gen_config: OVGenAI_GenConfig, request_id: Optional[str] = None) -> AsyncIterator[Union[str, Dict[str, Any]]]:
-        """
-        Async streaming text generation.
-        Yields token chunks (str) as they arrive, then metrics (dict), then final new_text (str).
-
-        Args:
-            gen_config: Configuration containing the stream flag and other parameters
-            request_id: Optional request ID for tracking cancellation
-        """
-        generation_kwargs = GenerationConfig(
-            max_new_tokens=gen_config.max_tokens,
-            temperature=gen_config.temperature,
-            top_k=gen_config.top_k,
-            top_p=gen_config.top_p,
-            repetition_penalty=gen_config.repetition_penalty
-        )
-
-        decoder_tokenizer = self.model.get_tokenizer()
-        streamer = ChunkStreamer(decoder_tokenizer, gen_config)
-
-        # Track active streamer for cancellation
-        self._active_streamer = streamer
-        self._active_request_id = request_id
-
-        # Support both chat messages and raw prompts
-        if gen_config.prompt:
             # Direct tokenization for raw text (used by /v1/completions endpoint)
             prompt_token_ids = ov.Tensor(self.encoder_tokenizer.encode(gen_config.prompt, return_tensors="np"))
         else:
@@ -179,17 +141,20 @@ class OVGenAI_LLM:
                 if chunk is None:
                     break
                 yield chunk
-
         finally:
             # Clear active streamer tracking
             self._active_streamer = None
             self._active_request_id = None
-            result = await gen_task
-            perf_metrics = result.perf_metrics
-            metrics = self.collect_metrics(gen_config, perf_metrics)
+            # Wait for generation task to complete (may be cancelled)
+            try:
+                result = await gen_task
+                perf_metrics = result.perf_metrics
+                metrics = self.collect_metrics(gen_config, perf_metrics)
+                yield metrics
+            except Exception:
+                # Generation was cancelled or failed, don't yield metrics
+                pass
 
-            yield metrics
-    
     def collect_metrics(self, gen_config: OVGenAI_GenConfig, perf_metrics) -> Dict[str, Any]:
         """
         Collect and format performance metrics into a dictionary.
@@ -267,5 +232,3 @@ class OVGenAI_LLM:
         gc.collect()
         logging.info(f"[{self.load_config.model_name}] unloaded successfully")
         return removed
-
-

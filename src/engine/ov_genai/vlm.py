@@ -142,68 +142,18 @@ class OVGenAI_VLM:
             return True
         return False
 
-    def generate_type(self, gen_config: OVGenAI_GenConfig, request_id: Optional[str] = None):
+    async def arc_infer(self, gen_config: OVGenAI_GenConfig, request_id: Optional[str] = None) -> AsyncIterator[Union[str, Dict[str, Any]]]:
         """
-        Unified generation method that routes to streaming or non-streaming
-        based on the stream flag in gen_config. Both paths return an async iterator.
+        Unified inference method that uses ChunkStreamer for both streaming and non-streaming modes.
+        Dynamically adjusts stream_chunk_tokens based on the stream flag.
 
         Args:
-            gen_config: Configuration containing the stream flag and other parameters
-            request_id: Optional request ID for tracking cancellation (streaming only)
-        """
-        if gen_config.stream:
-            return self.generate_stream(gen_config, request_id)
-        else:
-            return self.generate_text(gen_config, request_id)
-
-    async def generate_text(self, gen_config: OVGenAI_GenConfig, request_id: Optional[str] = None) -> AsyncIterator[Union[Dict[str, Any], str]]:
-        """
-        Async non-streaming generation for VLM.
-        Yields in order: metrics (dict), new_text (str).
-
-        Args:
-            gen_config: Configuration containing generation parameters
-            request_id: Optional request ID (not used in non-streaming, for signature consistency)
-        """
-        try:
-            generation_kwargs = GenerationConfig(
-                max_new_tokens=gen_config.max_tokens,
-                temperature=gen_config.temperature,
-                top_k=gen_config.top_k,
-                top_p=gen_config.top_p,
-                repetition_penalty=gen_config.repetition_penalty,
-            )
-
-            prompt, ov_images = self.prepare_inputs(gen_config.messages, gen_config.tools)
-            
-            result = await asyncio.to_thread(
-                self.model_path.generate,
-                prompt=prompt,
-                **({'images': ov_images} if len(ov_images) > 0 else {}),
-                generation_config=generation_kwargs,
-            )
-
-            perf_metrics = result.perf_metrics
-
-            text = result.texts[0] if getattr(result, "texts", None) else ""
-            logger.info(f"[{self.load_config.model_name}] Generation completed, generated {len(text)} characters")
-
-            metrics_dict = self.collect_metrics(gen_config, perf_metrics)
-            yield metrics_dict
-            yield text
-        except Exception as e:
-            logger.error(f"[{self.load_config.model_name}] Error during non-streaming generation: {e}", exc_info=True)
-            raise
-
-    async def generate_stream(self,
-    gen_config: OVGenAI_GenConfig, request_id: Optional[str] = None) -> AsyncIterator[Union[str, Dict[str, Any]]]:
-        """
-        Async streaming generation for VLM.
-        Yields token chunks (str) as they arrive, then metrics (dict).
-
-        Args:
-            gen_config: Configuration containing the stream flag and other parameters
+            gen_config: Configuration containing generation parameters including stream flag
             request_id: Optional request ID for tracking cancellation
+
+        Yields:
+            Token chunks (str) as they arrive, then metrics (dict) at the end.
+            For non-streaming (stream=False), yields a single chunk with all tokens.
         """
         generation_kwargs = GenerationConfig(
             max_new_tokens=gen_config.max_tokens,
@@ -214,7 +164,21 @@ class OVGenAI_VLM:
         )
 
         decoder_tokenizer = self.model_path.get_tokenizer()
-        streamer = ChunkStreamer(decoder_tokenizer, gen_config)
+
+        # Dynamically set stream_chunk_tokens based on stream flag
+        # Non-streaming: emit all tokens at once by setting to max_tokens
+        # Streaming: use configured stream_chunk_tokens value
+        if gen_config.stream:
+            chunk_tokens = gen_config.stream_chunk_tokens
+        else:
+            chunk_tokens = gen_config.max_tokens
+
+        # Create a modified gen_config for ChunkStreamer with the adjusted chunk size
+        from copy import deepcopy
+        streamer_config = deepcopy(gen_config)
+        streamer_config.stream_chunk_tokens = chunk_tokens
+
+        streamer = ChunkStreamer(decoder_tokenizer, streamer_config)
 
         # Track active streamer for cancellation
         self._active_streamer = streamer
@@ -243,10 +207,15 @@ class OVGenAI_VLM:
             # Clear active streamer tracking
             self._active_streamer = None
             self._active_request_id = None
-            result = await gen_task
-            perf_metrics = result.perf_metrics
-            metrics = self.collect_metrics(gen_config, perf_metrics)
-            yield metrics
+            # Wait for generation task to complete (may be cancelled)
+            try:
+                result = await gen_task
+                perf_metrics = result.perf_metrics
+                metrics = self.collect_metrics(gen_config, perf_metrics)
+                yield metrics
+            except Exception:
+                # Generation was cancelled or failed, don't yield metrics
+                pass
 
     def collect_metrics(self, gen_config: OVGenAI_GenConfig, perf_metrics) -> Dict[str, Any]:
         """
@@ -318,4 +287,3 @@ class OVGenAI_VLM:
         gc.collect()
         logger.info(f"[{self.load_config.model_name}] unloaded successfully")
         return removed
-

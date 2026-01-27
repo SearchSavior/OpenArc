@@ -228,10 +228,16 @@ async def benchmark(request: OpenArcBenchRequest):
         config_kwargs = {k: v for k, v in config_kwargs.items() if v is not None}
 
         generation_config = OVGenAI_GenConfig(**config_kwargs)
-        
-        result = await _workers.generate(request.model, generation_config)
-        metrics = result.get("metrics", {}) or {}
-        
+
+        # Collect results from arc_generate
+        text = ""
+        metrics = {}
+        async for item in _workers.arc_generate(request.model, generation_config):
+            if isinstance(item, dict):
+                metrics = item
+            else:
+                text = item
+
         logger.info(f"[bench] model={request.model} input_ids_len={len(request.input_ids)} metrics={metrics}")
         
         return {"metrics": metrics}
@@ -300,7 +306,7 @@ async def openai_chat_completions(request: OpenAIChatCompletionRequest):
                 tool_call_sent = False
 
                 try:
-                    async for item in _workers.stream_generate(model_name, generation_config, request_id):
+                    async for item in _workers.arc_generate(model_name, generation_config):
                         if isinstance(item, dict):
                             metrics_data = item.get("metrics", item)
                             continue
@@ -402,9 +408,14 @@ async def openai_chat_completions(request: OpenAIChatCompletionRequest):
 
             return StreamingResponse(event_stream(), media_type="text/event-stream")
         else:
-            result = await _workers.generate(model_name, generation_config)
-            text = result.get("text", "")
-            metrics = result.get("metrics", {}) or {}
+            # Non-streaming: collect from arc_generate
+            text = ""
+            metrics = {}
+            async for item in _workers.arc_generate(model_name, generation_config):
+                if isinstance(item, dict):
+                    metrics = item
+                else:
+                    text = item
 
             prompt_tokens = metrics.get("input_token", 0)
             completion_tokens = metrics.get("new_token", 0)

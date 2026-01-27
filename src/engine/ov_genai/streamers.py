@@ -26,6 +26,8 @@ class ChunkStreamer(StreamerBase):
     def write(self, token: Union[int, List[int]]) -> openvino_genai.StreamingStatus:
         # Check for cancellation first
         if self._cancelled.is_set():
+            # Signal completion to the queue so the consumer can exit
+            self.text_queue.put_nowait(None)
             return openvino_genai.StreamingStatus.CANCEL
 
         # Normalize input to a list of ints
@@ -64,5 +66,52 @@ class ChunkStreamer(StreamerBase):
             chunk = text[self.last_print_len:]
             if chunk:
                 self.text_queue.put_nowait(chunk)
+        # Signal completion
+        self.text_queue.put_nowait(None)
+
+
+class BlockStreamer(StreamerBase):
+    """
+    Non-streaming (block) mode streamer.
+    Collects all tokens during generation and emits the complete text as a single block
+    when generation ends. Used for stream=False mode.
+
+    Unlike ChunkStreamer, this does not emit partial results during generation -
+    the entire response is yielded at once.
+    """
+    def __init__(self, decoder_tokenizer):
+        super().__init__()
+        self.decoder_tokenizer = decoder_tokenizer
+        self.tokens_cache: List[int] = []
+        self.text_queue: "asyncio.Queue[Optional[str]]" = asyncio.Queue()
+        self._cancelled = asyncio.Event()
+
+    def write(self, token: Union[int, List[int]]) -> openvino_genai.StreamingStatus:
+        # Check for cancellation first
+        if self._cancelled.is_set():
+            self.text_queue.put_nowait(None)
+            return openvino_genai.StreamingStatus.CANCEL
+
+        # Collect tokens without emitting
+        if isinstance(token, list):
+            self.tokens_cache.extend(token)
+        else:
+            self.tokens_cache.append(token)
+
+        return openvino_genai.StreamingStatus.RUNNING
+
+    def cancel(self) -> None:
+        """Signal cancellation of the generation."""
+        self._cancelled.set()
+
+    def is_cancelled(self) -> bool:
+        """Check if cancellation has been signaled."""
+        return self._cancelled.is_set()
+
+    def end(self) -> None:
+        # Decode and emit all tokens as a single block
+        text = self.decoder_tokenizer.decode(self.tokens_cache)
+        if text:
+            self.text_queue.put_nowait(text)
         # Signal completion
         self.text_queue.put_nowait(None)
