@@ -29,6 +29,8 @@ class OVGenAI_LLM:
         self.model_path = None
         self.encoder_tokenizer = None
         self.load_config = load_config
+        self._active_request_id: Optional[str] = None
+        self._active_streamer: Optional[ChunkStreamer] = None
 
     def prepare_inputs(self,
         messages: List[Dict[str, Any]],
@@ -154,6 +156,10 @@ class OVGenAI_LLM:
         decoder_tokenizer = self.model.get_tokenizer()
         streamer = ChunkStreamer(decoder_tokenizer, gen_config)
         
+        # Track active request and streamer for cancellation
+        self._active_request_id = gen_config.request_id
+        self._active_streamer = streamer
+        
         # Support both chat messages and raw prompts
         if gen_config.prompt:
             # Direct tokenization for raw text (used by /v1/completions endpoint)
@@ -187,11 +193,31 @@ class OVGenAI_LLM:
                 yield chunk
 
         finally:
+            # Clear active request tracking
+            self._active_request_id = None
+            self._active_streamer = None
+            
             result = await gen_task
             perf_metrics = result.perf_metrics
             metrics = self.collect_metrics(gen_config, perf_metrics)
             
             yield metrics
+    
+    async def cancel(self, request_id: str) -> bool:
+        """
+        Cancel an ongoing streaming generation by request_id.
+
+        Args:
+            request_id: The request ID to cancel
+
+        Returns:
+            True if cancellation was triggered, False if request_id didn't match
+        """
+        if self._active_request_id == request_id and self._active_streamer is not None:
+            self._active_streamer.cancel()
+            logger.info(f"[{self.load_config.model_name}] Cancellation triggered for request {request_id}")
+            return True
+        return False
     
     def collect_metrics(self, gen_config: OVGenAI_GenConfig, perf_metrics) -> Dict[str, Any]:
         """

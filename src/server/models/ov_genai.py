@@ -67,6 +67,10 @@ class OVGenAI_GenConfig(BaseModel):
         default=None,
         description="List of tools/functions available to the model. None by default."
     )
+    request_id: Optional[str] = Field(
+        default=None,
+        description="Request ID for tracking and cancellation."
+    )
 
     @property
     def text_messages(self) -> List[Dict[str, Any]]:

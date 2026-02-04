@@ -469,6 +469,9 @@ class WorkerRegistry:
         self._model_tasks_rerank: Dict[str, asyncio.Task] = {}
 
         self._lock = asyncio.Lock()
+        
+        # Track active requests for cancellation: request_id -> (model_name, packet)
+        self._active_requests: Dict[str, tuple[str, WorkerPacket]] = {}
 
         self._model_registry.add_on_loaded(self._on_model_loaded)
         self._model_registry.add_on_unloaded(self._on_model_unloaded)
@@ -635,6 +638,8 @@ class WorkerRegistry:
     async def stream_generate(self, model_name: str, gen_config: OVGenAI_GenConfig) -> AsyncIterator[Union[str, Dict[str, Any]]]:
         """Generate text with streaming."""
         request_id = uuid.uuid4().hex
+        gen_config.request_id = request_id  # Set request_id for cancellation tracking
+        
         stream_queue: asyncio.Queue = asyncio.Queue()
         result_future: asyncio.Future = asyncio.get_running_loop().create_future()
         packet = WorkerPacket(
@@ -644,13 +649,48 @@ class WorkerRegistry:
             stream_queue=stream_queue,
             result_future=result_future,
         )
-        q = self._get_model_queue(model_name)
-        await q.put(packet)
-        while True:
-            item = await stream_queue.get()
-            if item is None:
-                break
-            yield item
+        
+        # Register active request
+        async with self._lock:
+            self._active_requests[request_id] = (model_name, packet)
+        
+        try:
+            q = self._get_model_queue(model_name)
+            await q.put(packet)
+            while True:
+                item = await stream_queue.get()
+                if item is None:
+                    break
+                yield item
+        finally:
+            # Unregister active request when done
+            async with self._lock:
+                self._active_requests.pop(request_id, None)
+
+    async def infer_cancel(self, request_id: str) -> bool:
+        """
+        Cancel an ongoing inference request by request_id.
+        
+        Args:
+            request_id: The request ID to cancel
+            
+        Returns:
+            True if cancellation was triggered, False if request not found
+        """
+        async with self._lock:
+            if request_id in self._active_requests:
+                model_name, _ = self._active_requests[request_id]
+                
+                # Look up model instance from ModelRegistry
+                async with self._model_registry._lock:
+                    for record in self._model_registry._models.values():
+                        if record.model_name == model_name and record.model_instance is not None:
+                            model_instance = record.model_instance
+                            if hasattr(model_instance, 'cancel'):
+                                await model_instance.cancel(request_id)
+                                logger.info(f"[WorkerRegistry] Cancelled request {request_id} on model {model_name}")
+                                return True
+            return False
 
     async def transcribe_whisper(self, model_name: str, gen_config: OVGenAI_WhisperGenConfig) -> Dict[str, Any]:
         """Transcribe audio using Whisper model."""
