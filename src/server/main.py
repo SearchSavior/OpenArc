@@ -1,6 +1,7 @@
 # The first implementation of the OpenAI-like API was contributed by @gapeleon.
 # They are one hero among many future heroes working to make OpenArc better. 
 
+import asyncio
 import datetime
 import json
 import logging
@@ -268,7 +269,7 @@ async def openai_list_models():
         raise HTTPException(status_code=500, detail=f"Failed to list models: {str(exc)}")
 
 @app.post("/v1/chat/completions", dependencies=[Depends(verify_api_key)])
-async def openai_chat_completions(request: OpenAIChatCompletionRequest):
+async def openai_chat_completions(request: OpenAIChatCompletionRequest, raw_request: Request):
     try:
     
         config_kwargs = {
@@ -298,74 +299,92 @@ async def openai_chat_completions(request: OpenAIChatCompletionRequest):
                 accumulated_text = ""
                 metrics_data = None
                 tool_call_sent = False
+                cancel_request_id = None
                 
-                async for item in _workers.stream_generate(model_name, generation_config):
-                    if isinstance(item, dict):
-                        metrics_data = item.get("metrics", item)
-                        continue
-                    
-                    accumulated_text += item
-                    tool_calls = parse_tool_calls(accumulated_text)
-                    
-                    # If tool call detected and not yet sent, stream tool call deltas
-                    if tool_calls and not tool_call_sent:
-                        tool_call_sent = True
-                        # Send tool call structure
-                        for idx, tc in enumerate(tool_calls):
-                            # Initial tool call with id, type, name
-                            tool_call_start = {
-                                'id': request_id,
-                                'object': 'chat.completion.chunk',
-                                'created': created_ts,
-                                'model': model_name,
-                                'choices': [{
-                                    'index': 0,
-                                    'delta': {
-                                        'tool_calls': [{
-                                            'index': idx,
-                                            'id': tc['id'],
-                                            'type': tc['type'],
-                                            'function': {'name': tc['function']['name'], 'arguments': ''}
-                                        }]
-                                    },
-                                    'finish_reason': None
-                                }]
+                try:
+                    async for item in _workers.stream_generate(model_name, generation_config):
+                        # Store request_id from gen_config for cancellation
+                        if cancel_request_id is None and generation_config.request_id:
+                            cancel_request_id = generation_config.request_id
+                        
+                        # Check for client disconnect
+                        if await raw_request.is_disconnected():
+                            if cancel_request_id:
+                                await _workers.infer_cancel(cancel_request_id)
+                                logger.info(f"[chat/completions] Client disconnected, cancelled {cancel_request_id}")
+                            return
+                        
+                        if isinstance(item, dict):
+                            metrics_data = item.get("metrics", item)
+                            continue
+                        
+                        accumulated_text += item
+                        tool_calls = parse_tool_calls(accumulated_text)
+                        
+                        # If tool call detected and not yet sent, stream tool call deltas
+                        if tool_calls and not tool_call_sent:
+                            tool_call_sent = True
+                            # Send tool call structure
+                            for idx, tc in enumerate(tool_calls):
+                                # Initial tool call with id, type, name
+                                tool_call_start = {
+                                    'id': request_id,
+                                    'object': 'chat.completion.chunk',
+                                    'created': created_ts,
+                                    'model': model_name,
+                                    'choices': [{
+                                        'index': 0,
+                                        'delta': {
+                                            'tool_calls': [{
+                                                'index': idx,
+                                                'id': tc['id'],
+                                                'type': tc['type'],
+                                                'function': {'name': tc['function']['name'], 'arguments': ''}
+                                            }]
+                                        },
+                                        'finish_reason': None
+                                    }]
+                                }
+                                yield (f"data: {json.dumps(tool_call_start)}\n\n").encode()
+                                
+                                # Stream arguments
+                                tool_call_args = {
+                                    'id': request_id,
+                                    'object': 'chat.completion.chunk',
+                                    'created': created_ts,
+                                    'model': model_name,
+                                    'choices': [{
+                                        'index': 0,
+                                        'delta': {
+                                            'tool_calls': [{
+                                                'index': idx,
+                                                'function': {'arguments': tc['function']['arguments']}
+                                            }]
+                                        },
+                                        'finish_reason': None
+                                    }]
+                                }
+                                yield (f"data: {json.dumps(tool_call_args)}\n\n").encode()
+                        elif not tool_calls:
+                            # Regular content streaming
+                            chunk_payload = {
+                                "id": request_id,
+                                "object": "chat.completion.chunk",
+                                "created": created_ts,
+                                "model": model_name,
+                                "choices": [{
+                                    "index": 0,
+                                    "delta": {"content": item},
+                                    "finish_reason": None,
+                                }],
                             }
-                            yield (f"data: {json.dumps(tool_call_start)}\n\n").encode()
-                            
-                            # Stream arguments
-                            tool_call_args = {
-                                'id': request_id,
-                                'object': 'chat.completion.chunk',
-                                'created': created_ts,
-                                'model': model_name,
-                                'choices': [{
-                                    'index': 0,
-                                    'delta': {
-                                        'tool_calls': [{
-                                            'index': idx,
-                                            'function': {'arguments': tc['function']['arguments']}
-                                        }]
-                                    },
-                                    'finish_reason': None
-                                }]
-                            }
-                            yield (f"data: {json.dumps(tool_call_args)}\n\n").encode()
-                    elif not tool_calls:
-                        # Regular content streaming
-                        chunk_payload = {
-                            "id": request_id,
-                            "object": "chat.completion.chunk",
-                            "created": created_ts,
-                            "model": model_name,
-                            "choices": [{
-                                "index": 0,
-                                "delta": {"content": item},
-                                "finish_reason": None,
-                            }],
-                        }
-                        yield (f"data: {json.dumps(chunk_payload)}\n\n").encode()
-
+                            yield (f"data: {json.dumps(chunk_payload)}\n\n").encode()
+                except asyncio.CancelledError:
+                    if cancel_request_id:
+                        await _workers.infer_cancel(cancel_request_id)
+                        logger.info(f"[chat/completions] Task cancelled, cleaned up {cancel_request_id}")
+                    raise
+                
                 # Final chunk
                 prompt_tokens = (metrics_data or {}).get("input_token", 0)
                 completion_tokens = (metrics_data or {}).get("new_token", 0)
@@ -440,7 +459,7 @@ async def openai_chat_completions(request: OpenAIChatCompletionRequest):
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(exc)}")
 
 @app.post("/v1/completions", dependencies=[Depends(verify_api_key)])
-async def openai_completions(request: OpenAICompletionRequest):
+async def openai_completions(request: OpenAICompletionRequest, raw_request: Request):
     try:
         prompt = request.prompt if isinstance(request.prompt, str) else request.prompt[0]
         
@@ -468,26 +487,45 @@ async def openai_completions(request: OpenAICompletionRequest):
             async def event_stream() -> AsyncIterator[bytes]:
                 # Stream OpenAI-compatible chunks
                 metrics_data = None
-                async for item in _workers.stream_generate(model_name, generation_config):
-                    if isinstance(item, dict):
-                        # Capture metrics for final usage payload
-                        metrics_data = item.get("metrics", item)
-                        continue
-                    chunk_payload = {
-                        "id": request_id,
-                        "object": "text_completion.chunk",
-                        "created": created_ts,
-                        "model": model_name,
-                        "choices": [
-                            {
-                                "index": 0,
-                                "text": item,
-                                "finish_reason": None,
-                            }
-                        ],
-                    }
-                    yield (f"data: {json.dumps(chunk_payload)}\n\n").encode()
-
+                cancel_request_id = None
+                
+                try:
+                    async for item in _workers.stream_generate(model_name, generation_config):
+                        # Store request_id from gen_config for cancellation
+                        if cancel_request_id is None and generation_config.request_id:
+                            cancel_request_id = generation_config.request_id
+                        
+                        # Check for client disconnect
+                        if await raw_request.is_disconnected():
+                            if cancel_request_id:
+                                await _workers.infer_cancel(cancel_request_id)
+                                logger.info(f"[completions] Client disconnected, cancelled {cancel_request_id}")
+                            return
+                        
+                        if isinstance(item, dict):
+                            # Capture metrics for final usage payload
+                            metrics_data = item.get("metrics", item)
+                            continue
+                        chunk_payload = {
+                            "id": request_id,
+                            "object": "text_completion.chunk",
+                            "created": created_ts,
+                            "model": model_name,
+                            "choices": [
+                                {
+                                    "index": 0,
+                                    "text": item,
+                                    "finish_reason": None,
+                                }
+                            ],
+                        }
+                        yield (f"data: {json.dumps(chunk_payload)}\n\n").encode()
+                except asyncio.CancelledError:
+                    if cancel_request_id:
+                        await _workers.infer_cancel(cancel_request_id)
+                        logger.info(f"[completions] Task cancelled, cleaned up {cancel_request_id}")
+                    raise
+                
                 # Final stop signal per OpenAI SSE with usage
                 prompt_tokens = (metrics_data or {}).get("input_token", 0)
                 completion_tokens = (metrics_data or {}).get("new_token", 0)

@@ -21,8 +21,15 @@ class ChunkStreamer(StreamerBase):
         self.since_last_emit: int = 0              # tokens collected since last emit
         self.last_print_len: int = 0               # length of decoded text we've already emitted
         self.text_queue: "asyncio.Queue[Optional[str]]" = asyncio.Queue()
+        self._cancelled = asyncio.Event()          # cancellation flag for thread-safe signaling
 
     def write(self, token: Union[int, List[int]]) -> openvino_genai.StreamingStatus:
+        # Check for cancellation first
+        if self._cancelled.is_set():
+            # Signal completion to the queue so the consumer can exit
+            self.text_queue.put_nowait(None)
+            return openvino_genai.StreamingStatus.CANCEL
+
         # Normalize input to a list of ints
         if isinstance(token, list):
             self.tokens_cache.extend(token)
@@ -43,6 +50,14 @@ class ChunkStreamer(StreamerBase):
             self.since_last_emit = 0
 
         return openvino_genai.StreamingStatus.RUNNING
+
+    def cancel(self) -> None:
+        """Signal cancellation of the streaming generation."""
+        self._cancelled.set()
+
+    def is_cancelled(self) -> bool:
+        """Check if cancellation has been signaled."""
+        return self._cancelled.is_set()
 
     def end(self) -> None:
         # Flush any remaining tokens at the end

@@ -24,6 +24,7 @@ Thanks to everyone on Discord for their continued support!
 - [Quickstart](#quickstart)
   - [Linux](#linux)
   - [Windows](#windows)
+  - [Docker](#docker)
 - [OpenArc CLI](#openarc-cli)
   - [openarc add](#openarc-add)
   - [openarc list](#openarc-list)
@@ -45,7 +46,9 @@ Thanks to everyone on Discord for their continued support!
 - [Codebase Documentation](./docs/index.md)
 
 ## Features
-
+  - NEW! Containerization with Docker #60 by @meatposes
+  - NEW! Speculative decoding support for LLMs #57 by @meatposes
+  - NEW! Streaming cancellation support for LLMs and VLMs
   - Multi GPU Pipeline Paralell
   - CPU offload/Hybrid device
   - NPU device support
@@ -63,7 +66,7 @@ Thanks to everyone on Discord for their continued support!
   - Fully async multi engine, multi task architecture
   - Model concurrency: load and infer multiple models at once
   - Automatic unload on inference failure
-  - `llama-bench` style benchmarking for `llm` w/automatic database sqlite
+  - `llama-bench` style benchmarking for `llm` w/automatic sqlite database
   - metrics on every request
     - ttft
     - prefill_throughput
@@ -72,7 +75,7 @@ Thanks to everyone on Discord for their continued support!
     - tpot
     - load time
     - stream mode
-  - More OpenVINO [examples](examples\)
+  - More OpenVINO [examples](examples/)
   - OpenVINO implementation of [hexgrad/Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M)
   
 
@@ -178,6 +181,43 @@ openarc --help
 
 </details>
 
+<details id="docker">
+<summary><strong style="font-size: 1.2em;">Docker</strong></summary>
+
+<br>
+
+Instead of fighting with Intel's own docker images, we built our own which is as close to boilerplate as possible. For a primer on docker [check out this video](https://www.youtube.com/watch?v=DQdB7wFEygo).
+
+
+**Build and run the container:**
+```bash
+docker-compose up --build -d
+```
+
+**Run the container:**
+```bash
+docker run -d -p 8000:8000 openarc:latest
+```
+**Enter the container:**
+```bash
+docker exec -it openarc /bin/bash
+```
+
+## Environment Variables
+
+```bash
+export OPENARC_API_KEY="openarc-api-key" # default, set it to whatever you want
+export OPENARC_AUTOLOAD_MODEL="model_name" # model_name to load on startup
+export MODEL_PATH="/path/to/your/models" # mount your models to `/models` inside the container
+docker-compose up --build -d
+```
+
+
+Take a look at the [Dockerfile](Dockerfile) and [docker-compose](docker-compose.yaml) for more details.
+
+</details>
+
+<br>
 
 > [!NOTE]
 > Need help installing drivers? [Join our Discord](https://discord.gg/Bzz9hax9Jq) or open an issue.

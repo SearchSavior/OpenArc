@@ -31,6 +31,8 @@ class OVGenAI_VLM:
         self.tokenizer = None
         self.vision_token = None
         self.load_config = load_config
+        self._active_request_id: Optional[str] = None
+        self._active_streamer: Optional[ChunkStreamer] = None
 
     def _vision_token_for_index(self, index: int) -> str:
         """
@@ -184,6 +186,11 @@ class OVGenAI_VLM:
 
         decoder_tokenizer = self.model_path.get_tokenizer()
         streamer = ChunkStreamer(decoder_tokenizer, gen_config)
+        
+        # Track active request and streamer for cancellation
+        self._active_request_id = gen_config.request_id
+        self._active_streamer = streamer
+        
         prompt, ov_images = self.prepare_inputs(gen_config.messages, gen_config.tools)
 
         async def _run_generation():
@@ -204,10 +211,30 @@ class OVGenAI_VLM:
                     break
                 yield chunk
         finally:
+            # Clear active request tracking
+            self._active_request_id = None
+            self._active_streamer = None
+            
             result = await gen_task
             perf_metrics = result.perf_metrics
             metrics = self.collect_metrics(gen_config, perf_metrics)
             yield metrics
+
+    async def cancel(self, request_id: str) -> bool:
+        """
+        Cancel an ongoing streaming generation by request_id.
+
+        Args:
+            request_id: The request ID to cancel
+
+        Returns:
+            True if cancellation was triggered, False if request_id didn't match
+        """
+        if self._active_request_id == request_id and self._active_streamer is not None:
+            self._active_streamer.cancel()
+            logger.info(f"[{self.load_config.model_name}] Cancellation triggered for request {request_id}")
+            return True
+        return False
 
     def collect_metrics(self, gen_config: OVGenAI_GenConfig, perf_metrics) -> Dict[str, Any]:
         """
