@@ -66,7 +66,7 @@ Thanks to everyone on Discord for their continued support!
   - Fully async multi engine, multi task architecture
   - Model concurrency: load and infer multiple models at once
   - Automatic unload on inference failure
-  - `llama-bench` style benchmarking for `llm` w/automatic database sqlite
+  - `llama-bench` style benchmarking for `llm` w/automatic sqlite database
   - metrics on every request
     - ttft
     - prefill_throughput
@@ -75,7 +75,7 @@ Thanks to everyone on Discord for their continued support!
     - tpot
     - load time
     - stream mode
-  - More OpenVINO [examples](examples\)
+  - More OpenVINO [examples](examples/)
   - OpenVINO implementation of [hexgrad/Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M)
   
 
