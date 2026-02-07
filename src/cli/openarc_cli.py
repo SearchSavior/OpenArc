@@ -191,8 +191,26 @@ def cli(ctx):
     required=False,
     default=None,
     help='Vision model type. Used to map correct vision tokens.')
+@click.option('--draft-model-path', '--dmp',
+    required=False,
+    default=None,
+    help='Path to draft model for speculative decoding.')
+@click.option('--draft-device', '--dd',
+    required=False,
+    default=None,
+    help='Device for draft model (e.g., CPU, GPU).')
+@click.option('--num-assistant-tokens', '--nat',
+    required=False,
+    default=None,
+    type=int,
+    help='Number of tokens draft model generates per step (typically 2-5).')
+@click.option('--assistant-confidence-threshold', '--act',
+    required=False,
+    default=None,
+    type=float,
+    help='Confidence threshold for accepting draft tokens (typically 0.3-0.5).')
 @click.pass_context
-def add(ctx, model_path, model_name, engine, model_type, device, runtime_config, vlm_type):
+def add(ctx, model_path, model_name, engine, model_type, device, runtime_config, vlm_type, draft_model_path, draft_device, num_assistant_tokens, assistant_confidence_threshold):
     """- Add a model configuration to the config file."""
     
     # Validate model path
@@ -224,6 +242,16 @@ def add(ctx, model_path, model_name, engine, model_type, device, runtime_config,
         "runtime_config": parsed_runtime_config,
         "vlm_type": vlm_type if vlm_type else None
     }
+    
+    # Add speculative decoding options if provided
+    if draft_model_path:
+        load_config["draft_model_path"] = draft_model_path
+    if draft_device:
+        load_config["draft_device"] = draft_device
+    if num_assistant_tokens is not None:
+        load_config["num_assistant_tokens"] = num_assistant_tokens
+    if assistant_confidence_threshold is not None:
+        load_config["assistant_confidence_threshold"] = assistant_confidence_threshold
     
     ctx.obj.server_config.save_model_config(model_name, load_config)
     console.print(f"[green]Model configuration saved:[/green] {model_name}")
@@ -439,6 +467,8 @@ def list_configs(ctx, remove, model_name):
             config_table.add_row("draft_device", f"[red]{model_config.get('draft_device')}[/red]")
         if model_config.get('num_assistant_tokens') is not None:
             config_table.add_row("num_assistant_tokens", f"[red]{model_config.get('num_assistant_tokens')}[/red]")
+        if model_config.get('assistant_confidence_threshold') is not None:
+            config_table.add_row("assistant_confidence_threshold", f"[red]{model_config.get('assistant_confidence_threshold')}[/red]")
 
 
         rtc = model_config.get('runtime_config', {})
