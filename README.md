@@ -336,7 +336,7 @@ openarc add --model-name <model-name> -model-path <path/to/model> --engine ovgen
 ### Speculative Decoding
 
 ```
-openarc add --model-name <model-name> --model-path <path/to/model> --engine ovgenai --model-type llm --device GPU.0 --draft-model-path <path/to/draftmodel> --draft-device CPU --num-assistant-tokens 5
+openarc add --model-name <model-name> --model-path <path/to/model> --engine ovgenai --model-type llm --device GPU.0 --draft-model-path <path/to/draftmodel> --draft-device CPU --num-assistant-tokens 5 --assistant-confidence-threshold 0.5
 ```
 
 
