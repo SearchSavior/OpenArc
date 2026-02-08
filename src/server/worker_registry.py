@@ -287,23 +287,23 @@ class QueueWorker:
     @staticmethod
     async def queue_worker_llm(model_name: str, model_queue: asyncio.Queue, llm_model: OVGenAI_LLM, registry: ModelRegistry):
         """Text model inference worker that processes packets from queue"""
-        logger.info(f"[{model_name} LLM Worker] Started, waiting for packets...")
+        logger.info(f"[LLM Worker: {model_name}] Started, waiting for packets...")
         while True:
             packet = await model_queue.get()
             if packet is None:
-                logger.info(f"[{model_name} LLM Worker] Shutdown signal received.")
+                logger.info(f"[LLM Worker: {model_name}] Shutdown signal received.")
                 break
 
             completed_packet = await InferWorker.infer_llm(packet, llm_model)
 
             # Check if inference failed and trigger model unload
             if completed_packet.response and completed_packet.response.startswith("Error:"):
-                logger.error(f"[{model_name} LLM Worker] Inference failed, triggering model unload...")
+                logger.error(f"[LLM Worker: {model_name}] Inference failed, triggering model unload...")
                 asyncio.create_task(registry.register_unload(model_name))
                 break
 
             if completed_packet.metrics:
-                logger.info(f"[{model_name} LLM Worker] Metrics: {completed_packet.metrics}")
+                logger.info(f"[LLM Worker: {model_name}] Metrics: {completed_packet.metrics}")
 
             if packet.result_future is not None and not packet.result_future.done():
                 packet.result_future.set_result(completed_packet)
@@ -313,23 +313,23 @@ class QueueWorker:
     @staticmethod
     async def queue_worker_vlm(model_name: str, model_queue: asyncio.Queue, vlm_model: OVGenAI_VLM, registry: ModelRegistry):
         """Image model inference worker that processes packets from queue"""
-        logger.info(f"[{model_name} VLM Worker] Started, waiting for packets...")
+        logger.info(f"[VLM Worker: {model_name}] Started, waiting for packets...")
         while True:
             packet = await model_queue.get()
             if packet is None:
-                logger.info(f"[{model_name} VLM Worker] Shutdown signal received.")
+                logger.info(f"[VLM Worker: {model_name}] Shutdown signal received.")
                 break
 
             completed_packet = await InferWorker.infer_vlm(packet, vlm_model)
 
             # Check if inference failed and trigger model unload
             if completed_packet.response and completed_packet.response.startswith("Error:"):
-                logger.error(f"[{model_name} VLM Worker] Inference failed, triggering model unload...")
+                logger.error(f"[VLM Worker: {model_name}] Inference failed, triggering model unload...")
                 asyncio.create_task(registry.register_unload(model_name))
                 break
 
             if completed_packet.metrics:
-                logger.info(f"[{model_name} VLM Worker] Metrics: {completed_packet.metrics}")
+                logger.info(f"[VLM Worker: {model_name}] Metrics: {completed_packet.metrics}")
 
             if packet.result_future is not None and not packet.result_future.done():
                 packet.result_future.set_result(completed_packet)
@@ -339,23 +339,23 @@ class QueueWorker:
     @staticmethod
     async def queue_worker_whisper(model_name: str, model_queue: asyncio.Queue, whisper_model: OVGenAI_Whisper, registry: ModelRegistry):
         """Whisper model inference worker that processes packets from queue"""
-        logger.info(f"[{model_name} Whisper Worker] Started, waiting for packets...")
+        logger.info(f"[Whisper Worker: {model_name}] Started, waiting for packets...")
         while True:
             packet = await model_queue.get()
             if packet is None:
-                logger.info(f"[{model_name} Whisper Worker] Shutdown signal received.")
+                logger.info(f"[Whisper Worker: {model_name}] Shutdown signal received.")
                 break
 
             completed_packet = await InferWorker.infer_whisper(packet, whisper_model)
 
             # Check if inference failed and trigger model unload
             if completed_packet.response and completed_packet.response.startswith("Error:"):
-                logger.error(f"[{model_name} Whisper Worker] Inference failed, triggering model unload...")
+                logger.error(f"[Whisper Worker: {model_name}] Inference failed, triggering model unload...")
                 asyncio.create_task(registry.register_unload(model_name))
                 break
 
             if completed_packet.metrics:
-                logger.info(f"[{model_name} Whisper Worker] Metrics: {completed_packet.metrics}")
+                logger.info(f"[Whisper Worker: {model_name}] Metrics: {completed_packet.metrics}")
 
             if packet.result_future is not None and not packet.result_future.done():
                 packet.result_future.set_result(completed_packet)
@@ -365,25 +365,25 @@ class QueueWorker:
     @staticmethod
     async def queue_worker_kokoro(model_name: str, model_queue: asyncio.Queue, kokoro_model: OV_Kokoro, registry: ModelRegistry):
         """Kokoro model inference worker that processes packets from queue"""
-        logger.info(f"[{model_name} Kokoro Worker] Started, waiting for packets...")
+        logger.info(f"[Kokoro Worker: {model_name}] Started, waiting for packets...")
         while True:
             packet = await model_queue.get()
             if packet is None:
-                logger.info(f"[{model_name} Kokoro Worker] Shutdown signal received.")
+                logger.info(f"[Kokoro Worker: {model_name}] Shutdown signal received.")
                 break
 
             completed_packet = await InferWorker.infer_kokoro(packet, kokoro_model)
 
             # Check if inference failed and trigger model unload
             if completed_packet.response and completed_packet.response.startswith("Error:"):
-                logger.error(f"[{model_name} Kokoro Worker] Inference failed, triggering model unload...")
+                logger.error(f"[Kokoro Worker: {model_name}] Inference failed, triggering model unload...")
                 asyncio.create_task(registry.register_unload(model_name))
                 break
 
             # Log the text that was converted to speech
             
             if completed_packet.metrics:
-                logger.info(f"[{model_name} Kokoro Worker] Metrics: {completed_packet.metrics}")
+                logger.info(f"[Kokoro Worker: {model_name}] Metrics: {completed_packet.metrics}")
 
             if packet.result_future is not None and not packet.result_future.done():
                 packet.result_future.set_result(completed_packet)
@@ -393,21 +393,21 @@ class QueueWorker:
     @staticmethod
     async def queue_worker_emb(model_name: str, model_queue: asyncio.Queue, emb_model: Optimum_EMB, registry: ModelRegistry):
         """EMB model inference worker that processes packets from queue"""
-        logger.info(f"[{model_name} EMB Worker] Started, waiting for packets...")
+        logger.info(f"[EMB Worker: {model_name}] Started, waiting for packets...")
         while True:
             packet = await model_queue.get()
             if packet is None:
-                logger.info(f"[{model_name} EMB Worker] Shutdown signal received.")
+                logger.info(f"[EMB Worker: {model_name}] Shutdown signal received.")
                 break
 
             completed_packet = await InferWorker.infer_emb(packet, emb_model)
             # Check if inference failed and trigger model unload
             if not completed_packet.response:
-                logger.error(f"[{model_name} EMB Worker] Inference failed, triggering model unload...")
+                logger.error(f"[EMB Worker: {model_name}] Inference failed, triggering model unload...")
                 asyncio.create_task(registry.register_unload(model_name))
                 break
             if completed_packet.metrics:
-                logger.info(f"[{model_name} LLM Worker] Metrics: {completed_packet.metrics}")
+                logger.info(f"[EMB Worker: {model_name}] Metrics: {completed_packet.metrics}")
             if packet.result_future is not None and not packet.result_future.done():
                 packet.result_future.set_result(completed_packet)
             model_queue.task_done()
@@ -415,21 +415,21 @@ class QueueWorker:
     @staticmethod
     async def queue_worker_rr(model_name: str, model_queue: asyncio.Queue, rr_model: Optimum_RR, registry: ModelRegistry):
         """Reranker model inference worker that processes packets from queue"""
-        logger.info(f"[{model_name} Reranker Worker] Started, waiting for packets...")
+        logger.info(f"[Reranker Worker: {model_name}] Started, waiting for packets...")
         while True:
             packet = await model_queue.get()
             if packet is None:
-                logger.info(f"[{model_name} Reranker Worker] Shutdown signal received.")
+                logger.info(f"[Reranker Worker: {model_name}] Shutdown signal received.")
                 break
 
             completed_packet = await InferWorker.infer_rerank(packet, rr_model)
             # Check if inference failed and trigger model unload
             if not completed_packet.response:
-                logger.error(f"[{model_name} Reranker Worker] Inference failed, triggering model unload...")
+                logger.error(f"[Reranker Worker: {model_name}] Inference failed, triggering model unload...")
                 asyncio.create_task(registry.register_unload(model_name))
                 break
             if completed_packet.metrics:
-                logger.info(f"[{model_name} Reranker Worker] Metrics: {completed_packet.metrics}")
+                logger.info(f"[Reranker Worker: {model_name}] Metrics: {completed_packet.metrics}")
             if packet.result_future is not None and not packet.result_future.done():
                 packet.result_future.set_result(completed_packet)
             model_queue.task_done()
