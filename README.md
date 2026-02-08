@@ -351,14 +351,19 @@ openarc add --model-name <model-name> --model-path <path/to/model> --engine ovge
 
 Reads added configurations from `openarc_config.json`.
 
-Display all saved configurations:
+Display all added models:
 ```
 openarc list
 ```
 
+Display config metadata for a specific model:
+```
+openarc list <model-name> -v
+```
+
 Remove a configuration:
 ```
-openarc list --remove --model-name <model-name>
+openarc list --remove <model-name>
 ```
 
 </details>

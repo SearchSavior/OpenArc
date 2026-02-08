@@ -413,22 +413,28 @@ def unload(ctx, model_names):
         ctx.exit(1)
 
 @cli.command("list")
-@click.option('--model-name','--mn', help='Model name to remove (used with --remove/--rm).')
-@click.option('--remove', '--rm', is_flag=True, help='Remove a model configuration.')
+@click.argument('model_name', required=False)
+@click.option('-v', '--verbose', is_flag=True, help='Show detailed metadata for specified model.')
+@click.option('--remove', '--rm', is_flag=True, help='Remove a model configuration (requires model_name).')
 @click.pass_context
-def list_configs(ctx, remove, model_name):
+def list_configs(ctx, model_name, verbose, remove):
     """- List saved model configurations.
        
-       - Remove a model configuration."""
+       - Remove a model configuration.
+    
+    Examples:
+        openarc list                    # List all model names
+        openarc list model_name -v      # Show metadata for specific model
+        openarc list --remove model1    # Remove a model configuration
+    """
     if remove:
         if not model_name:
-            console.print("[red]Error:[/red] --model-name is required when using --remove")
-
+            console.print("[red]Error:[/red] model_name is required when using --remove")
             ctx.exit(1)
         
         # Check if model exists before trying to remove
         if not ctx.obj.server_config.model_exists(model_name):
-            console.print(f"{model_name}[red] not found:[/red]")
+            console.print(f"{model_name} [red]not found[/red]")
             console.print("[yellow]Use 'openarc list' to see available configurations.[/yellow]")
             ctx.exit(1)
         
@@ -447,13 +453,18 @@ def list_configs(ctx, remove, model_name):
         console.print("[dim]Use 'openarc add --help' to see how to save configurations.[/dim]")
         return
     
-    console.print(f"[blue]Saved Model Configurations ({len(models)}):[/blue]\n")
-    
-    for model_name, model_config in models.items():
-        # Create a table for each model configuration
+    # Case 1: Show metadata for specific model with -v flag
+    if model_name and verbose:
+        if model_name not in models:
+            console.print(f"[red]Model not found:[/red] {model_name}")
+            console.print("[yellow]Use 'openarc list' to see available configurations.[/yellow]")
+            ctx.exit(1)
+        
+        model_config = models[model_name]
+        
+        # Create a table for the model configuration
         config_table = Table(show_header=False, box=None, pad_edge=False)
         
-
         config_table.add_row("model_name", f"[cyan]{model_name}[/cyan]")
         config_table.add_row("model_path", f"[yellow]{model_config.get('model_path')}[/yellow]")
         config_table.add_row("device", f"[blue]{model_config.get('device')}[/blue]")
@@ -470,7 +481,6 @@ def list_configs(ctx, remove, model_name):
         if model_config.get('assistant_confidence_threshold') is not None:
             config_table.add_row("assistant_confidence_threshold", f"[red]{model_config.get('assistant_confidence_threshold')}[/red]")
 
-
         rtc = model_config.get('runtime_config', {})
         if rtc:
             config_table.add_row("", "")
@@ -483,9 +493,16 @@ def list_configs(ctx, remove, model_name):
             border_style="green"
         )
         console.print(panel)
+        return
     
-    console.print("\n[dim]To load saved configurations: openarc load <model_name> [model_name2 ...][/dim]")
-    console.print("[dim]To remove a configuration: openarc list --remove --model-name <model_name>[/dim]")
+    # Case 2: Show only model names (default behavior)
+    console.print(f"[blue]Saved Model Configurations ({len(models)}):[/blue]\n")
+    
+    for name in models.keys():
+        console.print(f"  [cyan]{name}[/cyan]")
+    
+    console.print("[dim]Use 'openarc list <model_name> -v' to see model metadata.[/dim]")
+    console.print("[dim]Use 'openarc list --remove <model_name>' to remove a configuration.[/dim]")
 
 @cli.command()
 @click.pass_context
