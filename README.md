@@ -383,7 +383,7 @@ openarc serve start # defauls to 0.0.0.0:8000
 Configure host and port
 
 ```
-openarc serve start --host --openarc-port
+openarc serve start --host --port
 ```
 
 To load models on startup:

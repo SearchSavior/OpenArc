@@ -858,7 +858,7 @@ def serve():
               help="""
               - Host to bind the server to
               """)
-@click.option("--openarc-port", 
+@click.option("--port", 
               type=int, 
               default=8000, 
               show_default=True,
@@ -870,9 +870,9 @@ def serve():
               help="Load models on startup. Specify once followed by space-separated model names.")
 @click.argument('startup_models', nargs=-1, required=False)
 @click.pass_context
-def start(ctx, host, openarc_port, load_models, startup_models):
+def start(ctx, host, port, load_models, startup_models):
     """
-    - 'start' reads --host and --openarc-port from config or defaults to 0.0.0.0:8000
+    - 'start' reads --host and --port from config or defaults to 0.0.0.0:8000
     
     Examples:
         openarc serve start
@@ -880,7 +880,7 @@ def start(ctx, host, openarc_port, load_models, startup_models):
         openarc serve start --lm Dolphin-X1 kokoro whisper
     """
     # Save server configuration for other CLI commands to use
-    config_path = ctx.obj.server_config.save_server_config(host, openarc_port)
+    config_path = ctx.obj.server_config.save_server_config(host, port)
     console.print(f"[dim]Configuration saved to: {config_path}[/dim]")
     
     # Handle startup models
@@ -903,9 +903,9 @@ def start(ctx, host, openarc_port, load_models, startup_models):
         os.environ["OPENARC_STARTUP_MODELS"] = ",".join(models_to_load)
         console.print(f"[blue]Models to load on startup:[/blue] {', '.join(models_to_load)}\n")
     
-    console.print(f"[green]Starting OpenArc server on {host}:{openarc_port}[/green]")
+    console.print(f"[green]Starting OpenArc server on {host}:{port}[/green]")
     from .launch_server import start_server
-    start_server(host=host, openarc_port=openarc_port)
+    start_server(host=host, port=port)
 
 
 if __name__ == "__main__":

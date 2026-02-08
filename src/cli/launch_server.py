@@ -74,7 +74,7 @@ logging.basicConfig(
 
 logger = logging.getLogger("OpenArc")
 
-def start_server(host: str = "0.0.0.0", openarc_port: int = 8001, reload: bool = False):
+def start_server(host: str = "0.0.0.0", port: int = 8001, reload: bool = False):
     """
     Launches the OpenArc API server
     
@@ -82,7 +82,7 @@ def start_server(host: str = "0.0.0.0", openarc_port: int = 8001, reload: bool =
         host: Host to bind the server to
         port: Port to bind the server to
     """
-    logger.info(f"Launching  {host}:{openarc_port}")
+    logger.info(f"Launching  {host}:{port}")
     logger.info("--------------------------------")
     logger.info("OpenArc endpoints:")
     logger.info("  - POST   /openarc/load           Load a model")
@@ -101,7 +101,7 @@ def start_server(host: str = "0.0.0.0", openarc_port: int = 8001, reload: bool =
     uvicorn.run(
         "src.server.main:app",
         host=host,
-        port=openarc_port,
+        port=port,
         log_config=LOG_CONFIG,
         reload=reload
     )
