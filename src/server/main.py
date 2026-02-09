@@ -271,6 +271,7 @@ async def openai_list_models():
 @app.post("/v1/chat/completions", dependencies=[Depends(verify_api_key)])
 async def openai_chat_completions(request: OpenAIChatCompletionRequest, raw_request: Request):
     try:
+        logger.info(f'"{request.model}" request received')
     
         config_kwargs = {
             "messages": request.messages,
@@ -461,6 +462,7 @@ async def openai_chat_completions(request: OpenAIChatCompletionRequest, raw_requ
 @app.post("/v1/completions", dependencies=[Depends(verify_api_key)])
 async def openai_completions(request: OpenAICompletionRequest, raw_request: Request):
     try:
+        logger.info(f'"{request.model}" request received')
         prompt = request.prompt if isinstance(request.prompt, str) else request.prompt[0]
         
         config_kwargs = {
@@ -599,6 +601,7 @@ async def openai_audio_transcriptions(
     temperature: Optional[float] = Form(0.0, description="Sampling temperature")
 ):
     try:
+        logger.info(f'"{model}" request received')
         # Read the uploaded audio file
         audio_bytes = await file.read()
 
@@ -641,6 +644,7 @@ async def openai_audio_speech(request: OpenAIKokoroRequest):
     Returns a WAV file containing the synthesized speech.
     """
     try:
+        logger.info(f'"{request.model}" request received')
 
         gen_config = OV_KokoroGenConfig(
             kokoro_message=request.input,
@@ -674,6 +678,7 @@ async def openai_audio_speech(request: OpenAIKokoroRequest):
 async def embeddings(request: EmbeddingsRequest):
 
     try:
+        logger.info(f'"{request.model}" request received')
 
         tok_config = PreTrainedTokenizerConfig(
             text=request.input
@@ -731,6 +736,7 @@ async def embeddings(request: EmbeddingsRequest):
 async def rerank(request: RerankRequest):
 
     try:
+        logger.info(f'"{request.model}" request received')
         config_data = {"query": request.query, "documents": request.documents}
         if request.prefix is not None:
             config_data["prefix"] = request.prefix
