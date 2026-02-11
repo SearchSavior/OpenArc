@@ -19,7 +19,7 @@ class ServerConfig:
             config_file: Path to the config file. If None, defaults to openarc_config.json in project root.
         """
         if config_file is None:
-            project_root = Path(__file__).parent.parent.parent
+            project_root = Path(__file__).parent.parent.parent.parent
             config_file = project_root / "openarc_config.json"
         
         self.config_file = Path(config_file)

@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 
 # Configure logging
-log_file = Path(__file__).parent.parent.parent / "openarc.log"
+log_file = Path(__file__).parent.parent.parent.parent / "openarc.log"
 
 # Create a custom logging configuration for uvicorn
 LOG_CONFIG = {
