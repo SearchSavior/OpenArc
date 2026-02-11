@@ -45,7 +45,7 @@ build-backend = "setuptools.build_meta"
 packages = ["src"]
 
 [project.scripts]
-openarc = "src.cli.openarc_cli:cli"
+openarc = "src.cli:cli"
 
 [tool.uv]
 dev-dependencies = []

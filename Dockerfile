@@ -127,7 +127,7 @@ echo ""
 echo "================================================"
 
 # Start server in background
-openarc serve start --host 0.0.0.0 --openarc-port 8000 &
+openarc serve start --host 0.0.0.0 --port 8000 &
 SERVER_PID=$!
 
 # Auto-load model if specified

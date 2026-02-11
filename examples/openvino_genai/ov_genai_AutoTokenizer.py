@@ -2,17 +2,17 @@ import openvino as ov
 from openvino_genai import GenerationConfig, LLMPipeline
 from transformers import AutoTokenizer
 
-model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Qwen3-REAP-25B-A3B-int4_asym-ov"
+model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/DeepSeek-V2-Lite-Chat-int4_asym-ov"
 
 pipe = LLMPipeline(
     model_dir,       # Path to the model directory. Remember this will not pull from hub like in transformers
-    device="GPU.0"
+    device="CPU"
 
 )
 tokenizer = AutoTokenizer.from_pretrained(model_dir)
 
 generation_config = GenerationConfig(
-    max_new_tokens=128
+    max_new_tokens=24
 )
 
 prompt = "You're the fastest Llama this side of the equator. What's your favorite food? try to imagine"

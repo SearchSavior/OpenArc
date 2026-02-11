@@ -18,7 +18,7 @@ class BenchmarkDB:
             db_file: Path to the database file. If None, defaults to openarc_bench.db in project root.
         """
         if db_file is None:
-            project_root = Path(__file__).parent.parent.parent
+            project_root = Path(__file__).parent.parent.parent.parent
             db_file = project_root / "openarc_bench.db"
         
         self.db_file = Path(db_file)

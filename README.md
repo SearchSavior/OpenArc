@@ -351,14 +351,19 @@ openarc add --model-name <model-name> --model-path <path/to/model> --engine ovge
 
 Reads added configurations from `openarc_config.json`.
 
-Display all saved configurations:
+Display all added models:
 ```
 openarc list
 ```
 
+Display config metadata for a specific model:
+```
+openarc list <model-name> -v
+```
+
 Remove a configuration:
 ```
-openarc list --remove --model-name <model-name>
+openarc list --remove <model-name>
 ```
 
 </details>
@@ -378,7 +383,7 @@ openarc serve start # defauls to 0.0.0.0:8000
 Configure host and port
 
 ```
-openarc serve start --host --openarc-port
+openarc serve start --host --port
 ```
 
 To load models on startup:
