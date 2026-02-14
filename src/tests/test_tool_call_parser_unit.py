@@ -49,6 +49,14 @@ def test_parse_tool_calls_supports_missing_closing_tag_until_eos() -> None:
     assert json.loads(tool_calls[0]["function"]["arguments"]) == {"query": "vLLM"}
 
 
+def test_parse_tool_calls_rejects_plain_json_without_tool_call_tags() -> None:
+    text = '{"name":"search","arguments":{"query":"legacy"}}'
+
+    tool_calls = server_main.parse_tool_calls(text)
+
+    assert tool_calls is None
+
+
 @pytest.mark.asyncio
 async def test_openai_chat_completions_non_streaming_tool_calls(monkeypatch: pytest.MonkeyPatch) -> None:
     class _Workers:

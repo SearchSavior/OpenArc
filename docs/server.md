@@ -472,7 +472,7 @@ Rerank documents based on a query.
 
 ## Tool Calling Support
 
-OpenArc supports OpenAI-compatible tool calling. Tools are parsed from model output using regex pattern matching for JSON objects containing `name` and `arguments` fields.
+OpenArc supports OpenAI-compatible tool calling. Tools are parsed from model output using Hermes-style `<tool_call>...</tool_call>` tags containing JSON with `name` and `arguments` fields.
 
 Tool calls are detected in streaming and non-streaming modes:
 - **Streaming**: Tool calls are detected incrementally and streamed as structured chunks
@@ -480,26 +480,20 @@ Tool calls are detected in streaming and non-streaming modes:
 
 ### Parser Implementation
 
-The `parse_tool_calls()` function searches for JSON objects in the model's text output and converts them to OpenAI-compatible tool call format.
+The `parse_tool_calls()` function extracts payloads from `<tool_call>...</tool_call>` tags in the model's text output and converts them to OpenAI-compatible tool call format.
 
 **Input Format (Model Output):**
 
-The parser expects JSON objects embedded in the text with the following structure:
+The parser expects Hermes-style tagged payloads with the following structure:
 
 ```json
-{
-  "name": "function_name",
-  "arguments": {
-    "arg1": "value1",
-    "arg2": "value2"
-  }
-}
+<tool_call>{"name":"function_name","arguments":{"arg1":"value1","arg2":"value2"}}</tool_call>
 ```
 
 **Input to the parser from a model:**
 
 ```
-The user wants to know the weather. {"name": "get_weather", "arguments": {"location": "San Francisco", "units": "celsius"}} I'll check that for you.
+The user wants to know the weather. <tool_call>{"name":"get_weather","arguments":{"location":"San Francisco","units":"celsius"}}</tool_call> I'll check that for you.
 ```
 
 **Output Format (OpenAI-Compatible):**
@@ -521,8 +515,9 @@ Parser returns a list of tool call objects in OpenAI format:
 
 **Parser Behavior:**
 
-- Searches for JSON objects using regex pattern: `\{(?:[^{}]|(?:\{[^{}]*\}))*\}`
-- Validates that each JSON object contains both `name` and `arguments` fields
+- Extracts JSON payloads from `<tool_call>...</tool_call>` tags
+- Supports an EOS fallback when a `<tool_call>` start tag appears without a closing `</tool_call>`
+- Validates that each payload contains both `name` and `arguments` fields
 - Generates unique IDs in format `call_{24-char-hex}`
 - Converts `arguments` to JSON string (required by OpenAI format)
 - Returns `None` if no valid tool calls are found

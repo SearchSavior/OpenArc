@@ -6,7 +6,6 @@ import datetime
 import json
 import logging
 import os
-import re
 import time
 import traceback
 import uuid
@@ -214,24 +213,7 @@ def parse_tool_calls(text: str) -> Optional[List[Dict[str, Any]]]:
     if tool_calls:
         return tool_calls
 
-    # Backward compatibility for plain JSON tool call outputs without tags.
-    pattern = r"\{(?:[^{}]|(?:\{[^{}]*\}))*\}"
-    for match in re.findall(pattern, text, re.DOTALL):
-        try:
-            data = json.loads(match)
-            if isinstance(data, dict) and "name" in data and "arguments" in data:
-                tool_calls.append({
-                    "id": f"call_{uuid.uuid4().hex[:24]}",
-                    "type": "function",
-                    "function": {
-                        "name": str(data.get("name", "")),
-                        "arguments": _format_tool_call_arguments(data.get("arguments", {})),
-                    },
-                })
-        except json.JSONDecodeError:
-            continue
-
-    return tool_calls if tool_calls else None
+    return None
 
 #===============================================================#
 # OpenArc internal
