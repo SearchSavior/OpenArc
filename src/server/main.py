@@ -154,31 +154,83 @@ async def global_exception_handler(request: Request, exc: Exception):
 # Tool calling helpers
 #===============================================================#
 
-def parse_tool_calls(text: str) -> Optional[List[Dict[str, Any]]]:
-    # Find all potential JSON objects
-    pattern = r'\{(?:[^{}]|(?:\{[^{}]*\}))*\}'
-    matches = re.findall(pattern, text, re.DOTALL)
-    
-    if not matches:
-        return None
-    
-    tool_calls = []
-    for match in matches:
+def _extract_hermes_tool_call_payloads(text: str) -> List[str]:
+    open_tag = "<tool_call>"
+    close_tag = "</tool_call>"
+    payloads: List[str] = []
+    cursor = 0
+
+    while True:
+        start = text.find(open_tag, cursor)
+        if start < 0:
+            break
+
+        payload_start = start + len(open_tag)
+        end = text.find(close_tag, payload_start)
+        if end < 0:
+            # Hermes parsers accept an open tool call until EOS.
+            payload = text[payload_start:].strip()
+            if payload:
+                payloads.append(payload)
+            break
+
+        payload = text[payload_start:end].strip()
+        if payload:
+            payloads.append(payload)
+
+        cursor = end + len(close_tag)
+
+    return payloads
+
+
+def _format_tool_call_arguments(arguments: Any) -> str:
+    if isinstance(arguments, str):
         try:
-            data = json.loads(match)
-            # Check if it has the expected structure
-            if "name" in data and "arguments" in data:
+            return json.dumps(json.loads(arguments))
+        except json.JSONDecodeError:
+            return arguments
+    return json.dumps(arguments)
+
+
+def parse_tool_calls(text: str) -> Optional[List[Dict[str, Any]]]:
+    tool_calls: List[Dict[str, Any]] = []
+
+    # Hermes format: <tool_call>{...}</tool_call>, with EOS fallback for missing close tag.
+    for payload in _extract_hermes_tool_call_payloads(text):
+        try:
+            data = json.loads(payload)
+            if isinstance(data, dict) and "name" in data and "arguments" in data:
                 tool_calls.append({
                     "id": f"call_{uuid.uuid4().hex[:24]}",
                     "type": "function",
                     "function": {
-                        "name": data.get("name", ""),
-                        "arguments": json.dumps(data.get("arguments", {}))
-                    }
+                        "name": str(data.get("name", "")),
+                        "arguments": _format_tool_call_arguments(data.get("arguments", {})),
+                    },
                 })
         except json.JSONDecodeError:
-            pass
-    
+            continue
+
+    if tool_calls:
+        return tool_calls
+
+    # Backward compatibility for plain JSON tool call outputs without tags.
+    pattern = r"\{(?:[^{}]|(?:\{[^{}]*\}))*\}"
+    for match in re.findall(pattern, text, re.DOTALL):
+        try:
+            data = json.loads(match)
+            if isinstance(data, dict) and "name" in data and "arguments" in data:
+                tool_calls.append({
+                    "id": f"call_{uuid.uuid4().hex[:24]}",
+                    "type": "function",
+                    "function": {
+                        "name": str(data.get("name", "")),
+                        "arguments": _format_tool_call_arguments(data.get("arguments", {})),
+                    },
+                })
+        except json.JSONDecodeError:
+            continue
+
     return tool_calls if tool_calls else None
 
 #===============================================================#
@@ -300,6 +352,7 @@ async def openai_chat_completions(request: OpenAIChatCompletionRequest, raw_requ
                 accumulated_text = ""
                 metrics_data = None
                 tool_call_sent = False
+                tool_call_started = False
                 cancel_request_id = None
                 
                 try:
@@ -320,6 +373,13 @@ async def openai_chat_completions(request: OpenAIChatCompletionRequest, raw_requ
                             continue
                         
                         accumulated_text += item
+                        if not tool_call_started:
+                            tool_call_started = (
+                                "<tool_call>" in accumulated_text
+                                or "<tool_call" in accumulated_text
+                                or "<tool_" in accumulated_text
+                            )
+
                         tool_calls = parse_tool_calls(accumulated_text)
                         
                         # If tool call detected and not yet sent, stream tool call deltas
@@ -366,7 +426,7 @@ async def openai_chat_completions(request: OpenAIChatCompletionRequest, raw_requ
                                     }]
                                 }
                                 yield (f"data: {json.dumps(tool_call_args)}\n\n").encode()
-                        elif not tool_calls:
+                        elif not tool_calls and not tool_call_started:
                             # Regular content streaming
                             chunk_payload = {
                                 "id": request_id,
