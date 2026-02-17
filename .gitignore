@@ -24,3 +24,4 @@ docker-compose.override.yaml
 openarc_bench.db
 gpt-oss.ipynb
 gpt_oss_convert.py
+scratchpad.md
