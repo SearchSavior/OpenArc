@@ -1,4 +1,3 @@
-import base64
 import io
 import os
 import threading
@@ -9,7 +8,6 @@ import numpy as np
 import requests
 import sounddevice as sd
 import soundfile as sf
-from openai import OpenAI
 
 # Configuration
 API_KEY = os.getenv("OPENARC_API_KEY")
@@ -46,11 +44,10 @@ Any time the user harms a character it should be very violent; executions are al
 My name is Leandro.
 """
 
-def initialize_client() -> OpenAI:
-    """Initialize OpenAI client with OpenArc server."""
+def validate_api_key() -> None:
+    """Validate required API key for OpenArc calls."""
     if not API_KEY:
         raise RuntimeError("OPENARC_API_KEY environment variable not set")
-    return OpenAI(api_key=API_KEY, base_url=BASE_URL)
 
 def record_audio() -> tuple[Optional[np.ndarray], bool]:
     """Record audio from microphone using terminal input (works in remote desktop).
@@ -159,32 +156,30 @@ def record_audio() -> tuple[Optional[np.ndarray], bool]:
     print(f"Total audio length: {len(audio_data) / SAMPLE_RATE:.2f} seconds")
     return audio_data, exit_program
 
-def encode_audio_to_base64(audio_data: np.ndarray) -> str:
-    """Convert audio data to base64-encoded WAV format."""
+def encode_audio_to_wav_bytes(audio_data: np.ndarray) -> bytes:
+    """Convert audio data to in-memory WAV bytes."""
     wav_buffer = io.BytesIO()
     sf.write(wav_buffer, audio_data, SAMPLE_RATE, format='WAV')
     wav_buffer.seek(0)
-    audio_bytes = wav_buffer.read()
-    return base64.b64encode(audio_bytes).decode("utf-8")
+    return wav_buffer.read()
 
-def transcribe_audio(client: OpenAI, audio_b64: str) -> tuple[str, dict]:
+def transcribe_audio(audio_bytes: bytes) -> tuple[str, dict]:
     """Transcribe audio using Whisper model.
     
     Returns:
         Tuple of (transcribed_text, metrics)
     """
-    response = client.post(
-        "/audio/transcriptions",
-        cast_to=object,
-        body={
-            "model": MODELS["whisper"],
-            "audio_base64": audio_b64
-        },
-        options={"headers": {"Content-Type": "application/json"}}
+    response = requests.post(
+        f"{BASE_URL}/audio/transcriptions",
+        headers={"Authorization": f"Bearer {API_KEY}"},
+        data={"model": MODELS["whisper"]},
+        files={"file": ("recording.wav", audio_bytes, "audio/wav")},
+        timeout=120,
     )
-    
-    text = response.get("text", "").strip()
-    metrics = response.get("metrics", {})
+    response.raise_for_status()
+    payload = response.json()
+    text = payload.get("text", "").strip()
+    metrics = payload.get("metrics", {})
     return text, metrics
 
 def get_llm_response(messages: list[dict]) -> str:
@@ -245,7 +240,7 @@ def generate_and_play_speech(text: str) -> None:
 def talk_to_llm():
     """Maintain a conversation: record -> transcribe -> LLM -> TTS -> repeat."""
     try:
-        client = initialize_client()
+        validate_api_key()
     except RuntimeError as e:
         print(f"Error: {e}")
         return
@@ -266,8 +261,8 @@ def talk_to_llm():
         
         try:
             # Transcribe audio
-            audio_b64 = encode_audio_to_base64(audio_data)
-            text, metrics = transcribe_audio(client, audio_b64)
+            audio_bytes = encode_audio_to_wav_bytes(audio_data)
+            text, metrics = transcribe_audio(audio_bytes)
             
             if not text:
                 print("No transcription, skipping...")

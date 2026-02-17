@@ -4,9 +4,7 @@ Comprehensive test that chains Whisper transcription -> LLM chat completion -> K
 """
 
 import os
-import base64
 import requests
-import json
 import time
 from pathlib import Path
 from openai import OpenAI
@@ -131,25 +129,20 @@ def transcribe_audio(audio_path):
     
     print(f"Transcribing audio file: {audio_path}")
     
-    try:
-        with open(audio_path, "rb") as f:
-            audio_b64 = base64.b64encode(f.read()).decode("utf-8")
-    except Exception as e:
-        print(f"Failed to read audio file: {e}")
-        return None
-
     url = "http://localhost:8000/v1/audio/transcriptions"
     headers = {
         "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": "distil-whisper-large-v3-int8-ov",
-        "audio_base64": audio_b64,
     }
 
     try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=120)
+        with open(audio_path, "rb") as f:
+            resp = requests.post(
+                url,
+                headers=headers,
+                data={"model": "distil-whisper-large-v3-int8-ov"},
+                files={"file": (Path(audio_path).name, f, "audio/wav")},
+                timeout=120,
+            )
         if resp.status_code != 200:
             print(f"Transcription failed: {resp.status_code} - {resp.text}")
             return None

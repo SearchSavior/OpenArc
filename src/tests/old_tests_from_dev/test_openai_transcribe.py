@@ -1,5 +1,4 @@
 import os
-import base64
 import requests
 
 
@@ -13,25 +12,20 @@ def transcribe_example():
     model_name = "whisper"
     audio_path = "/home/echo/Projects/OpenArc/src/tests/john_steakly_armor_the_drop.wav"
 
-    try:
-        with open(audio_path, "rb") as f:
-            audio_b64 = base64.b64encode(f.read()).decode("utf-8")
-    except Exception as e:
-        print(f"Failed to read audio file: {e}")
-        return
-
     url = "http://localhost:8000/v1/audio/transcriptions"
     headers = {
         "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": model_name,
-        "audio_base64": audio_b64,
     }
 
     try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=120)
+        with open(audio_path, "rb") as f:
+            resp = requests.post(
+                url,
+                headers=headers,
+                data={"model": model_name},
+                files={"file": (os.path.basename(audio_path), f, "audio/wav")},
+                timeout=120,
+            )
         print("Status:", resp.status_code)
         if resp.status_code != 200:
             print("Error:", resp.text)
