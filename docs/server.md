@@ -295,7 +295,7 @@ Text completions endpoint for LLM models (legacy endpoint).
 
 #### `POST /v1/audio/transcriptions`
 
-Transcribe audio using Whisper models.
+Transcribe audio using Whisper or Qwen3 ASR models.
 
 **Request Body:**
 ```json

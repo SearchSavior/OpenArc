@@ -21,8 +21,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.server.model_registry import ModelRegistry
-from src.server.models.registration import ModelLoadConfig, ModelUnloadConfig
-from src.server.models.openvino import OV_KokoroGenConfig
+from src.server.models.registration import ModelLoadConfig, ModelType, ModelUnloadConfig
+from src.server.models.openvino import OV_KokoroGenConfig, OV_Qwen3ASRGenConfig
 from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
 from src.server.models.optimum import PreTrainedTokenizerConfig, RerankerConfig
 from src.server.models.requests_internal import OpenArcBenchRequest
@@ -649,12 +649,27 @@ async def openai_audio_transcriptions(
 
         # Convert to base64 for internal processing
         audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
+        selected_model_type = None
+        async with _registry._lock:
+            for record in _registry._models.values():
+                if record.model_name == model:
+                    selected_model_type = record.model_type
+                    break
 
-        # Create generation config with base64 audio
-        gen_config = OVGenAI_WhisperGenConfig(audio_base64=audio_base64)
+        if selected_model_type is None:
+            raise ValueError(f"Model '{model}' is not loaded")
 
-        # Process transcription
-        result = await _workers.transcribe_whisper(model, gen_config)
+        normalized_model_type = ModelType(selected_model_type)
+
+        if normalized_model_type == ModelType.QWEN3_ASR:
+            gen_config = OV_Qwen3ASRGenConfig(
+                audio_base64=audio_base64,
+                language=language,
+            )
+            result = await _workers.transcribe_qwen3_asr(model, gen_config)
+        else:
+            gen_config = OVGenAI_WhisperGenConfig(audio_base64=audio_base64)
+            result = await _workers.transcribe_whisper(model, gen_config)
         metrics = result.get("metrics", {})
 
         logger.info(f"[audio/transcriptions] model={model} metrics={metrics}")

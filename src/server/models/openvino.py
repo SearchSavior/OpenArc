@@ -97,3 +97,12 @@ class OV_KokoroGenConfig(BaseModel):
     speed: float = Field(1.0, description="Speech speed multiplier")
     character_count_chunk: int = Field(100, description="Max characters per chunk")
     response_format: str = Field("wav", description="Output format")
+
+
+class OV_Qwen3ASRGenConfig(BaseModel):
+    audio_base64: str = Field(..., description="Base64 encoded audio payload")
+    language: str | None = Field(default=None, description="Optional forced language")
+    max_tokens: int = Field(default=1024, description="Maximum generated tokens per chunk")
+    max_chunk_sec: float = Field(default=30.0, description="Maximum chunk duration in seconds")
+    search_expand_sec: float = Field(default=5.0, description="Boundary search expansion in seconds")
+    min_window_ms: float = Field(default=100.0, description="Sliding window in milliseconds")

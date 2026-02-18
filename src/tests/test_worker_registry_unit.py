@@ -5,7 +5,7 @@ import pytest  # type: ignore[import]
 import src.server.worker_registry as worker_module
 from src.server.model_registry import ModelRecord, ModelRegistry
 from src.server.models.registration import ModelType
-from src.server.models.openvino import KokoroLanguage, KokoroVoice, OV_KokoroGenConfig
+from src.server.models.openvino import KokoroLanguage, KokoroVoice, OV_KokoroGenConfig, OV_Qwen3ASRGenConfig
 from src.server.models.optimum import PreTrainedTokenizerConfig, RerankerConfig
 from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
 
@@ -43,6 +43,9 @@ def worker_registry(monkeypatch: pytest.MonkeyPatch) -> worker_module.WorkerRegi
     class DummyKokoro:  # noqa: D401
         pass
 
+    class DummyQwen3ASR:  # noqa: D401
+        pass
+
     class DummyEmb:  # noqa: D401
         pass
 
@@ -53,6 +56,7 @@ def worker_registry(monkeypatch: pytest.MonkeyPatch) -> worker_module.WorkerRegi
     monkeypatch.setattr(worker_module, "OVGenAI_VLM", DummyVLM)
     monkeypatch.setattr(worker_module, "OVGenAI_Whisper", DummyWhisper)
     monkeypatch.setattr(worker_module, "OV_Kokoro", DummyKokoro)
+    monkeypatch.setattr(worker_module, "OVQwen3ASR", DummyQwen3ASR)
     monkeypatch.setattr(worker_module, "Optimum_EMB", DummyEmb)
     monkeypatch.setattr(worker_module, "Optimum_RR", DummyRR)
 
@@ -78,6 +82,11 @@ def worker_registry(monkeypatch: pytest.MonkeyPatch) -> worker_module.WorkerRegi
     )
     monkeypatch.setattr(
         worker_module.QueueWorker,
+        "queue_worker_qwen3_asr",
+        _make_worker("qwen3-text", {"chunks": 1}),
+    )
+    monkeypatch.setattr(
+        worker_module.QueueWorker,
         "queue_worker_emb",
         _make_worker([[0.1, 0.2]], {"dim": 2}),
     )
@@ -96,6 +105,7 @@ def _make_record(model_type: ModelType, model_name: str) -> ModelRecord:
         ModelType.LLM: "ov_genai",
         ModelType.VLM: "ov_genai",
         ModelType.WHISPER: "ov_genai",
+        ModelType.QWEN3_ASR: "openvino",
         ModelType.KOKORO: "openvino",
         ModelType.EMB: "ov_optimum",
         ModelType.RERANK: "ov_optimum",
@@ -104,6 +114,7 @@ def _make_record(model_type: ModelType, model_name: str) -> ModelRecord:
         ModelType.LLM: worker_module.OVGenAI_LLM,
         ModelType.VLM: worker_module.OVGenAI_VLM,
         ModelType.WHISPER: worker_module.OVGenAI_Whisper,
+        ModelType.QWEN3_ASR: worker_module.OVQwen3ASR,
         ModelType.KOKORO: worker_module.OV_Kokoro,
         ModelType.EMB: worker_module.Optimum_EMB,
         ModelType.RERANK: worker_module.Optimum_RR,
@@ -195,6 +206,17 @@ def test_kokoro_generate_speech(worker_registry: worker_module.WorkerRegistry) -
 
     result = asyncio.run(_run())
     assert result == {"audio_base64": "audio-base64", "metrics": {"chunks_processed": 1}}
+
+
+def test_qwen3_asr_transcribe(worker_registry: worker_module.WorkerRegistry) -> None:
+    record = _make_record(ModelType.QWEN3_ASR, "qwen3-asr-model")
+    config = OV_Qwen3ASRGenConfig(audio_base64="AAA")
+
+    async def _run():
+        return await _load_and_call(worker_registry, record, worker_registry.transcribe_qwen3_asr("qwen3-asr-model", config))
+
+    result = asyncio.run(_run())
+    assert result == {"text": "qwen3-text", "metrics": {"chunks": 1}}
 
 
 def test_embed(worker_registry: worker_module.WorkerRegistry) -> None:

@@ -12,10 +12,11 @@ from src.engine.ov_genai.llm import OVGenAI_LLM
 from src.engine.ov_genai.vlm import OVGenAI_VLM
 from src.engine.ov_genai.whisper import OVGenAI_Whisper
 from src.engine.openvino.kokoro import OV_Kokoro
+from src.engine.openvino.qwen3_asr.infer import OVQwen3ASR, Qwen3ASRConfig
 from src.engine.optimum.optimum_emb import Optimum_EMB
 from src.engine.optimum.optimum_rr import Optimum_RR
 
-from src.server.models.openvino import OV_KokoroGenConfig
+from src.server.models.openvino import OV_KokoroGenConfig, OV_Qwen3ASRGenConfig
 from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
 from src.server.models.optimum import PreTrainedTokenizerConfig, RerankerConfig
 from src.server.model_registry import ModelRecord, ModelRegistry
@@ -53,7 +54,13 @@ class WorkerPacket:
     """
     request_id: str
     id_model: str  # model_name
-    gen_config: Union[OVGenAI_GenConfig, OVGenAI_WhisperGenConfig, OV_KokoroGenConfig, PreTrainedTokenizerConfig]
+    gen_config: Union[
+        OVGenAI_GenConfig,
+        OVGenAI_WhisperGenConfig,
+        OV_Qwen3ASRGenConfig,
+        OV_KokoroGenConfig,
+        PreTrainedTokenizerConfig,
+    ]
     response: Optional[str] = None
     metrics: Optional[Dict[str, Any]] = None
     # Orchestration plumbing
@@ -175,6 +182,36 @@ class InferWorker:
             packet.response = f"Error: {str(e)}"
             packet.metrics = None
             
+        return packet
+
+    @staticmethod
+    async def infer_qwen3_asr(packet: WorkerPacket, asr_model: OVQwen3ASR) -> WorkerPacket:
+        """Transcribe audio for a single packet using the OVQwen3ASR pipeline."""
+        metrics = None
+        final_text = ""
+
+        try:
+            qwen_cfg = Qwen3ASRConfig(
+                audio_base64=packet.gen_config.audio_base64,
+                language=packet.gen_config.language,
+                max_tokens=packet.gen_config.max_tokens,
+                max_chunk_sec=packet.gen_config.max_chunk_sec,
+                search_expand_sec=packet.gen_config.search_expand_sec,
+                min_window_ms=packet.gen_config.min_window_ms,
+            )
+            async for item in asr_model.transcribe(qwen_cfg):
+                if isinstance(item, dict):
+                    metrics = item
+                else:
+                    final_text = item
+
+            packet.response = final_text
+            packet.metrics = metrics
+        except Exception as e:
+            logger.error("Qwen3 ASR inference failed!", exc_info=True)
+            packet.response = f"Error: {str(e)}"
+            packet.metrics = None
+
         return packet
 
     @staticmethod
@@ -363,6 +400,31 @@ class QueueWorker:
             model_queue.task_done()
 
     @staticmethod
+    async def queue_worker_qwen3_asr(model_name: str, model_queue: asyncio.Queue, asr_model: OVQwen3ASR, registry: ModelRegistry):
+        """Qwen3 ASR model inference worker that processes packets from queue."""
+        logger.info(f"[Qwen3ASR Worker: {model_name}] Started, waiting for packets...")
+        while True:
+            packet = await model_queue.get()
+            if packet is None:
+                logger.info(f"[Qwen3ASR Worker: {model_name}] Shutdown signal received.")
+                break
+
+            completed_packet = await InferWorker.infer_qwen3_asr(packet, asr_model)
+
+            if completed_packet.response and completed_packet.response.startswith("Error:"):
+                logger.error(f"[Qwen3ASR Worker: {model_name}] Inference failed, triggering model unload...")
+                asyncio.create_task(registry.register_unload(model_name))
+                break
+
+            if completed_packet.metrics:
+                logger.info(f"[Qwen3ASR Worker: {model_name}] Metrics: {completed_packet.metrics}")
+
+            if packet.result_future is not None and not packet.result_future.done():
+                packet.result_future.set_result(completed_packet)
+
+            model_queue.task_done()
+
+    @staticmethod
     async def queue_worker_kokoro(model_name: str, model_queue: asyncio.Queue, kokoro_model: OV_Kokoro, registry: ModelRegistry):
         """Kokoro model inference worker that processes packets from queue"""
         logger.info(f"[Kokoro Worker: {model_name}] Started, waiting for packets...")
@@ -459,6 +521,9 @@ class WorkerRegistry:
         self._model_queues_whisper: Dict[str, asyncio.Queue] = {}
         self._model_tasks_whisper: Dict[str, asyncio.Task] = {}
 
+        self._model_queues_qwen3_asr: Dict[str, asyncio.Queue] = {}
+        self._model_tasks_qwen3_asr: Dict[str, asyncio.Task] = {}
+
         self._model_queues_kokoro: Dict[str, asyncio.Queue] = {}
         self._model_tasks_kokoro: Dict[str, asyncio.Task] = {}
         
@@ -514,6 +579,15 @@ class WorkerRegistry:
                     task = asyncio.create_task(QueueWorker.queue_worker_whisper(record.model_name, q, instance, self._model_registry))
                     self._model_tasks_whisper[record.model_name] = task
 
+            elif mt == ModelType.QWEN3_ASR and isinstance(instance, OVQwen3ASR):
+                if record.model_name not in self._model_queues_qwen3_asr:
+                    q = asyncio.Queue()
+                    self._model_queues_qwen3_asr[record.model_name] = q
+                    task = asyncio.create_task(
+                        QueueWorker.queue_worker_qwen3_asr(record.model_name, q, instance, self._model_registry)
+                    )
+                    self._model_tasks_qwen3_asr[record.model_name] = task
+
             elif mt == ModelType.KOKORO and isinstance(instance, OV_Kokoro):
                 if record.model_name not in self._model_queues_kokoro:
                     q: asyncio.Queue = asyncio.Queue()
@@ -563,6 +637,14 @@ class WorkerRegistry:
             if t is not None and not t.done():
                 t.cancel()
 
+            # Try qwen3_asr dicts
+            q = self._model_queues_qwen3_asr.pop(record.model_name, None)
+            t = self._model_tasks_qwen3_asr.pop(record.model_name, None)
+            if q is not None:
+                await q.put(None)
+            if t is not None and not t.done():
+                t.cancel()
+
             # Try kokoro dicts
             q = self._model_queues_kokoro.pop(record.model_name, None)
             t = self._model_tasks_kokoro.pop(record.model_name, None)
@@ -601,6 +683,12 @@ class WorkerRegistry:
         if q is not None:
             return q
         raise ValueError(f"Whisper model '{model_name}' is not loaded or no worker is available")
+
+    def _get_qwen3_asr_queue(self, model_name: str) -> asyncio.Queue:
+        q = self._model_queues_qwen3_asr.get(model_name)
+        if q is not None:
+            return q
+        raise ValueError(f"Qwen3 ASR model '{model_name}' is not loaded or no worker is available")
 
     def _get_kokoro_queue(self, model_name: str) -> asyncio.Queue:
         q = self._model_queues_kokoro.get(model_name)
@@ -704,6 +792,21 @@ class WorkerRegistry:
             result_future=result_future,
         )
         q = self._get_whisper_queue(model_name)
+        await q.put(packet)
+        completed = await result_future
+        return {"text": completed.response or "", "metrics": completed.metrics or {}}
+
+    async def transcribe_qwen3_asr(self, model_name: str, gen_config: OV_Qwen3ASRGenConfig) -> Dict[str, Any]:
+        """Transcribe audio using Qwen3 ASR model."""
+        request_id = uuid.uuid4().hex
+        result_future: asyncio.Future = asyncio.get_running_loop().create_future()
+        packet = WorkerPacket(
+            request_id=request_id,
+            id_model=model_name,
+            gen_config=gen_config,
+            result_future=result_future,
+        )
+        q = self._get_qwen3_asr_queue(model_name)
         await q.put(packet)
         completed = await result_future
         return {"text": completed.response or "", "metrics": completed.metrics or {}}

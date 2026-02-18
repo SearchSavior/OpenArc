@@ -402,7 +402,7 @@ def detect_and_fix_repetitions(text, threshold=20):
 
 def parse_asr_output(
     raw: str,
-    user_language: Optional[str] = None,
+    language: Optional[str] = None,
 ) -> Tuple[str, str]:
     """
     Parse Qwen3-ASR raw output into (language, text).
@@ -413,12 +413,12 @@ def parse_asr_output(
       - No tag: treat whole string as text.
       - "language None<asr_text>": treat as empty audio -> ("", "")
 
-    If user_language is provided, language is forced to user_language and raw is treated as text-only
+    If language is provided, output language is forced and raw is treated as text-only
     (the model is expected to output plain transcription without metadata).
 
     Args:
         raw: Raw decoded string.
-        user_language: Canonical language name if user forced language.
+        language: Canonical language name if user forced language.
 
     Returns:
         Tuple[str, str]: (language, text)
@@ -431,9 +431,9 @@ def parse_asr_output(
 
     s = detect_and_fix_repetitions(s)
 
-    if user_language:
+    if language:
         # user explicitly forced language => model output is treated as pure text
-        return user_language, s
+        return language, s
 
     meta_part = s
     text_part = ""

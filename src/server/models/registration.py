@@ -27,6 +27,7 @@ class ModelType(str, Enum):
     - llm: Text-to-text LLM models
     - vlm: Image-to-text VLM models
     - whisper: Whisper ASR models
+    - qwen3_asr: Qwen3 ASR models
     - kokoro: Kokoro TTS models
     - emb: Text-to-vector models    
     - rerank: Reranker models"""    
@@ -34,6 +35,7 @@ class ModelType(str, Enum):
     LLM = "llm"
     VLM = "vlm"
     WHISPER = "whisper"
+    QWEN3_ASR = "qwen3_asr"
     KOKORO = "kokoro"
     EMB = "emb"
     RERANK = "rerank"

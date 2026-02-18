@@ -6,7 +6,7 @@ import src.server.model_registry as model_registry_module
 import src.server.worker_registry as worker_module
 from src.server.model_registry import ModelRegistry
 from src.server.models.registration import EngineType, ModelLoadConfig, ModelType
-from src.server.models.openvino import KokoroLanguage, KokoroVoice, OV_KokoroGenConfig
+from src.server.models.openvino import KokoroLanguage, KokoroVoice, OV_KokoroGenConfig, OV_Qwen3ASRGenConfig
 from src.server.models.optimum import PreTrainedTokenizerConfig, RerankerConfig
 from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
 
@@ -48,6 +48,10 @@ def worker_system(monkeypatch: pytest.MonkeyPatch):
         async def unload_model(self, registry, model_name):
             return True
 
+    class DummyQwen3ASR:
+        async def unload_model(self, registry, model_name):
+            return True
+
     class DummyEmb:
         async def unload_model(self, registry, model_name):
             return True
@@ -60,6 +64,7 @@ def worker_system(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(worker_module, "OVGenAI_VLM", DummyVLM)
     monkeypatch.setattr(worker_module, "OVGenAI_Whisper", DummyWhisper)
     monkeypatch.setattr(worker_module, "OV_Kokoro", DummyKokoro)
+    monkeypatch.setattr(worker_module, "OVQwen3ASR", DummyQwen3ASR)
     monkeypatch.setattr(worker_module, "Optimum_EMB", DummyEmb)
     monkeypatch.setattr(worker_module, "Optimum_RR", DummyRR)
 
@@ -67,6 +72,7 @@ def worker_system(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(worker_module.QueueWorker, "queue_worker_vlm", _make_worker("vlm-full", {"tokens": 2}, True))
     monkeypatch.setattr(worker_module.QueueWorker, "queue_worker_whisper", _make_worker("whisper-text", {"words": 2}))
     monkeypatch.setattr(worker_module.QueueWorker, "queue_worker_kokoro", _make_worker("audio-base64", {"chunks_processed": 1}))
+    monkeypatch.setattr(worker_module.QueueWorker, "queue_worker_qwen3_asr", _make_worker("qwen3-text", {"chunks": 1}))
     monkeypatch.setattr(worker_module.QueueWorker, "queue_worker_emb", _make_worker([[0.1, 0.2]], {"dim": 2}))
     monkeypatch.setattr(worker_module.QueueWorker, "queue_worker_rr", _make_worker([{"doc": "A", "score": 0.9}], {"total": 1}))
 
@@ -74,6 +80,7 @@ def worker_system(monkeypatch: pytest.MonkeyPatch):
         ModelType.LLM: DummyLLM,
         ModelType.VLM: DummyVLM,
         ModelType.WHISPER: DummyWhisper,
+        ModelType.QWEN3_ASR: DummyQwen3ASR,
         ModelType.KOKORO: DummyKokoro,
         ModelType.EMB: DummyEmb,
         ModelType.RERANK: DummyRR,
@@ -216,6 +223,32 @@ def test_worker_registry_kokoro_flow(worker_system) -> None:
 
     result = asyncio.run(_run())
     assert result == {"audio_base64": "audio-base64", "metrics": {"chunks_processed": 1}}
+
+
+def test_worker_registry_qwen3_asr_flow(worker_system) -> None:
+    model_registry, worker_registry = worker_system
+
+    load_config = ModelLoadConfig(
+        model_path="/models/mock",
+        model_name="integration-qwen3-asr",
+        model_type=ModelType.QWEN3_ASR,
+        engine=EngineType.OPENVINO,
+        device="CPU",
+        runtime_config={},
+    )
+
+    config = OV_Qwen3ASRGenConfig(audio_base64="AAA")
+
+    async def _run():
+        return await _load_do_unload(
+            model_registry,
+            worker_registry,
+            load_config,
+            worker_registry.transcribe_qwen3_asr("integration-qwen3-asr", config),
+        )
+
+    result = asyncio.run(_run())
+    assert result == {"text": "qwen3-text", "metrics": {"chunks": 1}}
 
 
 def test_worker_registry_embed_flow(worker_system) -> None:

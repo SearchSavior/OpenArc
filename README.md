@@ -56,7 +56,7 @@ Thanks to everyone on Discord for their continued support!
       - `/v1/models`
       - `/v1/completions`: `llm` only
       - `/v1/chat/completions`
-      - `/v1/audio/transcriptions`: `whisper` only
+      - `/v1/audio/transcriptions`: `whisper`, `qwen3_asr`
       - `/v1/audio/speech`: `kokoro` only       
       - `/v1/embeddings`: `qwen3-embedding` #33 by @mwrothbe
       - `/v1/rerank`: `qwen3-reranker` #39 by @mwrothbe
@@ -257,6 +257,13 @@ Next up:
 - Check a model's status using `openarc status`. 
 - Benchmark performance like llama-bench with `openarc-bench`
 - Call utility scripts with `openarc tool`
+
+Qwen3 ASR example:
+
+```
+openarc add --model-name qwen3_asr --model-path <path/to/qwen3_asr_ir> --engine openvino --model-type qwen3_asr --device CPU
+python demos/qwen3_asr_transcribe.py <path/to/audio.wav> --model qwen3_asr
+```
 
 Each command has groups of options which offer fine-grained control of both server behavior and performance optimizations, which are documented here with examples to get you started. Remember to use this as reference.
 
