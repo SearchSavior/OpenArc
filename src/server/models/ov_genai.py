@@ -23,7 +23,7 @@ class OVGenAI_GenConfig(BaseModel):
         description="Pre-encoded input token IDs (used for benchmarking to bypass tokenization)"
     )
     max_tokens: int = Field(
-        default=512,
+        default=16384,
         description="""
         Maximum number of tokens to generate. OpenAI API compatible.
         OpenVINO GenAI pipeline take GenerationConfig.max_new_tokens so we have to map it to max_tokens.
