@@ -227,6 +227,9 @@ MODEL_CLASS_REGISTRY = {
     (EngineType.OV_GENAI, ModelType.WHISPER): "src.engine.ov_genai.whisper.OVGenAI_Whisper",
     (EngineType.OPENVINO, ModelType.QWEN3_ASR): "src.engine.openvino.qwen3_asr.infer.OVQwen3ASR",
     (EngineType.OPENVINO, ModelType.KOKORO): "src.engine.openvino.kokoro.OV_Kokoro",
+    (EngineType.OPENVINO, ModelType.QWEN3_TTS_CUSTOM_VOICE): "src.engine.openvino.qwen3_tts.qwen3_tts.OVQwen3TTS",
+    (EngineType.OPENVINO, ModelType.QWEN3_TTS_VOICE_DESIGN): "src.engine.openvino.qwen3_tts.qwen3_tts.OVQwen3TTS",
+    (EngineType.OPENVINO, ModelType.QWEN3_TTS_VOICE_CLONE): "src.engine.openvino.qwen3_tts.qwen3_tts.OVQwen3TTS",
     (EngineType.OV_OPTIMUM, ModelType.EMB): "src.engine.optimum.optimum_emb.Optimum_EMB",
     (EngineType.OV_OPTIMUM, ModelType.RERANK): "src.engine.optimum.optimum_rr.Optimum_RR",
 }

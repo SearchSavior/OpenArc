@@ -2,7 +2,7 @@ import openvino as ov
 from openvino_genai import GenerationConfig, LLMPipeline
 from transformers import AutoTokenizer
 
-model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/DeepSeek-V2-Lite-Chat-int4_asym-ov"
+model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/gpt-oss-nano-int4_sym-ov"
 
 pipe = LLMPipeline(
     model_dir,       # Path to the model directory. Remember this will not pull from hub like in transformers
@@ -12,14 +12,14 @@ pipe = LLMPipeline(
 tokenizer = AutoTokenizer.from_pretrained(model_dir)
 
 generation_config = GenerationConfig(
-    max_new_tokens=24
+    max_new_tokens=2048
 )
 
-prompt = "You're the fastest Llama this side of the equator. What's your favorite food? try to imagine"
+prompt = "You're the fastest Llama this side of the equator. What's your favorite food? try to imagine a convincing answer."
 
 messages = [{"role": "user", "content": prompt}]
 # Build proper chat prompt for Qwen-style instruct models and get prompt_token_ids directly
-prompt_token_ids = tokenizer.apply_chat_template(messages, add_generation_prompt=True, return_tensors="np")
+prompt_token_ids = tokenizer.apply_chat_template(messages, add_generation_prompt=True, return_tensors="np", reasoning_effort="low")
 
 num_iterations = 3  # Number of generations to run
 

@@ -106,3 +106,42 @@ class OV_Qwen3ASRGenConfig(BaseModel):
     max_chunk_sec: float = Field(default=30.0, description="Maximum chunk duration in seconds")
     search_expand_sec: float = Field(default=5.0, description="Boundary search expansion in seconds")
     min_window_ms: float = Field(default=100.0, description="Sliding window in milliseconds")
+
+
+class OV_Qwen3TTSGenConfig(BaseModel):
+    """Single source of truth for all OVQwen3TTS request parameters.
+
+    The model_type on ModelLoadConfig determines which mode the engine runs;
+    supply only the fields relevant to that mode:
+
+    - qwen3_tts_custom_voice : text, speaker, language, instruct
+    - qwen3_tts_voice_design  : text, voice_description, language
+    - qwen3_tts_voice_clone   : text, ref_audio_b64, ref_text, x_vector_only, language, instruct
+
+    All modes accept the sampling fields.
+    """
+    # --- content ---
+    text: str = Field(..., description="Text to synthesise.")
+    # [custom_voice]
+    speaker: str | None = Field(default=None, description="[custom_voice] Predefined speaker name.")
+    instruct: str | None = Field(default=None, description="[custom_voice, voice_clone] Optional style instruction.")
+    # [all]
+    language: str | None = Field(default=None, description="[all] Force output language. None = auto-detect.")
+    # [voice_design]
+    voice_description: str | None = Field(default=None, description="[voice_design] Free-form voice description.")
+    # [voice_clone]
+    ref_audio_b64: str | None = Field(default=None, description="[voice_clone] Base64-encoded reference WAV.")
+    ref_text: str | None = Field(default=None, description="[voice_clone] Transcript of reference audio (enables ICL).")
+    x_vector_only: bool = Field(default=False, description="[voice_clone] Use x-vector embedding only; skip ICL even if ref_text is set.")
+    # --- sampling (all modes) ---
+    max_new_tokens: int = Field(default=2048, description="Maximum codec frames to generate.")
+    do_sample: bool = Field(default=True, description="Sample from logits. False = greedy.")
+    top_k: int = Field(default=50, description="Top-k filter for talker logits.")
+    top_p: float = Field(default=1.0, description="Nucleus filter for talker logits. 1.0 = off.")
+    temperature: float = Field(default=0.9, description="Temperature scaling for talker logits.")
+    repetition_penalty: float = Field(default=1.05, description="Repetition penalty on first-codebook history. 1.0 = off.")
+    non_streaming_mode: bool = Field(default=True, description="True = all text tokens in prefill; False = drip-fed during decode.")
+    subtalker_do_sample: bool = Field(default=True, description="Sample sub-codebook logits.")
+    subtalker_top_k: int = Field(default=50, description="Top-k for code predictor.")
+    subtalker_top_p: float = Field(default=1.0, description="Nucleus filter for code predictor.")
+    subtalker_temperature: float = Field(default=0.9, description="Temperature for code predictor.")

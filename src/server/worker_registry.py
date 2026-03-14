@@ -13,10 +13,11 @@ from src.engine.ov_genai.vlm import OVGenAI_VLM
 from src.engine.ov_genai.whisper import OVGenAI_Whisper
 from src.engine.openvino.kokoro import OV_Kokoro
 from src.engine.openvino.qwen3_asr.infer import OVQwen3ASR, Qwen3ASRConfig
+from src.engine.openvino.qwen3_tts.qwen3_tts import OVQwen3TTS
 from src.engine.optimum.optimum_emb import Optimum_EMB
 from src.engine.optimum.optimum_rr import Optimum_RR
 
-from src.server.models.openvino import OV_KokoroGenConfig, OV_Qwen3ASRGenConfig
+from src.server.models.openvino import OV_KokoroGenConfig, OV_Qwen3ASRGenConfig, OV_Qwen3TTSGenConfig
 from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
 from src.server.models.optimum import PreTrainedTokenizerConfig, RerankerConfig
 from src.server.model_registry import ModelRecord, ModelRegistry
@@ -59,6 +60,7 @@ class WorkerPacket:
         OVGenAI_WhisperGenConfig,
         OV_Qwen3ASRGenConfig,
         OV_KokoroGenConfig,
+        OV_Qwen3TTSGenConfig,
         PreTrainedTokenizerConfig,
     ]
     response: Optional[str] = None
@@ -260,6 +262,32 @@ class InferWorker:
         return packet
     
     @staticmethod
+    async def infer_qwen3_tts(packet: WorkerPacket, tts_model: OVQwen3TTS) -> WorkerPacket:
+        """Generate speech audio for a single packet using the OVQwen3TTS engine."""
+        try:
+            wav, sr = await tts_model.generate(packet.gen_config)
+
+            if len(wav) > 0:
+                wav_buffer = io.BytesIO()
+                sf.write(wav_buffer, wav, samplerate=sr, format='WAV')
+                audio_base64 = base64.b64encode(wav_buffer.getvalue()).decode('utf-8')
+                packet.response = audio_base64
+            else:
+                packet.response = ""
+
+            packet.metrics = {
+                "sample_rate": sr,
+                "samples": len(wav),
+                "duration_sec": len(wav) / sr if sr > 0 else 0,
+            }
+        except Exception as e:
+            logger.error("Qwen3 TTS inference failed!", exc_info=True)
+            packet.response = f"Error: {str(e)}"
+            packet.metrics = None
+
+        return packet
+
+    @staticmethod
     async def infer_emb(packet: WorkerPacket, emb_instance: Optimum_EMB) -> WorkerPacket:
         """Generate embeddings for a single packet using the optimum pipeline"""
         metrics = None
@@ -453,6 +481,31 @@ class QueueWorker:
             model_queue.task_done()
 
     @staticmethod
+    async def queue_worker_qwen3_tts(model_name: str, model_queue: asyncio.Queue, tts_model: OVQwen3TTS, registry: ModelRegistry):
+        """Qwen3 TTS model inference worker that processes packets from queue."""
+        logger.info(f"[Qwen3TTS Worker: {model_name}] Started, waiting for packets...")
+        while True:
+            packet = await model_queue.get()
+            if packet is None:
+                logger.info(f"[Qwen3TTS Worker: {model_name}] Shutdown signal received.")
+                break
+
+            completed_packet = await InferWorker.infer_qwen3_tts(packet, tts_model)
+
+            if completed_packet.response and completed_packet.response.startswith("Error:"):
+                logger.error(f"[Qwen3TTS Worker: {model_name}] Inference failed, triggering model unload...")
+                asyncio.create_task(registry.register_unload(model_name))
+                break
+
+            if completed_packet.metrics:
+                logger.info(f"[Qwen3TTS Worker: {model_name}] Metrics: {completed_packet.metrics}")
+
+            if packet.result_future is not None and not packet.result_future.done():
+                packet.result_future.set_result(completed_packet)
+
+            model_queue.task_done()
+
+    @staticmethod
     async def queue_worker_emb(model_name: str, model_queue: asyncio.Queue, emb_model: Optimum_EMB, registry: ModelRegistry):
         """EMB model inference worker that processes packets from queue"""
         logger.info(f"[EMB Worker: {model_name}] Started, waiting for packets...")
@@ -526,7 +579,10 @@ class WorkerRegistry:
 
         self._model_queues_kokoro: Dict[str, asyncio.Queue] = {}
         self._model_tasks_kokoro: Dict[str, asyncio.Task] = {}
-        
+
+        self._model_queues_qwen3_tts: Dict[str, asyncio.Queue] = {}
+        self._model_tasks_qwen3_tts: Dict[str, asyncio.Task] = {}
+
         self._model_queues_emb: Dict[str, asyncio.Queue] = {}
         self._model_tasks_emb: Dict[str, asyncio.Task] = {}
 
@@ -595,6 +651,19 @@ class WorkerRegistry:
                     task = asyncio.create_task(QueueWorker.queue_worker_kokoro(record.model_name, q, instance, self._model_registry))
                     self._model_tasks_kokoro[record.model_name] = task
 
+            elif mt in (
+                ModelType.QWEN3_TTS_CUSTOM_VOICE,
+                ModelType.QWEN3_TTS_VOICE_DESIGN,
+                ModelType.QWEN3_TTS_VOICE_CLONE,
+            ) and isinstance(instance, OVQwen3TTS):
+                if record.model_name not in self._model_queues_qwen3_tts:
+                    q: asyncio.Queue = asyncio.Queue()
+                    self._model_queues_qwen3_tts[record.model_name] = q
+                    task = asyncio.create_task(
+                        QueueWorker.queue_worker_qwen3_tts(record.model_name, q, instance, self._model_registry)
+                    )
+                    self._model_tasks_qwen3_tts[record.model_name] = task
+
             elif mt == ModelType.EMB and isinstance(instance, Optimum_EMB):
                 if record.model_name not in self._model_queues_emb:
                     q: asyncio.Queue = asyncio.Queue()
@@ -653,6 +722,14 @@ class WorkerRegistry:
             if t is not None and not t.done():
                 t.cancel()
 
+            # Try qwen3_tts dicts
+            q = self._model_queues_qwen3_tts.pop(record.model_name, None)
+            t = self._model_tasks_qwen3_tts.pop(record.model_name, None)
+            if q is not None:
+                await q.put(None)
+            if t is not None and not t.done():
+                t.cancel()
+
             # Try emb dicts
             q = self._model_queues_emb.pop(record.model_name, None)
             t = self._model_tasks_emb.pop(record.model_name, None)
@@ -695,6 +772,12 @@ class WorkerRegistry:
         if q is not None:
             return q
         raise ValueError(f"Kokoro model '{model_name}' is not loaded or no worker is available")
+
+    def _get_qwen3_tts_queue(self, model_name: str) -> asyncio.Queue:
+        q = self._model_queues_qwen3_tts.get(model_name)
+        if q is not None:
+            return q
+        raise ValueError(f"Qwen3 TTS model '{model_name}' is not loaded or no worker is available")
 
     def _get_emb_queue(self, model_name: str) -> asyncio.Queue:
         q = self._model_queues_emb.get(model_name)
@@ -810,6 +893,24 @@ class WorkerRegistry:
         await q.put(packet)
         completed = await result_future
         return {"text": completed.response or "", "metrics": completed.metrics or {}}
+
+    async def generate_speech_qwen3_tts(self, model_name: str, gen_config: OV_Qwen3TTSGenConfig) -> Dict[str, Any]:
+        """Generate speech using a loaded Qwen3 TTS model.
+
+        Returns a dict with base64-encoded WAV audio and metrics.
+        """
+        request_id = uuid.uuid4().hex
+        result_future: asyncio.Future = asyncio.get_running_loop().create_future()
+        packet = WorkerPacket(
+            request_id=request_id,
+            id_model=model_name,
+            gen_config=gen_config,
+            result_future=result_future,
+        )
+        q = self._get_qwen3_tts_queue(model_name)
+        await q.put(packet)
+        completed = await result_future
+        return {"audio_base64": completed.response or "", "metrics": completed.metrics or {}}
 
     async def generate_speech_kokoro(self, model_name: str, gen_config: OV_KokoroGenConfig) -> Dict[str, Any]:
         """Generate speech using a loaded Kokoro model asynchronously via worker queue.

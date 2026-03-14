@@ -21,9 +21,13 @@ from ..utils import validate_model_path
     required=True,
     help='Engine used to load the model (ovgenai, openvino, optimum)')
 @click.option('--model-type', '--mt',
-    type=click.Choice(['llm', 'vlm', 'whisper', 'qwen3_asr', 'kokoro', 'emb', 'rerank']),
+    type=click.Choice([
+        'llm', 'vlm', 'whisper', 'qwen3_asr', 'kokoro',
+        'qwen3_tts_custom_voice', 'qwen3_tts_voice_design', 'qwen3_tts_voice_clone',
+        'emb', 'rerank',
+    ]),
     required=True,
-    help='Model type (llm, vlm, whisper, qwen3_asr, kokoro, emb, rerank)')
+    help='Model type (llm, vlm, whisper, qwen3_asr, kokoro, qwen3_tts_custom_voice, qwen3_tts_voice_design, qwen3_tts_voice_clone, emb, rerank)')
 @click.option('--device', '--d',
     required=True,
     help='Device(s) to load the model on.')
