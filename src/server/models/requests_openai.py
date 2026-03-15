@@ -46,13 +46,35 @@ class OpenAIWhisperRequest(BaseModel):
 
 
 
-class OpenAIKokoroRequest(BaseModel):
+class OpenAISpeechRequest(BaseModel):
+    """Unified request model for /v1/audio/speech; supports Kokoro and Qwen3 TTS backends."""
+    # --- OpenAI standard fields ---
     model: str
     input: str
     voice: Optional[str] = None
-    speed: Optional[float] = None
+    instructions: Optional[str] = None
     language: Optional[str] = None
     response_format: Optional[str] = "wav"
+    speed: Optional[float] = 1.0
+    # --- Kokoro-specific ---
+    character_count_chunk: Optional[int] = 100
+    # --- Qwen3 TTS content ---
+    voice_description: Optional[str] = None
+    ref_audio_b64: Optional[str] = None
+    ref_text: Optional[str] = None
+    x_vector_only: bool = False
+    # --- Qwen3 TTS sampling ---
+    max_new_tokens: int = 2048
+    do_sample: bool = True
+    top_k: int = 50
+    top_p: float = 1.0
+    temperature: float = 0.9
+    repetition_penalty: float = 1.05
+    non_streaming_mode: bool = True
+    subtalker_do_sample: bool = True
+    subtalker_top_k: int = 50
+    subtalker_top_p: float = 1.0
+    subtalker_temperature: float = 0.9
 
 
 # https://platform.openai.com/docs/api-reference/embeddings

@@ -27,7 +27,7 @@ This document describes the FastAPI server implementation, endpoints, and API st
   - [OpenAIChatCompletionRequest](#openaichatcompletionrequest)
   - [OpenAICompletionRequest](#openaicompletionrequest)
   - [OpenAIWhisperRequest](#openaiwhisperrequest)
-  - [OpenAIKokoroRequest](#openaikokororequest)
+  - [OpenAISpeechRequest](#openaispeechrequest)
   - [EmbeddingsRequest](#embeddingsrequest)
   - [RerankRequest](#rerankrequest)
 - [Tool Calling Support](#tool-calling-support)
@@ -446,13 +446,12 @@ Rerank documents based on a query.
 - `model`: str
 - `audio_base64`: str
 
-### OpenAIKokoroRequest
-- `model`: str
-- `input`: str
-- `voice`: Optional[str]
-- `speed`: Optional[float]
-- `language`: Optional[str]
-- `response_format`: Optional[str]
+### OpenAISpeechRequest
+Unified request for `/v1/audio/speech`; routes to Kokoro or Qwen3 TTS based on model type.
+
+- **OpenAI standard:** `model`, `input`, `voice`, `instructions`, `language`, `response_format`, `speed`
+- **Kokoro-specific:** `character_count_chunk`
+- **Qwen3 TTS:** `voice_description`, `ref_audio_b64`, `ref_text`, `x_vector_only`, `max_new_tokens`, `do_sample`, `top_k`, `top_p`, `temperature`, `repetition_penalty`, `non_streaming_mode`, `subtalker_*`
 
 ### EmbeddingsRequest
 - `model`: str
