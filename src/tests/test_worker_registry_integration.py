@@ -210,7 +210,7 @@ def test_worker_registry_kokoro_flow(worker_system) -> None:
     )
 
     config = OV_KokoroGenConfig(
-        kokoro_message="Hello",
+        input="Hello",
         voice=KokoroVoice.AF_SARAH,
         lang_code=KokoroLanguage.AMERICAN_ENGLISH,
         speed=1.0,

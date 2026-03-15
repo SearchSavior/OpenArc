@@ -193,7 +193,7 @@ def test_whisper_transcribe(worker_registry: worker_module.WorkerRegistry) -> No
 def test_kokoro_generate_speech(worker_registry: worker_module.WorkerRegistry) -> None:
     record = _make_record(ModelType.KOKORO, "kokoro-model")
     config = OV_KokoroGenConfig(
-        kokoro_message="Hello",
+        input="Hello",
         voice=KokoroVoice.AF_SARAH,
         lang_code=KokoroLanguage.AMERICAN_ENGLISH,
         speed=1.0,

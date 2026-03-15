@@ -60,7 +60,7 @@ def test_kokoro_chunk_forward_pass_cpu_integration() -> None:
 
     try:
         gen_config = OV_KokoroGenConfig(
-            kokoro_message="Hello world from Kokoro.",
+            input="Hello world from Kokoro.",
             voice=KokoroVoice.AF_SARAH,
             lang_code=KokoroLanguage.AMERICAN_ENGLISH,
             speed=1.0,

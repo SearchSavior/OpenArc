@@ -22,19 +22,19 @@ MODELS = {
     "qwen3": os.getenv("OPENARC_QWEN3_TTS_MODEL", "custom_voice"),
 }
 
-# Kokoro-only fields (voice=KokoroVoice, language=KokoroLanguage code)
+# Kokoro config for openarc_tts.kokoro (voice/lang_code are KokoroVoice/KokoroLanguage enums)
 KOKORO_CONFIG = {
     "voice": "af_sky",
-    "language": "a",  # KokoroLanguage.AMERICAN_ENGLISH
+    "lang_code": "a",  # KokoroLanguage.AMERICAN_ENGLISH
     "speed": 1.0,
     "response_format": "wav",
     "character_count_chunk": 100,
 }
 
-# Qwen3 TTS only (speaker→voice, no Kokoro fields)
+# Qwen3 TTS config for openarc_tts.qwen3_tts
 QWEN3_TTS_CONFIG = {
     "speaker": "uncle_fu",
-    "instructions": None,
+    "instruct": "Whisper very softly, and giggle at the end.",
     "language": "english",
     "voice_description": None,
     "ref_audio_b64": None,
@@ -69,26 +69,23 @@ def generate_speech(text: str, output_path: str | Path = "speech.wav") -> Path:
     model = MODELS[BACKEND]
 
     if BACKEND == "kokoro":
-        cfg = KOKORO_CONFIG
+        cfg = dict(KOKORO_CONFIG)
+        cfg["input"] = text
         response = client.audio.speech.create(
             model=model,
             input=text,
             voice=cfg["voice"],
-            extra_body={
-                "language": cfg["language"],
-                "speed": cfg["speed"],
-                "response_format": cfg["response_format"],
-                "character_count_chunk": cfg["character_count_chunk"],
-            },
+            extra_body={"openarc_tts": {"kokoro": cfg}},
         )
     else:
         cfg = {k: v for k, v in QWEN3_TTS_CONFIG.items() if v is not None}
-        voice = cfg.pop("speaker", "ryan")
+        cfg["input"] = text
+        voice = cfg.get("speaker", "ryan")
         response = client.audio.speech.create(
             model=model,
             input=text,
             voice=voice,
-            extra_body=cfg,
+            extra_body={"openarc_tts": {"qwen3_tts": cfg}},
         )
 
     out = Path(output_path)

@@ -176,14 +176,14 @@ class OVQwen3TTS:
 
         if self.load_config.model_type == ModelType.QWEN3_TTS_CUSTOM_VOICE:
             build_kw = dict(
-                text=gen_config.text,
+                text=gen_config.input,
                 speaker=speaker,
                 language=language,
                 instruct=gen_config.instruct,
             )
         else:  # VOICE_DESIGN
             build_kw = dict(
-                text=gen_config.text,
+                text=gen_config.input,
                 speaker=None,
                 language=language,
                 instruct=gen_config.voice_description,
@@ -227,7 +227,7 @@ class OVQwen3TTS:
 
         t0 = time.perf_counter()
         inp = self._build_inputs(
-            text=gen_config.text,
+            text=gen_config.input,
             speaker_embed=speaker_embed,
             language=language,
             instruct=gen_config.instruct,

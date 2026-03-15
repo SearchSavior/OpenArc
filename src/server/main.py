@@ -22,7 +22,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.server.model_registry import ModelRegistry
 from src.server.models.registration import ModelLoadConfig, ModelType, ModelUnloadConfig
-from src.server.models.openvino import OV_KokoroGenConfig, OV_Qwen3ASRGenConfig, OV_Qwen3TTSGenConfig
+from src.server.models.openvino import OV_Qwen3ASRGenConfig
 from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
 from src.server.models.optimum import PreTrainedTokenizerConfig, RerankerConfig
 from src.server.models.requests_internal import OpenArcBenchRequest
@@ -717,37 +717,16 @@ async def openai_audio_speech(request: OpenAISpeechRequest):
             ModelType.QWEN3_TTS_VOICE_DESIGN,
             ModelType.QWEN3_TTS_VOICE_CLONE,
         ):
-            gen_config = OV_Qwen3TTSGenConfig(
-                text=request.input,
-                speaker=request.voice,
-                instruct=request.instructions,
-                language=request.language,
-                voice_description=request.voice_description,
-                ref_audio_b64=request.ref_audio_b64,
-                ref_text=request.ref_text,
-                x_vector_only=request.x_vector_only,
-                max_new_tokens=request.max_new_tokens,
-                do_sample=request.do_sample,
-                top_k=request.top_k,
-                top_p=request.top_p,
-                temperature=request.temperature,
-                repetition_penalty=request.repetition_penalty,
-                non_streaming_mode=request.non_streaming_mode,
-                subtalker_do_sample=request.subtalker_do_sample,
-                subtalker_top_k=request.subtalker_top_k,
-                subtalker_top_p=request.subtalker_top_p,
-                subtalker_temperature=request.subtalker_temperature,
-            )
+            if not request.openarc_tts or not request.openarc_tts.qwen3_tts:
+                raise ValueError("openarc_tts.qwen3_tts required for Qwen3 TTS models")
+            gen_config = request.openarc_tts.qwen3_tts
+            gen_config.input = request.input
             result = await _workers.generate_speech_qwen3_tts(request.model, gen_config)
         else:
-            gen_config = OV_KokoroGenConfig(
-                kokoro_message=request.input,
-                voice=request.voice,
-                lang_code=request.language,
-                speed=request.speed if request.speed is not None else 1.0,
-                character_count_chunk=request.character_count_chunk if request.character_count_chunk is not None else 100,
-                response_format=request.response_format or "wav",
-            )
+            if not request.openarc_tts or not request.openarc_tts.kokoro:
+                raise ValueError("openarc_tts.kokoro required for Kokoro models")
+            gen_config = request.openarc_tts.kokoro
+            gen_config.input = request.input
             result = await _workers.generate_speech_kokoro(request.model, gen_config)
 
         metrics = result.get("metrics", {})

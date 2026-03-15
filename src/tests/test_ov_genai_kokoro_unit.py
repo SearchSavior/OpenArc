@@ -101,7 +101,7 @@ def test_chunk_forward_pass_yields_chunks(monkeypatch: pytest.MonkeyPatch, load_
     monkeypatch.setattr(kokoro_module, "KPipeline", DummyPipeline)
 
     config = OV_KokoroGenConfig(
-        kokoro_message="ignored",
+        input="ignored",
         voice=KokoroVoice.AF_SARAH,
         lang_code=KokoroLanguage.AMERICAN_ENGLISH,
         speed=1.0,

@@ -20,7 +20,7 @@ from kokoro.model import KModel
 
 from src.server.model_registry import ModelRegistry
 from src.server.models.registration import ModelLoadConfig
-from src.server.models.openvino import KokoroLanguage, KokoroVoice, OV_KokoroGenConfig
+from src.server.models.openvino import OV_KokoroGenConfig
 
 
 class StreamChunk(NamedTuple):
@@ -132,7 +132,7 @@ class OV_Kokoro(KModel):
         from kokoro.pipeline import KPipeline
         pipeline = KPipeline(model=self, lang_code=config.lang_code.value)
 
-        text_chunks = self.make_chunks(config.kokoro_message, config.character_count_chunk)
+        text_chunks = self.make_chunks(config.input, config.character_count_chunk)
         total_chunks = len(text_chunks)
 
         for idx, chunk_text in enumerate(text_chunks):
@@ -153,84 +153,3 @@ class OV_Kokoro(KModel):
                 chunk_index=idx,
                 total_chunks=total_chunks,
             )
-
-async def demo_entrypoint():
-    """
-    Demo entrypoint: Load OV_Kokoro model, generate speech, save to WAV, and unload.
-    """
-    import sys
-
-    # Add the project root to Python path for imports
-    project_root = Path(__file__).parent.parent.parent
-    sys.path.insert(0, str(project_root))
-
-    from src2.server.model_registry import EngineType, ModelLoadConfig, TaskType
-
-    # Example configuration - adjust paths and parameters as needed
-    model_path = Path("/mnt/Ironwolf-4TB/Models/OpenVINO/Kokoro-82M-FP16-OpenVINO")  # Replace with actual model path
-    if not model_path.exists():
-        print(f"Error: Model path {model_path} does not exist")
-        print("Please update the model_path in demo_entrypoint()")
-        return
-
-    load_config = ModelLoadConfig(
-        model_path=str(model_path),
-        model_name="kokoro-demo",
-        model_type=TaskType.KOKORO,
-        engine=EngineType.OPENVINO,
-        device="CPU",  # or "GPU" if available
-    )
-
-    # Create model instance
-    kokoro_model = OV_Kokoro(load_config)
-
-    try:
-        # Load the model
-        print("Loading Kokoro model...")
-        kokoro_model.load_model(load_config)
-        print("Model loaded successfully")
-
-        # Configure generation
-        gen_config = OV_KokoroGenConfig(
-            kokoro_message="Hello world! This is a test of Kokoro text-to-speech synthesis.",
-            voice=KokoroVoice.AF_SARAH,  # American English female voice
-            lang_code=KokoroLanguage.AMERICAN_ENGLISH,
-            speed=1.0,
-            character_count_chunk=100,
-            response_format="wav"
-        )
-
-        # Generate speech
-        print("Generating speech...")
-        audio_chunks = []
-        async for chunk in kokoro_model.chunk_forward_pass(gen_config):
-            print(f"Generated chunk {chunk.chunk_index + 1}/{chunk.total_chunks}: '{chunk.chunk_text}'")
-            audio_chunks.append(chunk.audio)
-
-        # Concatenate all audio chunks
-        if audio_chunks:
-            full_audio = torch.cat(audio_chunks, dim=0)
-            print(f"Generated audio with shape: {full_audio.shape}")
-
-            # Save to WAV file
-            output_path = Path("kokoro_output.wav")
-            sf.write(str(output_path), full_audio.numpy(), samplerate=24000)  # Kokoro uses 24kHz
-            print(f"Audio saved to {output_path}")
-
-    except Exception as e:
-        print(f"Error during demo: {e}")
-        import traceback
-        traceback.print_exc()
-
-    finally:
-        # Unload the model
-        print("Unloading model...")
-        await kokoro_model.unload_model()
-        print("Model unloaded")
-
-
-if __name__ == "__main__":
-    asyncio.run(demo_entrypoint())
-
-
-

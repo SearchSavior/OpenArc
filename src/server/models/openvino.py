@@ -91,9 +91,9 @@ class KokoroVoice(str, Enum):
     PM_SANTA = "pm_santa"
 
 class OV_KokoroGenConfig(BaseModel):
-    kokoro_message: str = Field(..., description="Text to convert to speech")
-    voice: KokoroVoice = Field(..., description="Voice token from available Kokoro voices")
-    lang_code: KokoroLanguage = Field(..., description="Language code for the voice")
+    input: str = Field(..., description="Text to convert to speech")
+    voice: KokoroVoice = Field(KokoroVoice.AF_SARAH, description="Voice token from available Kokoro voices")
+    lang_code: KokoroLanguage = Field(KokoroLanguage.AMERICAN_ENGLISH, description="Language code for the voice")
     speed: float = Field(1.0, description="Speech speed multiplier")
     character_count_chunk: int = Field(100, description="Max characters per chunk")
     response_format: str = Field("wav", description="Output format")
@@ -114,14 +114,14 @@ class OV_Qwen3TTSGenConfig(BaseModel):
     The model_type on ModelLoadConfig determines which mode the engine runs;
     supply only the fields relevant to that mode:
 
-    - qwen3_tts_custom_voice : text, speaker, language, instruct
-    - qwen3_tts_voice_design  : text, voice_description, language
-    - qwen3_tts_voice_clone   : text, ref_audio_b64, ref_text, x_vector_only, language, instruct
+    - qwen3_tts_custom_voice : input, speaker, language, instruct
+    - qwen3_tts_voice_design  : input, voice_description, language
+    - qwen3_tts_voice_clone   : input, ref_audio_b64, ref_text, x_vector_only, language, instruct
 
     All modes accept the sampling fields.
     """
     # --- content ---
-    text: str = Field(..., description="Text to synthesise.")
+    input: str = Field(..., description="Text to synthesise.")
     # [custom_voice]
     speaker: str | None = Field(default=None, description="[custom_voice] Predefined speaker name.")
     instruct: str | None = Field(default=None, description="[custom_voice, voice_clone] Optional style instruction.")
