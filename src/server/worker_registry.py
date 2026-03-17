@@ -12,7 +12,7 @@ from src.engine.ov_genai.llm import OVGenAI_LLM
 from src.engine.ov_genai.vlm import OVGenAI_VLM
 from src.engine.ov_genai.whisper import OVGenAI_Whisper
 from src.engine.openvino.kokoro import OV_Kokoro
-from src.engine.openvino.qwen3_asr.infer import OVQwen3ASR, Qwen3ASRConfig
+from src.engine.openvino.qwen3_asr.infer import OVQwen3ASR
 from src.engine.openvino.qwen3_tts.qwen3_tts import OVQwen3TTS
 from src.engine.optimum.optimum_emb import Optimum_EMB
 from src.engine.optimum.optimum_rr import Optimum_RR
@@ -193,15 +193,7 @@ class InferWorker:
         final_text = ""
 
         try:
-            qwen_cfg = Qwen3ASRConfig(
-                audio_base64=packet.gen_config.audio_base64,
-                language=packet.gen_config.language,
-                max_tokens=packet.gen_config.max_tokens,
-                max_chunk_sec=packet.gen_config.max_chunk_sec,
-                search_expand_sec=packet.gen_config.search_expand_sec,
-                min_window_ms=packet.gen_config.min_window_ms,
-            )
-            async for item in asr_model.transcribe(qwen_cfg):
+            async for item in asr_model.transcribe(packet.gen_config):
                 if isinstance(item, dict):
                     metrics = item
                 else:

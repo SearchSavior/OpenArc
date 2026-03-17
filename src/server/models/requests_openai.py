@@ -2,8 +2,17 @@ from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel
 
-from src.server.models.openvino import OV_KokoroGenConfig, OV_Qwen3TTSGenConfig
+from src.server.models.openvino import (
+    OV_KokoroGenConfig,
+    OV_Qwen3ASRGenConfig,
+    OV_Qwen3TTSGenConfig,
+)
 from src.server.models.optimum import PreTrainedTokenizerConfig
+
+
+class OpenArcASRConfig(BaseModel):
+    """Backend config for /v1/audio/transcriptions. Only qwen3_asr extra params; audio_base64 from file."""
+    qwen3_asr: Optional[OV_Qwen3ASRGenConfig] = None
 
 
 class OpenArcTTSConfig(BaseModel):

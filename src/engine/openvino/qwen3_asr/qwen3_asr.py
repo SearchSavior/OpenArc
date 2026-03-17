@@ -26,9 +26,7 @@ from typing import Any, AsyncIterator, Dict, Optional, Union
 import numpy as np
 import openvino as ov
 import torch
-from pydantic import BaseModel, Field, field_validator
-
-from src.engine.openvino.qwen3_asr.asr_utils import (
+from src.engine.openvino.qwen3_asr.qwen3_asr_utils import (
     MAX_ASR_INPUT_SECONDS,
     merge_languages,
     normalize_audios,
@@ -37,6 +35,8 @@ from src.engine.openvino.qwen3_asr.asr_utils import (
     split_audio_into_chunks,
     validate_language,
 )
+
+from src.server.models.openvino import OV_Qwen3ASRGenConfig
 from src.server.model_registry import ModelRegistry
 from src.server.models.registration import EngineType, ModelLoadConfig, ModelType
 
@@ -69,27 +69,7 @@ PROMPT_SUFFIX = [
 ]
 
 
-class Qwen3ASRConfig(BaseModel):
-    audio_base64: str = Field(..., description="Base64 encoded audio payload")
-    language: Optional[str] = Field(default=None, description="Optional forced language")
-    max_tokens: int = Field(default=1024, description="Maximum generated tokens per chunk")
-    max_chunk_sec: float = Field(default=30.0, description="Chunk size upper bound in seconds")
-    search_expand_sec: float = Field(default=5.0, description="Boundary search expansion in seconds")
-    min_window_ms: float = Field(default=100.0, description="Energy window in milliseconds")
 
-    @field_validator("max_tokens")
-    @classmethod
-    def _validate_max_tokens(cls, v: int) -> int:
-        if v <= 0:
-            raise ValueError("max_tokens must be positive")
-        return v
-
-    @field_validator("max_chunk_sec", "search_expand_sec", "min_window_ms")
-    @classmethod
-    def _validate_positive_float(cls, v: float) -> float:
-        if v <= 0:
-            raise ValueError("numeric values must be positive")
-        return v
 
 
 class Qwen3ASRHelpers:
@@ -361,7 +341,7 @@ class OVQwen3ASR:
         )
         return raw, metrics
 
-    async def transcribe(self, gen_config: Qwen3ASRConfig) -> AsyncIterator[Union[Dict[str, Any], str]]:
+    async def transcribe(self, gen_config: OV_Qwen3ASRGenConfig) -> AsyncIterator[Union[Dict[str, Any], str]]:
         t_transcribe_start = time.perf_counter()
         audio_input = gen_config.audio_base64
         if not audio_input.startswith("data:audio"):
@@ -501,7 +481,7 @@ def main():
         device=args.device,
         runtime_config={},
     )
-    config = Qwen3ASRConfig(
+    config = OV_Qwen3ASRGenConfig(
         audio_base64=base64.b64encode(Path(args.wav_path).read_bytes()).decode("utf-8"),
         language=args.language,
         max_tokens=args.max_tokens,
