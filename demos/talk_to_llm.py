@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import threading
 import time
@@ -14,15 +15,23 @@ API_KEY = os.getenv("OPENARC_API_KEY")
 BASE_URL = "http://localhost:8000/v1"
 SAMPLE_RATE = 16000
 MODELS = {
-    "whisper": "whisper",
+    "asr": "qwen3_asr",
     "llm": "Muse-12B",
-    "tts": "kokoro"
+    "tts": os.getenv("OPENARC_QWEN3_TTS_MODEL", "custom_voice"),
 }
-TTS_CONFIG = {
-    "voice": "af_heart",
-    "speed": 1.25,
-    "language": "a",
-    "response_format": "wav"
+# Qwen3 ASR config for openarc_asr.qwen3_asr (audio_base64 injected from file)
+QWEN3_ASR_CONFIG = {
+    "language": None,
+    "max_tokens": 4096,
+    "max_chunk_sec": 30.0,
+    "search_expand_sec": 5.0,
+    "min_window_ms": 100.0,
+}
+# Qwen3 TTS config for openarc_tts.qwen3_tts (custom_voice mode)
+QWEN3_TTS_CONFIG = {
+    "speaker": "vivian",
+    "instruct": None,
+    "language": "english",
 }
 LLM_CONFIG = {
     "temperature": 0.8,
@@ -164,15 +173,19 @@ def encode_audio_to_wav_bytes(audio_data: np.ndarray) -> bytes:
     return wav_buffer.read()
 
 def transcribe_audio(audio_bytes: bytes) -> tuple[str, dict]:
-    """Transcribe audio using Whisper model.
-    
+    """Transcribe audio using Qwen3 ASR.
+
     Returns:
         Tuple of (transcribed_text, metrics)
     """
     response = requests.post(
         f"{BASE_URL}/audio/transcriptions",
         headers={"Authorization": f"Bearer {API_KEY}"},
-        data={"model": MODELS["whisper"]},
+        data={
+            "model": MODELS["asr"],
+            "response_format": "verbose_json",
+            "openarc_asr": json.dumps({"qwen3_asr": QWEN3_ASR_CONFIG}),
+        },
         files={"file": ("recording.wav", audio_bytes, "audio/wav")},
         timeout=120,
     )
@@ -209,17 +222,20 @@ def get_llm_response(messages: list[dict]) -> str:
     return full_response
 
 def generate_and_play_speech(text: str) -> None:
-    """Generate speech from text using TTS and play it."""
+    """Generate speech from text using Qwen3 TTS and play it."""
     print("\n🔊 Generating speech...")
     url = f"{BASE_URL}/audio/speech"
     headers = {
         "Authorization": f"Bearer {API_KEY}",
         "Content-Type": "application/json"
     }
+    cfg = {k: v for k, v in QWEN3_TTS_CONFIG.items() if v is not None}
+    cfg["input"] = text
     data = {
         "model": MODELS["tts"],
         "input": text,
-        **TTS_CONFIG
+        "voice": cfg.get("speaker", "uncle_fu"),
+        "openarc_tts": {"qwen3_tts": cfg},
     }
     
     audio_buffer = io.BytesIO()
