@@ -12,7 +12,7 @@ import soundfile as sf
 
 # Configuration
 API_KEY = os.getenv("OPENARC_API_KEY")
-BASE_URL = "http://localhost:8000/v1"
+BASE_URL = "http://localhost:8003/v1"
 SAMPLE_RATE = 16000
 MODELS = {
     "asr": "qwen3_asr",
