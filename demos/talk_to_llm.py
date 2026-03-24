@@ -1,3 +1,4 @@
+import base64
 import io
 import json
 import os
@@ -17,7 +18,8 @@ SAMPLE_RATE = 16000
 MODELS = {
     "asr": "qwen3_asr",
     "llm": "Muse-12B",
-    "tts": os.getenv("OPENARC_QWEN3_TTS_MODEL", "custom_voice"),
+    # Server-registered name for a ModelType.QWEN3_TTS_VOICE_CLONE model
+    "tts": os.getenv("OPENARC_QWEN3_TTS_MODEL", "voice_clone"),
 }
 # Qwen3 ASR config for openarc_asr.qwen3_asr (audio_base64 injected from file)
 QWEN3_ASR_CONFIG = {
@@ -27,11 +29,34 @@ QWEN3_ASR_CONFIG = {
     "search_expand_sec": 5.0,
     "min_window_ms": 100.0,
 }
-# Qwen3 TTS config for openarc_tts.qwen3_tts (custom_voice mode)
+# Voice clone: reference WAV + transcript (ICL). Omit speaker (custom_voice only).
+VOICE_CLONE_REF_WAV = "/home/echo/Projects/OpenArc/elmo_sample.wav"
+VOICE_CLONE_REF_TEXT = (
+    "Color? Red! [laughs] Or, or who's your best friend? Um, Elmo's pet goldfish, Dorothy. "
+    "Is it like... what is it like living on Sesame Street? That's a good question. "
+    "Awesome, baby! [laughs] Wait... Elmo's not supposed to be answering these yet. [laughs] "
+    "Sorry! [laughs] Well... now, you can ask Elmo any question you want right here on "
+    "YouTube using this..."
+)
+
+_ref_audio_b64_cache: Optional[str] = None
+
+
+def _get_ref_audio_b64() -> str:
+    """Lazy-load base64 reference WAV for qwen3_tts_voice_clone."""
+    global _ref_audio_b64_cache
+    if _ref_audio_b64_cache is None:
+        with open(VOICE_CLONE_REF_WAV, "rb") as f:
+            _ref_audio_b64_cache = base64.b64encode(f.read()).decode("ascii")
+    return _ref_audio_b64_cache
+
+
+# Qwen3 TTS config for openarc_tts.qwen3_tts (voice_clone mode)
 QWEN3_TTS_CONFIG = {
-    "speaker": "vivian",
-    "instruct": None,
+    "ref_text": VOICE_CLONE_REF_TEXT,
     "language": "english",
+    "instruct": None,
+    "x_vector_only": False,
 }
 LLM_CONFIG = {
     "temperature": 0.8,
@@ -231,10 +256,11 @@ def generate_and_play_speech(text: str) -> None:
     }
     cfg = {k: v for k, v in QWEN3_TTS_CONFIG.items() if v is not None}
     cfg["input"] = text
+    cfg["ref_audio_b64"] = _get_ref_audio_b64()
     data = {
         "model": MODELS["tts"],
         "input": text,
-        "voice": cfg.get("speaker", "uncle_fu"),
+        "voice": cfg.get("speaker", MODELS["tts"]),
         "openarc_tts": {"qwen3_tts": cfg},
     }
     
