@@ -161,3 +161,7 @@ class OV_Qwen3TTSGenConfig(BaseModel):
     subtalker_top_k: int = Field(default=50, description="Top-k for code predictor.")
     subtalker_top_p: float = Field(default=1.0, description="Nucleus filter for code predictor.")
     subtalker_temperature: float = Field(default=0.9, description="Temperature for code predictor.")
+    # --- streaming (HTTP: audio/L16 chunked response when stream=True) ---
+    stream: bool = Field(default=False, description="Enable streaming audio output (chunked PCM).")
+    stream_chunk_frames: int = Field(default=50, description="Codec frames per streaming chunk.")
+    stream_left_context: int = Field(default=25, description="Left context frames for chunk boundary continuity.")

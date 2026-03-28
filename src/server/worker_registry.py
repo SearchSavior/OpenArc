@@ -3,6 +3,7 @@ import asyncio
 import uuid
 import base64
 import io
+import numpy as np
 import torch
 import soundfile as sf
 from dataclasses import dataclass
@@ -280,6 +281,28 @@ class InferWorker:
         return packet
 
     @staticmethod
+    async def infer_qwen3_tts_stream(packet: WorkerPacket, tts_model: OVQwen3TTS) -> WorkerPacket:
+        """Stream Qwen3 TTS PCM chunks (int16 LE bytes) onto packet.stream_queue; ends with None."""
+        if packet.stream_queue is None:
+            raise RuntimeError("infer_qwen3_tts_stream requires stream_queue")
+        loop = asyncio.get_running_loop()
+
+        def _run_sync_generator() -> None:
+            try:
+                for tchunk in tts_model.generate_stream(packet.gen_config):
+                    pcm = np.clip(tchunk.audio * 32768.0, -32768.0, 32767.0).astype(np.int16).tobytes()
+                    asyncio.run_coroutine_threadsafe(packet.stream_queue.put(pcm), loop).result()
+            except Exception:
+                logger.error("Qwen3 TTS streaming inference failed!", exc_info=True)
+            finally:
+                asyncio.run_coroutine_threadsafe(packet.stream_queue.put(None), loop).result()
+
+        await asyncio.to_thread(_run_sync_generator)
+        packet.response = ""
+        packet.metrics = None
+        return packet
+
+    @staticmethod
     async def infer_emb(packet: WorkerPacket, emb_instance: Optimum_EMB) -> WorkerPacket:
         """Generate embeddings for a single packet using the optimum pipeline"""
         metrics = None
@@ -482,12 +505,14 @@ class QueueWorker:
                 logger.info(f"[Qwen3TTS Worker: {model_name}] Shutdown signal received.")
                 break
 
-            completed_packet = await InferWorker.infer_qwen3_tts(packet, tts_model)
-
-            if completed_packet.response and completed_packet.response.startswith("Error:"):
-                logger.error(f"[Qwen3TTS Worker: {model_name}] Inference failed, triggering model unload...")
-                asyncio.create_task(registry.register_unload(model_name))
-                break
+            if getattr(packet.gen_config, "stream", False) and packet.stream_queue is not None:
+                completed_packet = await InferWorker.infer_qwen3_tts_stream(packet, tts_model)
+            else:
+                completed_packet = await InferWorker.infer_qwen3_tts(packet, tts_model)
+                if completed_packet.response and completed_packet.response.startswith("Error:"):
+                    logger.error(f"[Qwen3TTS Worker: {model_name}] Inference failed, triggering model unload...")
+                    asyncio.create_task(registry.register_unload(model_name))
+                    break
 
             if completed_packet.metrics:
                 logger.info(f"[Qwen3TTS Worker: {model_name}] Metrics: {completed_packet.metrics}")
@@ -903,6 +928,28 @@ class WorkerRegistry:
         await q.put(packet)
         completed = await result_future
         return {"audio_base64": completed.response or "", "metrics": completed.metrics or {}}
+
+    async def stream_generate_speech_qwen3_tts(
+        self, model_name: str, gen_config: OV_Qwen3TTSGenConfig,
+    ) -> AsyncIterator[bytes]:
+        """Stream raw int16 LE mono PCM chunks at 24 kHz (RFC 4856 audio/L16 on the HTTP layer)."""
+        request_id = uuid.uuid4().hex
+        stream_queue: asyncio.Queue = asyncio.Queue()
+        result_future: asyncio.Future = asyncio.get_running_loop().create_future()
+        packet = WorkerPacket(
+            request_id=request_id,
+            id_model=model_name,
+            gen_config=gen_config,
+            stream_queue=stream_queue,
+            result_future=result_future,
+        )
+        q = self._get_qwen3_tts_queue(model_name)
+        await q.put(packet)
+        while True:
+            item = await stream_queue.get()
+            if item is None:
+                break
+            yield item
 
     async def generate_speech_kokoro(self, model_name: str, gen_config: OV_KokoroGenConfig) -> Dict[str, Any]:
         """Generate speech using a loaded Kokoro model asynchronously via worker queue.

@@ -2,6 +2,7 @@ import base64
 import io
 import json
 import os
+import re
 import threading
 import time
 from typing import Optional
@@ -15,6 +16,8 @@ import soundfile as sf
 API_KEY = os.getenv("OPENARC_API_KEY")
 BASE_URL = "http://localhost:8003/v1"
 SAMPLE_RATE = 16000
+# Qwen3 streaming /audio/speech uses audio/L16 mono int16 LE (see server main.py)
+TTS_STREAM_SAMPLE_RATE = 24000
 MODELS = {
     "asr": "qwen3_asr",
     "llm": "Muse-12B",
@@ -30,14 +33,10 @@ QWEN3_ASR_CONFIG = {
     "min_window_ms": 100.0,
 }
 # Voice clone: reference WAV + transcript (ICL). Omit speaker (custom_voice only).
-VOICE_CLONE_REF_WAV = "/home/echo/Projects/OpenArc/elmo_sample.wav"
-VOICE_CLONE_REF_TEXT = (
-    "Color? Red! [laughs] Or, or who's your best friend? Um, Elmo's pet goldfish, Dorothy. "
-    "Is it like... what is it like living on Sesame Street? That's a good question. "
-    "Awesome, baby! [laughs] Wait... Elmo's not supposed to be answering these yet. [laughs] "
-    "Sorry! [laughs] Well... now, you can ask Elmo any question you want right here on "
-    "YouTube using this..."
-)
+VOICE_CLONE_REF_WAV = "/home/echo/Projects/OpenArc/interstellar-tars_absolute-honesty-isn-t-always-the-most-diplomatic-nor-the.mp3"
+VOICE_CLONE_REF_TEXT = """
+Absolute honesty isn't always the most diplomatic, nor the most tactful, nor the
+"""
 
 _ref_audio_b64_cache: Optional[str] = None
 
@@ -51,12 +50,26 @@ def _get_ref_audio_b64() -> str:
     return _ref_audio_b64_cache
 
 
-# Qwen3 TTS config for openarc_tts.qwen3_tts (voice_clone mode)
+# Qwen3 TTS config for openarc_tts.qwen3_tts (voice_clone mode); sampling matches OV_Qwen3TTSGenConfig
 QWEN3_TTS_CONFIG = {
     "ref_text": VOICE_CLONE_REF_TEXT,
     "language": "english",
     "instruct": None,
     "x_vector_only": False,
+    "max_new_tokens": 2048,
+    "do_sample": True,
+    "top_k": 50,
+    "top_p": 1.0,
+    "temperature": 0.9,
+    "repetition_penalty": 1.05,
+    "non_streaming_mode": True,
+    "subtalker_do_sample": True,
+    "subtalker_top_k": 50,
+    "subtalker_top_p": 1.0,
+    "subtalker_temperature": 0.9,
+    "stream": True,
+    "stream_chunk_frames": 300,
+    "stream_left_context": 25,
 }
 LLM_CONFIG = {
     "temperature": 0.8,
@@ -67,8 +80,8 @@ LLM_CONFIG = {
 
 SYSTEM_PROMPT = """
 # COMMISION: 
-- You're a masterful adventure gamemaster. 
-- ALways make the story interactive, and dont tell to much.
+- You are Elmo from Sesame Street, now andventure gamemaster. 
+- Make the story interactive and engaging.
 - Use second person (you are)
 
 ## STYLE
@@ -246,9 +259,36 @@ def get_llm_response(messages: list[dict]) -> str:
     
     return full_response
 
+
+def _l16_rate_from_content_type(content_type: str) -> int:
+    m = re.search(r"rate=(\d+)", content_type, re.IGNORECASE)
+    if m:
+        return int(m.group(1))
+    return TTS_STREAM_SAMPLE_RATE
+
+
+def _play_streaming_l16(response: requests.Response, sample_rate: int) -> None:
+    """Play raw little-endian int16 mono PCM as chunks arrive (Qwen3 stream)."""
+    pending = bytearray()
+    with sd.OutputStream(samplerate=sample_rate, channels=1, dtype="float32") as out:
+        for chunk in response.iter_content(chunk_size=8192):
+            if not chunk:
+                continue
+            pending.extend(chunk)
+            n_bytes = (len(pending) // 2) * 2
+            if n_bytes == 0:
+                continue
+            raw = bytes(pending[:n_bytes])
+            del pending[:n_bytes]
+            samples = np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
+            if samples.size:
+                out.write(samples.reshape(-1, 1))
+    if pending:
+        print(f"Warning: incomplete PCM tail ({len(pending)} bytes discarded)")
+
+
 def generate_and_play_speech(text: str) -> None:
-    """Generate speech from text using Qwen3 TTS and play it."""
-    print("\n🔊 Generating speech...")
+    """Generate speech from text using Qwen3 TTS and play it (streams when server returns L16)."""
     url = f"{BASE_URL}/audio/speech"
     headers = {
         "Authorization": f"Bearer {API_KEY}",
@@ -263,21 +303,27 @@ def generate_and_play_speech(text: str) -> None:
         "voice": cfg.get("speaker", MODELS["tts"]),
         "openarc_tts": {"qwen3_tts": cfg},
     }
-    
-    audio_buffer = io.BytesIO()
+
     with requests.post(url, headers=headers, json=data, stream=True) as response:
         response.raise_for_status()
+        content_type = response.headers.get("Content-Type", "")
+        if "l16" in content_type.lower():
+            print("\n🔊 Synthesizing (streaming playback)...")
+            sr = _l16_rate_from_content_type(content_type)
+            _play_streaming_l16(response, sr)
+            print("▶️ Playback finished.")
+            return
+
+        print("\n🔊 Generating speech...")
+        audio_buffer = io.BytesIO()
         for chunk in response.iter_content(chunk_size=8192):
             if chunk:
                 audio_buffer.write(chunk)
-    
-    audio_buffer.seek(0)
-    
-    # Play audio from memory
-    print("▶️ Playing response...")
-    audio_data, fs = sf.read(audio_buffer, dtype='float32')
-    sd.play(audio_data, fs)
-    sd.wait()
+        audio_buffer.seek(0)
+        print("▶️ Playing response...")
+        audio_data, fs = sf.read(audio_buffer, dtype="float32")
+        sd.play(audio_data, fs)
+        sd.wait()
 
 def talk_to_llm():
     """Maintain a conversation: record -> transcribe -> LLM -> TTS -> repeat."""

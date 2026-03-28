@@ -718,6 +718,11 @@ async def openai_audio_speech(request: OpenAISpeechRequest):
                 raise ValueError("openarc_tts.qwen3_tts required for Qwen3 TTS models")
             gen_config = request.openarc_tts.qwen3_tts
             gen_config.input = request.input
+            if gen_config.stream:
+                return StreamingResponse(
+                    _workers.stream_generate_speech_qwen3_tts(request.model, gen_config),
+                    media_type="audio/L16;rate=24000;channels=1",
+                )
             result = await _workers.generate_speech_qwen3_tts(request.model, gen_config)
         else:
             if not request.openarc_tts or not request.openarc_tts.kokoro:

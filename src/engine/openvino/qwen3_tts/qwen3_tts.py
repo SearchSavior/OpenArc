@@ -5,7 +5,9 @@ import base64
 import gc
 import logging
 import time
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterator
 
 import librosa
 import numpy as np
@@ -52,6 +54,15 @@ logger.setLevel(logging.INFO)
 
 # ICL speech decoder: last N reference frames as left context (matches upstream chunked_decode).
 ICL_DECODER_LEFT_CONTEXT_FRAMES = 25
+
+
+@dataclass
+class TTSStreamChunk:
+    """One decoded PCM segment from streaming synthesis (float32 mono, SPEECH_DECODER_SR Hz)."""
+
+    audio: np.ndarray
+    chunk_index: int
+    is_final: bool
 
 
 def _perf_add(perf: dict | None, key: str, dt: float) -> None:
@@ -179,6 +190,16 @@ class OVQwen3TTS:
         """Synthesise speech from *gen_config*. Returns (wav: float32, sample_rate: int)."""
         return await asyncio.to_thread(self._generate_sync, gen_config)
 
+    def generate_stream(self, gen_config: OV_Qwen3TTSGenConfig) -> Iterator[TTSStreamChunk]:
+        """Synchronous generator of float32 mono PCM chunks at SPEECH_DECODER_SR (drip-fed text)."""
+        if not self._loaded:
+            raise RuntimeError("Call load_model() before generate_stream()")
+        gc = gen_config.model_copy(update={"non_streaming_mode": False})
+        if self.load_config.model_type == ModelType.QWEN3_TTS_VOICE_CLONE:
+            yield from self._generate_voice_clone_stream(gc)
+        else:
+            yield from self._generate_standard_stream(gc)
+
     def _generate_sync(self, gen_config: OV_Qwen3TTSGenConfig) -> tuple[np.ndarray, int]:
         if not self._loaded:
             raise RuntimeError("Call load_model() before generate()")
@@ -279,6 +300,90 @@ class OVQwen3TTS:
         self._log_pipeline_summary(perf, t_total, wav_seconds=float(len(wav) / SPEECH_DECODER_SR), voice_clone=True)
         return wav, SPEECH_DECODER_SR
 
+    def _generate_standard_stream(self, gen_config: OV_Qwen3TTSGenConfig) -> Iterator[TTSStreamChunk]:
+        t_total = time.perf_counter()
+        perf: dict = {}
+        speaker = Speaker(gen_config.speaker) if gen_config.speaker else None
+        language = Language(gen_config.language) if gen_config.language else None
+
+        if self.load_config.model_type == ModelType.QWEN3_TTS_CUSTOM_VOICE:
+            build_kw = dict(
+                text=gen_config.input,
+                speaker=speaker,
+                language=language,
+                instruct=gen_config.instruct,
+            )
+        else:
+            build_kw = dict(
+                text=gen_config.input,
+                speaker=None,
+                language=language,
+                instruct=gen_config.voice_description,
+            )
+
+        t0 = time.perf_counter()
+        inp = self._build_inputs(**build_kw, non_streaming_mode=gen_config.non_streaming_mode, perf=perf)
+        logger.debug(f"[perf] build_inputs: {time.perf_counter() - t0:.3f}s")
+
+        n_samples = 0
+        n_chunks = 0
+        for chunk in self._run_loop_streaming(inp, gen_config, perf):
+            n_samples += len(chunk.audio)
+            n_chunks += 1
+            yield chunk
+
+        wav_sec = n_samples / SPEECH_DECODER_SR
+        self._log_pipeline_summary(perf, t_total, wav_seconds=wav_sec, voice_clone=False)
+        if n_samples > 0:
+            logger.info(f"[info] streaming: {n_chunks} chunks -> {n_samples} samples ({wav_sec:.2f}s audio)")
+
+    def _generate_voice_clone_stream(self, gen_config: OV_Qwen3TTSGenConfig) -> Iterator[TTSStreamChunk]:
+        t_total = time.perf_counter()
+        perf: dict = {}
+        language = Language(gen_config.language) if gen_config.language else None
+
+        t0 = time.perf_counter()
+        audio, audio_sr = H.decode_audio_b64(gen_config.ref_audio_b64)
+        dt_dec = time.perf_counter() - t0
+        _perf_add(perf, "audio_decode", dt_dec)
+        logger.debug(f"[perf] audio_decode: {dt_dec:.3f}s")
+
+        t0 = time.perf_counter()
+        speaker_embed = self._extract_speaker_embedding(audio, audio_sr, perf)
+        logger.debug(f"[perf] speaker encoder: {time.perf_counter() - t0:.3f}s")
+
+        use_icl = gen_config.ref_text is not None and not gen_config.x_vector_only
+        ref_codes = None
+        if use_icl:
+            t0 = time.perf_counter()
+            ref_codes = self._encode_audio(audio, audio_sr, perf)
+            logger.debug(f"[perf] speech encoder (OV): {time.perf_counter() - t0:.3f}s")
+
+        t0 = time.perf_counter()
+        inp = self._build_inputs(
+            text=gen_config.input,
+            speaker_embed=speaker_embed,
+            language=language,
+            instruct=gen_config.instruct,
+            non_streaming_mode=gen_config.non_streaming_mode,
+            ref_text=gen_config.ref_text if use_icl else None,
+            ref_codes=ref_codes,
+            perf=perf,
+        )
+        logger.debug(f"[perf] build_inputs: {time.perf_counter() - t0:.3f}s")
+
+        n_samples = 0
+        n_chunks = 0
+        for chunk in self._run_loop_streaming(inp, gen_config, perf):
+            n_samples += len(chunk.audio)
+            n_chunks += 1
+            yield chunk
+
+        wav_sec = n_samples / SPEECH_DECODER_SR
+        self._log_pipeline_summary(perf, t_total, wav_seconds=wav_sec, voice_clone=True)
+        if n_samples > 0:
+            logger.info(f"[info] streaming (voice_clone): {n_chunks} chunks -> {n_samples} samples ({wav_sec:.2f}s audio)")
+
     def _decode_icl(
         self,
         gen_codes: list[list[int]],
@@ -352,6 +457,39 @@ class OVQwen3TTS:
         _perf_add(perf, "speech_decoder", dt)
         logger.debug(f"[perf] speech decoder (OV): {dt:.3f}s")
         return np.clip(r["waveform"].squeeze(), -1.0, 1.0).astype(np.float32)
+
+    def _chunked_decode(
+        self,
+        chunk_codes: list[list[int]],
+        prev_tail: list[list[int]] | None,
+        left_ctx: int,
+        perf: dict[str, float] | None = None,
+    ) -> np.ndarray:
+        """Decode codec frames with optional left context from the previous chunk."""
+        if not chunk_codes:
+            return np.zeros(0, dtype=np.float32)
+        if prev_tail is None or left_ctx <= 0:
+            return self._decode_codes(chunk_codes, perf)
+        prev_arr = np.asarray(prev_tail, dtype=np.int64)
+        if prev_arr.size == 0:
+            return self._decode_codes(chunk_codes, perf)
+        cur = np.asarray(chunk_codes, dtype=np.int64)
+        ctx_n = min(left_ctx, prev_arr.shape[0])
+        context = prev_arr[-ctx_n:]
+        combined = np.concatenate([context, cur], axis=0)
+        decoder_in = combined.T[np.newaxis]
+        _b, n_q, t_frames = decoder_in.shape
+        if perf is not None:
+            perf["_decoder_in_shape"] = (_b, n_q, t_frames)
+        logger.debug(f"[info] speech decoder (chunked) shape: ({_b}, {n_q}, {t_frames})")
+        t0 = time.perf_counter()
+        r = H.ov_call(self._decoder_c, {self._decoder_input_name: decoder_in})
+        dt = time.perf_counter() - t0
+        _perf_add(perf, "speech_decoder", dt)
+        logger.debug(f"[perf] speech decoder chunk (OV): {dt:.3f}s")
+        full_wav = np.clip(r["waveform"].squeeze(), -1.0, 1.0).astype(np.float32)
+        cut = int(ctx_n / combined.shape[0] * len(full_wav))
+        return full_wav[cut:]
 
     # ---- Voice-clone specific OV calls --------------------------------------
 
@@ -719,6 +857,119 @@ class OVQwen3TTS:
             logger.debug(f"[perf]   throughput:      {n * NUM_CODE_GROUPS / dt:.1f} tokens/s")
 
         return all_codes
+
+    def _run_loop_streaming(
+        self,
+        inp: dict,
+        gen_config: OV_Qwen3TTSGenConfig,
+        perf: dict[str, float] | None = None,
+    ) -> Iterator[TTSStreamChunk]:
+        """Autoregressive loop like `_run_loop`, yielding decoded PCM at chunk boundaries."""
+        chunk_size = max(1, gen_config.stream_chunk_frames)
+        left_ctx = max(0, gen_config.stream_left_context)
+
+        embeds = inp["inputs_embeds"]
+        trailing = inp["trailing_text_hidden"]
+        pad_emb = inp["tts_pad_embed"]
+
+        self._talker_req.reset_state()
+        S = embeds.shape[1]
+        cos, sin = H.slice_rope(self._mrope_cos, self._mrope_sin, 0, S)
+
+        t0 = time.perf_counter()
+        logits, hidden = self._talker_infer(embeds, cos, sin)
+        dt_tp = time.perf_counter() - t0
+        _perf_add(perf, "talker_prefill", dt_tp)
+        if perf is not None:
+            perf["_talker_prefill_S"] = S
+        logger.debug(f"[perf] talker prefill (S={S}): {dt_tp:.3f}s")
+
+        cache_pos = S
+        first_logits = logits[0, -1, :].copy()
+        first_logits[SUPPRESS_MASK] = -np.inf
+        first_code = H.sample_token(
+            first_logits, gen_config.do_sample, gen_config.top_k,
+            gen_config.top_p, gen_config.temperature,
+        )
+
+        buffer: list[list[int]] = []
+        prev_tail: list[list[int]] | None = None
+        chunk_index = 0
+        past_first: list[int] = []
+        past_hidden = hidden[:, -1:, :]
+        t_cp = t_talk = 0.0
+        t_cp_pf = t_cp_dc = 0.0
+
+        step = 0
+        while step < gen_config.max_new_tokens:
+            if first_code == CODEC_EOS_ID:
+                break
+
+            past_first.append(first_code)
+            fc_emb = self._codec_embed(np.array([[first_code]], dtype=np.int64))
+
+            t0 = time.perf_counter()
+            subs, emb_sum, t_pf, t_dc = self._generate_sub_codes(fc_emb, past_hidden, gen_config)
+            t_cp += time.perf_counter() - t0
+            t_cp_pf += t_pf
+            t_cp_dc += t_dc
+
+            buffer.append([first_code] + subs)
+
+            if len(buffer) >= chunk_size:
+                to_decode = buffer[:chunk_size]
+                pcm = self._chunked_decode(to_decode, prev_tail, left_ctx, perf)
+                yield TTSStreamChunk(pcm, chunk_index, is_final=False)
+                take = min(left_ctx, len(to_decode))
+                prev_tail = to_decode[-take:] if take > 0 else None
+                buffer = buffer[chunk_size:]
+                chunk_index += 1
+
+            next_emb = emb_sum
+            if step < trailing.shape[1]:
+                next_emb = next_emb + trailing[:, step : step + 1, :]
+            else:
+                next_emb = next_emb + pad_emb
+
+            cos, sin = H.slice_rope(self._mrope_cos, self._mrope_sin, cache_pos, 1)
+            t0 = time.perf_counter()
+            logits, hidden = self._talker_infer(next_emb, cos, sin)
+            t_talk += time.perf_counter() - t0
+
+            cache_pos += 1
+            step += 1
+
+            sl = logits[0, -1, :].copy()
+            sl[SUPPRESS_MASK] = -np.inf
+            if gen_config.repetition_penalty != 1.0 and past_first:
+                sl = H.apply_repetition_penalty(sl, past_first, gen_config.repetition_penalty)
+            first_code = H.sample_token(
+                sl, gen_config.do_sample, gen_config.top_k,
+                gen_config.top_p, gen_config.temperature,
+            )
+            past_hidden = hidden[:, -1:, :]
+
+        n = step
+        if n > 0:
+            dt = t_cp + t_talk
+            pf = dt / n
+            if perf is not None:
+                perf["_num_frames"] = n
+            _perf_add(perf, "decode_talker", t_talk)
+            _perf_add(perf, "decode_cp_prefill", t_cp_pf)
+            _perf_add(perf, "decode_cp_decode", t_cp_dc)
+            _perf_add(perf, "decode_loop_total", dt)
+            logger.debug(f"[perf] decode loop ({n} frames):")
+            logger.debug(f"[perf]   code predictor:  total={t_cp:.3f}s  avg={t_cp/n:.3f}s")
+            logger.debug(f"[perf]   talker decode:   total={t_talk:.3f}s  avg={t_talk/n:.3f}s")
+            logger.debug(f"[perf]   cp_prefill:      total={t_cp_pf:.3f}s  avg={t_cp_pf/n:.3f}s")
+            logger.debug(f"[perf]   cp_decode:       total={t_cp_dc:.3f}s  avg={t_cp_dc/n:.3f}s")
+            logger.debug(f"[perf]   per frame:       {pf:.3f}s  ({1/pf:.1f} fps)")
+            logger.debug(f"[perf]   throughput:      {n * NUM_CODE_GROUPS / dt:.1f} tokens/s")
+
+        if buffer:
+            pcm = self._chunked_decode(buffer, prev_tail, left_ctx, perf)
+            yield TTSStreamChunk(pcm, chunk_index, is_final=True)
 
     # ---- Logging ------------------------------------------------------------
 
