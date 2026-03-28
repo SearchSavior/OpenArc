@@ -80,13 +80,21 @@ class OVGenAI_LLM:
         Async non-streaming text generation.
         Yields in order: metrics (dict), new_text (str).
         """
-        generation_kwargs = GenerationConfig(
-            max_new_tokens=gen_config.max_tokens,
-            temperature=gen_config.temperature,
-            top_k=gen_config.top_k,
-            top_p=gen_config.top_p,
-            repetition_penalty=gen_config.repetition_penalty,
-        )
+        if isinstance(self.model, LLMPipeline):
+            generation_kwargs = self.model.get_generation_config()
+            generation_kwargs.max_new_tokens = gen_config.max_tokens
+            generation_kwargs.temperature = gen_config.temperature
+            generation_kwargs.top_k = gen_config.top_k
+            generation_kwargs.top_p = gen_config.top_p
+            generation_kwargs.repetition_penalty = gen_config.repetition_penalty
+        else:
+            generation_kwargs = GenerationConfig(
+                max_new_tokens=gen_config.max_tokens,
+                temperature=gen_config.temperature,
+                top_k=gen_config.top_k,
+                top_p=gen_config.top_p,
+                repetition_penalty=gen_config.repetition_penalty,
+            )
 
         # Add speculative decoding parameters (mutually exclusive per OpenVINO docs)
         import os
@@ -130,13 +138,21 @@ class OVGenAI_LLM:
         Async streaming text generation.
         Yields token chunks (str) as they arrive, then metrics (dict), then final new_text (str).
         """
-        generation_kwargs = GenerationConfig(
-            max_new_tokens=gen_config.max_tokens,
-            temperature=gen_config.temperature,
-            top_k=gen_config.top_k,
-            top_p=gen_config.top_p,
-            repetition_penalty=gen_config.repetition_penalty
-        )
+        if isinstance(self.model, LLMPipeline):
+            generation_kwargs = self.model.get_generation_config()
+            generation_kwargs.max_new_tokens = gen_config.max_tokens
+            generation_kwargs.temperature = gen_config.temperature
+            generation_kwargs.top_k = gen_config.top_k
+            generation_kwargs.top_p = gen_config.top_p
+            generation_kwargs.repetition_penalty = gen_config.repetition_penalty
+        else:
+            generation_kwargs = GenerationConfig(
+                max_new_tokens=gen_config.max_tokens,
+                temperature=gen_config.temperature,
+                top_k=gen_config.top_k,
+                top_p=gen_config.top_p,
+                repetition_penalty=gen_config.repetition_penalty,
+            )
 
         # Add speculative decoding parameters (mutually exclusive per OpenVINO docs)
         import os
