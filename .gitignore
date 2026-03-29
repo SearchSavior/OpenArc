@@ -14,6 +14,7 @@ openarc_api.log
 openarc_config.json
 CONTRIBUTING-wip.md
 
+docs/superpowers
 docker-compose.override.yaml
 .pytest_cache/
 .mypy_cache/
