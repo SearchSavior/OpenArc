@@ -19,6 +19,7 @@ dependencies = [
     "kokoro>=0.9.4",
     "librosa>=0.11.0",
     "misaki[en]>=0.9.4",
+    "mkdocs-material>=9.7.6",
     "openai>1.109.1",
     "openai-agents>=0.4.2",
     "openvino-genai>=2025.3.0.0",
