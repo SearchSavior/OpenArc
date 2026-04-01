@@ -14,7 +14,7 @@
 
 Drawing on ideas from `llama.cpp`, `vLLM`, `transformers`, `OpenVINO Model Server`, `Ray`, `Lemonade`, and other projects cited below, OpenArc has been a way for me to learn about inference engines by trying to build one myself.
 
-Along the way a Discord community has formed around this project, which was unexpected! If you are interested in using Intel devices for AI and machine learning, feel free to stop by. 
+Along the way a Discord community has formed around this project! If you are interested in using Intel devices for AI and machine learning, feel free to stop by. 
 
 Thanks to everyone on Discord for their continued support!
 
@@ -37,7 +37,9 @@ Thanks to everyone on Discord for their continued support!
   - [LLMs](#llms)
   - [VLMs](#vlms)
   - [Whisper](#whisper)
+  - [Qwen3-ASR](#qwen3-asr)
   - [Kokoro](#kokoro)
+  - [Qwen3-TTS](#qwen3-tts)
   - [Embedding](#embedding)
   - [Reranker](#reranker)
 - [Converting Models to OpenVINO IR](#converting-models-to-openvino-ir)
@@ -77,6 +79,7 @@ Thanks to everyone on Discord for their continued support!
     - stream mode
   - More OpenVINO [examples](examples/)
   - OpenVINO implementation of [hexgrad/Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M)
+  - OpenVINO implementation of Qwen3-TTS and Qwen3-ASR
   
 
 > [!NOTE] 
@@ -240,13 +243,24 @@ After choosing a model, use commands in this order:
 Here's an example for Gemma 3 VLM on GPU:
 
 ```
-openarc add --model-name <model-name> --model-path <path/to/model> --engine ovgenai --model-type vlm --device GPU.0 --vlm-type gemma3
+openarc add \
+  --model-name <model-name> \
+  --model-path <path/to/model> \
+  --engine ovgenai \
+  --model-type vlm \
+  --device GPU.0 \
+  --vlm-type gemma3
 ```
 
 And all LLM on GPU:
 
 ```
-openarc add --model-name <model-name> --model-path <path/to/model> --engine ovgenai --model-type llm --device GPU.0
+openarc add \
+  --model-name <model-name> \
+  --model-path <path/to/model> \
+  --engine ovgenai \
+  --model-type llm \
+  --device GPU.0
 ```
 
 Next up:
@@ -261,8 +275,15 @@ Next up:
 Qwen3 ASR example:
 
 ```
-openarc add --model-name qwen3_asr --model-path <path/to/qwen3_asr_ir> --engine openvino --model-type qwen3_asr --device CPU
-python demos/qwen3_asr_transcribe.py <path/to/audio.wav> --model qwen3_asr
+openarc add \
+  --model-name qwen3_asr \
+  --model-path <path/to/qwen3_asr_ir> \
+  --engine openvino \
+  --model-type qwen3_asr \
+  --device CPU
+python demos/qwen3_asr_transcribe.py \
+  <path/to/audio.wav> \
+  --model qwen3_asr
 ```
 
 Each command has groups of options which offer fine-grained control of both server behavior and performance optimizations, which are documented here with examples to get you started. Remember to use this as reference.
@@ -283,7 +304,12 @@ Add a model to `openarc_config.json` for easy loading with `openarc load`.
 ### Single device
 
 ```
-openarc add --model-name <model-name> --model-path <path/to/model> --engine <engine> --model-type <model-type> --device <target-device>
+openarc add \
+  --model-name <model-name> \
+  --model-path <path/to/model> \
+  --engine <engine> \
+  --model-type <model-type> \
+  --device <target-device>
 ```
 
 To see what options you have for `--device`, use `openarc tool device-detect`.
@@ -291,7 +317,13 @@ To see what options you have for `--device`, use `openarc tool device-detect`.
 ### VLM
 
 ```
-openarc add --model-name <model-name> --model-path <path/to/model> --engine <engine> --model-type <model-type> --device <target-device> --vlm-type <vlm-type>
+openarc add \
+  --model-name <model-name> \
+  --model-path <path/to/model> \
+  --engine <engine> \
+  --model-type <model-type> \
+  --device <target-device> \
+  --vlm-type <vlm-type>
 ```
 Getting VLM to work the way I wanted required using VLMPipeline in ways that are not well documented. You can look at the [code](src/engine/ov_genai/vlm.py#L33) to see where the magic happens. 
 
@@ -300,13 +332,23 @@ Getting VLM to work the way I wanted required using VLMPipeline in ways that are
 ### Whisper
 
 ```
-openarc add --model-name <model-name> --model-path <path/to/whisper> --engine ovgenai --model-type whisper --device <target-device> 
+openarc add \
+  --model-name <model-name> \
+  --model-path <path/to/whisper> \
+  --engine ovgenai \
+  --model-type whisper \
+  --device <target-device>
 ```
 
 ### Kokoro (CPU only)
 
 ```
-openarc add --model-name <model-name> --model-path <path/to/kokoro> --engine openvino --model-type kokoro --device CPU 
+openarc add \
+  --model-name <model-name> \
+  --model-path <path/to/kokoro> \
+  --engine openvino \
+  --model-type kokoro \
+  --device CPU
 ```
 
 ### Advanced Configuration Options
@@ -315,14 +357,20 @@ openarc add --model-name <model-name> --model-path <path/to/kokoro> --engine ope
 
 See OpenVINO documentation on [Inference Optimization](https://docs.openvino.ai/2025/openvino-workflow/running-inference/optimize-inference.html) to learn more about what can be customized.
 
-Most options get really deep into OpenVINO concepts that are way out of scope for the README; however `runtime-config` is the entrypoint for *all* of them. Broadly, what you set in `runtime-config` Unfortunately, not all options are designed for transformers, so `runtime-config` was implemented in a way where you immediately get feedback. Add a kwarg, load the model, get feedback from the server, run `openarc bench`. Overall, it's a clean way to handle the hardest part of OpenVINO documentation.
-
-Review [pipeline-paralellism preview](https://docs.openvino.ai/2025/openvino-workflow/running-inference/inference-devices-and-modes/hetero-execution.html#pipeline-parallelism-preview) to learn how you can customize multi device inference using HETERO device plugin. Some example commands are provided for a few difference scenarios:
+Most options get really deep into OpenVINO concepts that are way out of scope for the README; however `runtime-config` is the entrypoint for *all* of them. Broadly, what you set in `runtime-config` Unfortunately, not all options are designed for transformers, so `runtime-config` was implemented in a way where you immediately get feedback. Add a kwarg, load the model, get feedback from the server, run `openarc bench`. Overall, it's a clean way to handle the hardest part of OpenVINO documentation. 
+ 
+Review [pipeline-paralellism preview](https://docs.openvino.ai/2026/openvino-workflow/running-inference/inference-devices-and-modes/hetero-execution.html#pipeline-parallelism-preview) to learn how you can customize multi device inference using HETERO device plugin. Some example commands are provided for a few difference scenarios:
 
 ### Multi-GPU Pipeline Paralell
 
 ```
-openarc add --model-name <model-name> --model-path <path/to/model> --engine ovgenai --model-type llm --device HETERO:GPU.0,GPU.1 --runtime-config "{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}"
+openarc add \
+  --model-name <model-name> \
+  --model-path <path/to/model> \
+  --engine ovgenai \
+  --model-type llm \
+  --device HETERO:GPU.0,GPU.1 \
+  --runtime-config "{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}"
 ```
 
 ### Tensor Paralell (CPU only)
@@ -330,20 +378,41 @@ openarc add --model-name <model-name> --model-path <path/to/model> --engine ovge
 Requires more than one CPU socket in a single node.
 
 ```
-openarc add --model-name <model-name> --model-path <path/to/model> --engine ovgenai --model-type llm --device CPU --runtime-config "{"MODEL_DISTRIBUTION_POLICY": "TENSOR_PARALLEL"}"
+openarc add \
+  --model-name <model-name> \
+  --model-path <path/to/model> \
+  --engine ovgenai \
+  --model-type llm \
+  --device CPU \
+  --runtime-config "{"MODEL_DISTRIBUTION_POLICY": "TENSOR_PARALLEL"}"
 ```
 ---
 
 ### Hybrid Mode/CPU Offload
 
 ```
-openarc add --model-name <model-name> -model-path <path/to/model> --engine ovgenai --model-type llm --device HETERO:GPU.0,CPU --runtime-config "{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}"
+openarc add \
+  --model-name <model-name> \
+  --model-path <path/to/model> \
+  --engine ovgenai \
+  --model-type llm \
+  --device HETERO:GPU.0,CPU \
+  --runtime-config "{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}"
 ```
 
 ### Speculative Decoding
 
 ```
-openarc add --model-name <model-name> --model-path <path/to/model> --engine ovgenai --model-type llm --device GPU.0 --draft-model-path <path/to/draftmodel> --draft-device CPU --num-assistant-tokens 5 --assistant-confidence-threshold 0.5
+openarc add \
+  --model-name <model-name> \
+  --model-path <path/to/model> \
+  --engine ovgenai \
+  --model-type llm \
+  --device GPU.0 \
+  --draft-model-path <path/to/draftmodel> \
+  --draft-device CPU \
+  --num-assistant-tokens 5 \
+  --assistant-confidence-threshold 0.5
 ```
 
 
@@ -365,12 +434,15 @@ openarc list
 
 Display config metadata for a specific model:
 ```
-openarc list <model-name> -v
+openarc list \
+  <model-name> \
+  -v
 ```
 
 Remove a configuration:
 ```
-openarc list --remove <model-name>
+openarc list \
+  --remove <model-name>
 ```
 
 </details>
@@ -390,13 +462,16 @@ openarc serve start # defauls to 0.0.0.0:8000
 Configure host and port
 
 ```
-openarc serve start --host --port
+openarc serve start \
+  --host \
+  --port
 ```
 
 To load models on startup:
 
 ```
-openarc serve start --load-models model1 model2
+openarc serve start \
+  --load-models model1 model2
 ```
 
 </details>
@@ -412,13 +487,17 @@ After using ```openarc add``` you can use ```openarc load``` to read the added c
 OpenArc uses arguments from ```openarc add``` as metadata to make routing decisions internally; you are querying for correct inference code.
 
 ```
-openarc load <model-name>
+openarc load \
+  <model-name>
 ```
 
 To load multiple models at once, use:
 
 ```
-openarc load <model-name1> <model-name2> <model-name3>
+openarc load \
+  <model-name1> \
+  <model-name2> \
+  <model-name3>
 ```
 
 Be mindful of your resources; loading models can be resource intensive! On the first load, OpenVINO performs model compilation for the target `--device`.
@@ -458,7 +537,11 @@ To support different `llm` tokenizers, we need to standardize how tokens are cho
 
 Default values are:
 ```
-openarc bench <model-name> --p <512> --n <128> --r <5>
+openarc bench \
+  <model-name> \
+  --p <512> \
+  --n <128> \
+  --r <5>
 ```
 Which gives:
 
@@ -480,13 +563,15 @@ Utility scripts.
 To see `openvino` properties your device supports use:
 
 ```
-openarc tool device-props
+openarc tool \
+  device-props
 ```
 
 To see available devices use:
 
 ```
-openarc tool device-detect
+openarc tool \
+  device-detect
 ```
 
 ![device-detect](assets/cli_tool_device-detect.png)
@@ -535,6 +620,11 @@ There are a few sources of preconverted models which can be used with OpenArc;
 | [Echo9Zulu/Hermes-4-70B-int4_asym-awq-ov](https://huggingface.co/Echo9Zulu/Hermes-4-70B-int4_asym-awq-ov) |
 | [Echo9Zulu/Qwen2.5-Coder-32B-Instruct-int4_sym-awq-ov](https://huggingface.co/Echo9Zulu/Qwen2.5-Coder-32B-Instruct-int4_sym-awq-ov) |
 | [Echo9Zulu/Qwen3-32B-Instruct-int4_sym-awq-ov](https://huggingface.co/Echo9Zulu/Qwen3-32B-Instruct-int4_sym-awq-ov) |
+| [DudePls/Big-Tiger-Gemma-27B-v3-int4-asym-ov](https://huggingface.co/DudePls/Big-Tiger-Gemma-27B-v3-int4-asym-ov) |
+| [DudePls/Nanbeige4.1-3B-openvino](https://huggingface.co/DudePls/Nanbeige4.1-3B-openvino) |
+| [DudePls/Cydonia-24B-v4.3-OpenVINO-INT4](https://huggingface.co/DudePls/Cydonia-24B-v4.3-OpenVINO-INT4) |
+| [Echo9Zulu/Nemotron-Cascade-14B-Thinking-int4_asym-se-ov](https://huggingface.co/Echo9Zulu/Nemotron-Cascade-14B-Thinking-int4_asym-se-ov) |
+| [Echo9Zulu/NousCoder-14B-int4_sym-ov](https://huggingface.co/Echo9Zulu/NousCoder-14B-int4_sym-ov) |
 
 </details>
 
@@ -566,6 +656,17 @@ There are a few sources of preconverted models which can be used with OpenArc;
 
 </details>
 
+<details id="qwen3-asr">
+<summary>Qwen3-ASR</summary>
+
+<br>
+
+| **Models** |
+| --- |
+| [Echo9Zulu/Qwen3-ASR-0.6B-INT8_ASYM-OpenVINO](https://huggingface.co/Echo9Zulu/Qwen3-ASR-0.6B-INT8_ASYM-OpenVINO) |
+
+</details>
+
 <details id="kokoro">
 <summary>Kokoro</summary>
 
@@ -574,6 +675,19 @@ There are a few sources of preconverted models which can be used with OpenArc;
 | **Models** |
 | --- |
 | [Echo9Zulu/Kokoro-82M-FP16-OpenVINO](https://huggingface.co/Echo9Zulu/Kokoro-82M-FP16-OpenVINO) |
+
+</details>
+
+<details id="qwen3-tts">
+<summary>Qwen3-TTS</summary>
+
+<br>
+
+| **Models** |
+| --- |
+| [Echo9Zulu/Qwen3-TTS-12Hz-CustomVoice-1.7B-INT8-OpenVINO](https://huggingface.co/Echo9Zulu/Qwen3-TTS-12Hz-CustomVoice-1.7B-INT8-OpenVINO) |
+| [Echo9Zulu/Qwen3-TTS-12Hz-VoiceDesign-1.7B-INT8-OpenVINO](https://huggingface.co/Echo9Zulu/Qwen3-TTS-12Hz-VoiceDesign-1.7B-INT8-OpenVINO) |
+| [Echo9Zulu/Qwen3-TTS-12Hz-Base-1.7B-INT8-OpenVINO](https://huggingface.co/Echo9Zulu/Qwen3-TTS-12Hz-Base-1.7B-INT8-OpenVINO) |
 
 </details>
 
