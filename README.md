@@ -272,19 +272,6 @@ Next up:
 - Benchmark performance like llama-bench with `openarc-bench`
 - Call utility scripts with `openarc tool`
 
-Qwen3 ASR example:
-
-```
-openarc add \
-  --model-name qwen3_asr \
-  --model-path <path/to/qwen3_asr_ir> \
-  --engine openvino \
-  --model-type qwen3_asr \
-  --device CPU
-python demos/qwen3_asr_transcribe.py \
-  <path/to/audio.wav> \
-  --model qwen3_asr
-```
 
 Each command has groups of options which offer fine-grained control of both server behavior and performance optimizations, which are documented here with examples to get you started. Remember to use this as reference.
 
