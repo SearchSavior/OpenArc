@@ -21,6 +21,8 @@ from ..utils import validate_model_path
               help='Number of tokens to generate. Can be comma-separated or specified multiple times. Default: 128')
 @click.option('--runs', '--r', default=5, type=int,
               help='Number of times to repeat each benchmark. Default: 5')
+@click.option('--depth', '-d', default=0, type=int,
+              help='Random vocab tokens prepended as synthetic prior context before the p-token segment. Total prompt length is d+p. Default: 0')
 @click.option('--temperature', '--temp', default=None, type=float,
               help='Sampling temperature (default: 1.0)')
 @click.option('--top-k', '--k', default=None, type=int,
@@ -30,7 +32,7 @@ from ..utils import validate_model_path
 @click.option('--repetition-penalty', '--rep', default=None, type=float,
               help='Repetition penalty (default: 1.0)')
 @click.pass_context
-def bench(ctx, model_name, input_tokens, max_tokens, runs, temperature, top_k, top_p, repetition_penalty):
+def bench(ctx, model_name, input_tokens, max_tokens, runs, depth, temperature, top_k, top_p, repetition_penalty):
     """- Benchmark inference with pseudo-random input tokens.
     
     Examples:
@@ -38,7 +40,12 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs, temperature, top_k, t
         openarc bench Dolphin-X1 --p 512 --n 128 -r 10
         openarc bench Dolphin-X1 --p 16,32,64 --n 128,256
         openarc bench Dolphin-X1 -p 16 -p 32 -n 128 -n 256
+        openarc bench Dolphin-X1 -d 2048 --p 512 --n 128
     """
+    if depth < 0:
+        console.print("[red]depth (-d) must be >= 0[/red]")
+        ctx.exit(1)
+
     from ..modules.benchmark import OpenArcBenchmarks
     from ..main import OpenArcCLI
     
@@ -96,6 +103,7 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs, temperature, top_k, t
         ctx.exit(1)
     
     # Run benchmarks
+    console.print(f"depth (prior): {depth}")
     console.print(f"input tokens: {p_values}")
     console.print(f"max tokens:   {n_values}")
     console.print(f"runs: {runs}\n")
@@ -118,11 +126,17 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs, temperature, top_k, t
             for n in n_values:
                 for r in range(runs):
                     run_count += 1
-                    progress.update(task, description=f"[dim]benching...[/dim] ({run_count}/{total_runs}) [p={p}, n={n}, r={r+1}/{runs}]")
+                    progress.update(
+                        task,
+                        description=(
+                            f"[dim]benching...[/dim] ({run_count}/{total_runs}) "
+                            f"[d={depth}, p={p}, n={n}, r={r+1}/{runs}]"
+                        ),
+                    )
                     
                     try:
-                        # Generate random input tokens
-                        input_ids = OpenArcBenchmarks.random_input_ids(model_path, p)
+                        # Prior context (d) + swept prompt segment (p)
+                        input_ids = OpenArcBenchmarks.random_input_ids(model_path, p, depth=depth)
                         
                         # Make benchmark request
                         bench_url = f"{cli_instance.base_url}/openarc/bench"
@@ -157,6 +171,7 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs, temperature, top_k, t
                         
                         # Store individual result
                         result = {
+                            'd': depth,
                             'p': p,
                             'n': n,
                             'run': r + 1,
@@ -196,6 +211,7 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs, temperature, top_k, t
     # Create results table with visible lines
     results_table = Table(show_header=True, header_style="bold")
     results_table.add_column("[cyan]run[/cyan]", justify="right")
+    results_table.add_column("[cyan]d[/cyan]", justify="right")
     results_table.add_column("[cyan]p[/cyan]", justify="right")
     results_table.add_column("[cyan]n[/cyan]", justify="right")
     results_table.add_column("[cyan]ttft(s)[/cyan]", justify="right")
@@ -208,6 +224,7 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs, temperature, top_k, t
     for result in results:
         results_table.add_row(
             str(result['run']),
+            str(result['d']),
             str(result['p']),
             str(result['n']),
             f"{result['ttft']:.2f}",
