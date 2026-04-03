@@ -27,7 +27,7 @@
     
     
       
-        <title>CLI Reference - Documentation</title>
+        <title>Commands - Documentation</title>
       
     
     
@@ -83,7 +83,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#cli-reference" class="md-skip">
+        <a href="#commands" class="md-skip">
           Skip to content
         </a>
       
@@ -119,7 +119,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              CLI Reference
+              Commands
             
           </span>
         </div>
@@ -258,10 +258,12 @@
           
   
   
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-terminal" viewBox="0 0 24 24"><path d="M12 19h8M4 17l6-6-6-6"/></svg>
+  
   <span class="md-ellipsis">
     
   
-    CLI Reference
+    Commands
   
 
     
@@ -276,10 +278,12 @@
         
   
   
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-terminal" viewBox="0 0 24 24"><path d="M12 19h8M4 17l6-6-6-6"/></svg>
+  
   <span class="md-ellipsis">
     
   
-    CLI Reference
+    Commands
   
 
     
@@ -306,6 +310,29 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#table-of-contents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table of contents
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#openarc-add" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        openarc add
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="openarc add">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
   <a href="#single-device" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -315,8 +342,8 @@
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#vlm" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -326,8 +353,8 @@
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#whisper" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -337,68 +364,12 @@
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#kokoro-cpu-only" class="md-nav__link">
     <span class="md-ellipsis">
       
         Kokoro (CPU only)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#advanced-configuration-options" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Advanced Configuration Options
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#multi-gpu-pipeline-paralell" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Multi-GPU Pipeline Paralell
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#tensor-paralell-cpu-only" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Tensor Paralell (CPU only)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#openarc-add-model-name-model-name-model-path-pathtomodel-engine-ovgenai-model-type-llm-device-cpu-runtime-config-model_distribution_policy-tensor_parallel" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        openarc add \ --model-name &lt;model-name&gt; \ --model-path &lt;path/to/model&gt; \ --engine ovgenai \ --model-type llm \ --device CPU \ --runtime-config &quot;{&quot;MODEL_DISTRIBUTION_POLICY&quot;: &quot;TENSOR_PARALLEL&quot;}&quot;
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="openarc add \ --model-name &lt;model-name&gt; \ --model-path &lt;path&#x2f;to&#x2f;model&gt; \ --engine ovgenai \ --model-type llm \ --device CPU \ --runtime-config &quot;{&quot;MODEL_DISTRIBUTION_POLICY&quot;: &quot;TENSOR_PARALLEL&quot;}&quot;">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#hybrid-modecpu-offload" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Hybrid Mode/CPU Offload
       
     </span>
   </a>
@@ -414,10 +385,137 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Speculative Decoding">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#advanced-configuration-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Advanced Configuration Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multi-gpu-pipeline-paralell" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-GPU Pipeline Paralell
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tensor-paralell-cpu-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tensor Paralell (CPU only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hybrid-modecpu-offload" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hybrid Mode/CPU Offload
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#speculative-decoding_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Speculative Decoding
+      
+    </span>
+  </a>
+  
 </li>
         
       </ul>
     </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#openarc-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        openarc list
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#openarc-serve" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        openarc serve
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#openarc-load" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        openarc load
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#openarc-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        openarc status
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#openarc-bench" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        openarc bench
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#openarc-tool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        openarc tool
+      
+    </span>
+  </a>
   
 </li>
       
@@ -765,187 +863,6 @@
   
 
     
-      
-      
-  
-  
-  
-  
-    
-    
-      
-        
-      
-        
-      
-        
-      
-        
-      
-    
-    
-    
-      
-        
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
-        
-          
-          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Command line
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_8">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    Command line
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="./bench/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Bench
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="./list/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    List
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="./serve/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Serve
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="./tool/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Tool
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-    
   </ul>
 </nav>
                   </div>
@@ -987,6 +904,29 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#table-of-contents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table of contents
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#openarc-add" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        openarc add
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="openarc add">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
   <a href="#single-device" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -996,8 +936,8 @@
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#vlm" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1007,8 +947,8 @@
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#whisper" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1018,68 +958,12 @@
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#kokoro-cpu-only" class="md-nav__link">
     <span class="md-ellipsis">
       
         Kokoro (CPU only)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#advanced-configuration-options" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Advanced Configuration Options
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#multi-gpu-pipeline-paralell" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Multi-GPU Pipeline Paralell
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#tensor-paralell-cpu-only" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Tensor Paralell (CPU only)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#openarc-add-model-name-model-name-model-path-pathtomodel-engine-ovgenai-model-type-llm-device-cpu-runtime-config-model_distribution_policy-tensor_parallel" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        openarc add \ --model-name &lt;model-name&gt; \ --model-path &lt;path/to/model&gt; \ --engine ovgenai \ --model-type llm \ --device CPU \ --runtime-config &quot;{&quot;MODEL_DISTRIBUTION_POLICY&quot;: &quot;TENSOR_PARALLEL&quot;}&quot;
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="openarc add \ --model-name &lt;model-name&gt; \ --model-path &lt;path&#x2f;to&#x2f;model&gt; \ --engine ovgenai \ --model-type llm \ --device CPU \ --runtime-config &quot;{&quot;MODEL_DISTRIBUTION_POLICY&quot;: &quot;TENSOR_PARALLEL&quot;}&quot;">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#hybrid-modecpu-offload" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Hybrid Mode/CPU Offload
       
     </span>
   </a>
@@ -1095,10 +979,137 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Speculative Decoding">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#advanced-configuration-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Advanced Configuration Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multi-gpu-pipeline-paralell" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-GPU Pipeline Paralell
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tensor-paralell-cpu-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tensor Paralell (CPU only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hybrid-modecpu-offload" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hybrid Mode/CPU Offload
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#speculative-decoding_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Speculative Decoding
+      
+    </span>
+  </a>
+  
 </li>
         
       </ul>
     </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#openarc-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        openarc list
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#openarc-serve" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        openarc serve
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#openarc-load" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        openarc load
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#openarc-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        openarc status
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#openarc-bench" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        openarc bench
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#openarc-tool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        openarc tool
+      
+    </span>
+  </a>
   
 </li>
       
@@ -1125,7 +1136,18 @@
                 
                   
 
-<h1 id="cli-reference">CLI Reference<a class="headerlink" href="#cli-reference" title="Permanent link">&para;</a></h1>
+<h1 id="commands">Commands<a class="headerlink" href="#commands" title="Permanent link">&para;</a></h1>
+<h2 id="table-of-contents">Table of contents<a class="headerlink" href="#table-of-contents" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="#openarc-add">openarc add</a></li>
+<li><a href="#openarc-list">openarc list</a></li>
+<li><a href="#openarc-serve">openarc serve</a></li>
+<li><a href="#openarc-load">openarc load</a></li>
+<li><a href="#openarc-status">openarc status</a></li>
+<li><a href="#openarc-bench">openarc bench</a></li>
+<li><a href="#openarc-tool">openarc tool</a></li>
+</ul>
+<h2 id="openarc-add">openarc add<a class="headerlink" href="#openarc-add" title="Permanent link">&para;</a></h2>
 <p>Add a model to <code>openarc_config.json</code> for easy loading with <code>openarc load</code>. </p>
 <h3 id="single-device">Single device<a class="headerlink" href="#single-device" title="Permanent link">&para;</a></h3>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>openarc add \
@@ -1163,51 +1185,136 @@ Getting VLM to work the way I wanted required using VLMPipeline in ways that are
 </span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>  --model-type kokoro \
 </span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>  --device CPU
 </span></code></pre></div>
-<h3 id="advanced-configuration-options">Advanced Configuration Options<a class="headerlink" href="#advanced-configuration-options" title="Permanent link">&para;</a></h3>
-<p><code>runtime-config</code> accepts many options to modify <code>openvino</code> runtime behavior for different inference scenarios. OpenArc reports c++ errors to the server when these fail, making experimentation easy. </p>
-<p>See OpenVINO documentation on <a href="https://docs.openvino.ai/2025/openvino-workflow/running-inference/optimize-inference.html">Inference Optimization</a> to learn more about what can be customized.</p>
-<p>Most options get really deep into OpenVINO concepts that are way out of scope for the README; however <code>runtime-config</code> is the entrypoint for <em>all</em> of them. Broadly, what you set in <code>runtime-config</code> Unfortunately, not all options are designed for transformers, so <code>runtime-config</code> was implemented in a way where you immediately get feedback. Add a kwarg, load the model, get feedback from the server, run <code>openarc bench</code>. Overall, it's a clean way to handle the hardest part of OpenVINO documentation. </p>
-<p>Review <a href="https://docs.openvino.ai/2026/openvino-workflow/running-inference/inference-devices-and-modes/hetero-execution.html#pipeline-parallelism-preview">pipeline-paralellism preview</a> to learn how you can customize multi device inference using HETERO device plugin. Some example commands are provided for a few difference scenarios:</p>
-<h3 id="multi-gpu-pipeline-paralell">Multi-GPU Pipeline Paralell<a class="headerlink" href="#multi-gpu-pipeline-paralell" title="Permanent link">&para;</a></h3>
+<h3 id="speculative-decoding">Speculative Decoding<a class="headerlink" href="#speculative-decoding" title="Permanent link">&para;</a></h3>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>openarc add \
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  --model-name &lt;model-name&gt; \
 </span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  --model-path &lt;path/to/model&gt; \
 </span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  --engine ovgenai \
 </span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>  --model-type llm \
-</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>  --device HETERO:GPU.0,GPU.1 \
-</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>  --runtime-config &quot;{&quot;MODEL_DISTRIBUTION_POLICY&quot;: &quot;PIPELINE_PARALLEL&quot;}&quot;
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>  --device GPU.0 \
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>  --draft-model-path &lt;path/to/draftmodel&gt; \
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>  --draft-device CPU \
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>  --num-assistant-tokens 5 \
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>  --assistant-confidence-threshold 0.5
 </span></code></pre></div>
-<h3 id="tensor-paralell-cpu-only">Tensor Paralell (CPU only)<a class="headerlink" href="#tensor-paralell-cpu-only" title="Permanent link">&para;</a></h3>
-<p>Requires more than one CPU socket in a single node.</p>
-<h2 id="openarc-add-model-name-model-name-model-path-pathtomodel-engine-ovgenai-model-type-llm-device-cpu-runtime-config-model_distribution_policy-tensor_parallel"><div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>openarc add \
+<h4 id="advanced-configuration-options">Advanced Configuration Options<a class="headerlink" href="#advanced-configuration-options" title="Permanent link">&para;</a></h4>
+<p><code>runtime-config</code> accepts many options to modify <code>openvino</code> runtime behavior for different inference scenarios. OpenArc reports c++ errors to the server when these fail, making experimentation easy. </p>
+<p>See OpenVINO documentation on <a href="https://docs.openvino.ai/2025/openvino-workflow/running-inference/optimize-inference.html">Inference Optimization</a> to learn more about what can be customized.</p>
+<p>Most options expose OpenVINO concepts that the docs don't handle well; I disucssed this in an answer on <a href="https://forum.level1techs.com/t/intel-b70-launch-unboxed-and-tested/247873/43?u=echo9zulu">level1techs</a> recently.</p>
+<p>Reguardless, <code>runtime-config</code> is the entrypoint for <em>all</em> of them. Broadly, what you set in <code>runtime-config</code> Unfortunately, not all options are designed for transformers, so <code>runtime-config</code> was implemented in a way where you immediately get feedback from the openvino runtime after loading a model. Add an argument, load that model, get feedback from the server, run <code>openarc bench</code>. Overall, it makes iterating faster in an area where exactly none of the documentation is clear. The one's I am reporting here have been validated.</p>
+<p>Review <a href="https://docs.openvino.ai/2026/openvino-workflow/running-inference/inference-devices-and-modes/hetero-execution.html#pipeline-parallelism-preview">pipeline-paralellism preview</a> to learn how you can customize multi device inference using HETERO device plugin. Some example commands are provided for a few difference scenarios:</p>
+<h4 id="multi-gpu-pipeline-paralell">Multi-GPU Pipeline Paralell<a class="headerlink" href="#multi-gpu-pipeline-paralell" title="Permanent link">&para;</a></h4>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>openarc add \
 </span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  --model-name &lt;model-name&gt; \
 </span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>  --model-path &lt;path/to/model&gt; \
 </span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>  --engine ovgenai \
 </span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>  --model-type llm \
-</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>  --device CPU \
-</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>  --runtime-config &quot;{&quot;MODEL_DISTRIBUTION_POLICY&quot;: &quot;TENSOR_PARALLEL&quot;}&quot;
-</span></code></pre></div><a class="headerlink" href="#openarc-add-model-name-model-name-model-path-pathtomodel-engine-ovgenai-model-type-llm-device-cpu-runtime-config-model_distribution_policy-tensor_parallel" title="Permanent link">&para;</a></h2>
-<h3 id="hybrid-modecpu-offload">Hybrid Mode/CPU Offload<a class="headerlink" href="#hybrid-modecpu-offload" title="Permanent link">&para;</a></h3>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>openarc add \
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>  --device HETERO:GPU.0,GPU.1 \
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>  --runtime-config &quot;{&quot;MODEL_DISTRIBUTION_POLICY&quot;: &quot;PIPELINE_PARALLEL&quot;}&quot;
+</span></code></pre></div>
+<h4 id="tensor-paralell-cpu-only">Tensor Paralell (CPU only)<a class="headerlink" href="#tensor-paralell-cpu-only" title="Permanent link">&para;</a></h4>
+<p>Requires more than one CPU socket in a single node.
+  <div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>openarc add \
 </span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  --model-name &lt;model-name&gt; \
 </span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>  --model-path &lt;path/to/model&gt; \
 </span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>  --engine ovgenai \
 </span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>  --model-type llm \
-</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>  --device HETERO:GPU.0,CPU \
-</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>  --runtime-config &quot;{&quot;MODEL_DISTRIBUTION_POLICY&quot;: &quot;PIPELINE_PARALLEL&quot;}&quot;
-</span></code></pre></div>
-<h3 id="speculative-decoding">Speculative Decoding<a class="headerlink" href="#speculative-decoding" title="Permanent link">&para;</a></h3>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>  --device CPU \
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>  --runtime-config &quot;{&quot;MODEL_DISTRIBUTION_POLICY&quot;: &quot;TENSOR_PARALLEL&quot;}&quot;
+</span></code></pre></div></p>
+<hr />
+<h4 id="hybrid-modecpu-offload">Hybrid Mode/CPU Offload<a class="headerlink" href="#hybrid-modecpu-offload" title="Permanent link">&para;</a></h4>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>openarc add \
 </span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>  --model-name &lt;model-name&gt; \
 </span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>  --model-path &lt;path/to/model&gt; \
 </span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>  --engine ovgenai \
 </span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>  --model-type llm \
-</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>  --device GPU.0 \
-</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>  --draft-model-path &lt;path/to/draftmodel&gt; \
-</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>  --draft-device CPU \
-</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>  --num-assistant-tokens 5 \
-</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>  --assistant-confidence-threshold 0.5
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>  --device HETERO:GPU.0,CPU \
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>  --runtime-config &quot;{&quot;MODEL_DISTRIBUTION_POLICY&quot;: &quot;PIPELINE_PARALLEL&quot;}&quot;
 </span></code></pre></div>
+<h4 id="speculative-decoding_1">Speculative Decoding<a class="headerlink" href="#speculative-decoding_1" title="Permanent link">&para;</a></h4>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>openarc add \
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>  --model-name &lt;model-name&gt; \
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>  --model-path &lt;path/to/model&gt; \
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>  --engine ovgenai \
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>  --model-type llm \
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>  --device GPU.0 \
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>  --draft-model-path &lt;path/to/draftmodel&gt; \
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>  --draft-device CPU \
+</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>  --num-assistant-tokens 5 \
+</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>  --assistant-confidence-threshold 0.5
+</span></code></pre></div>
+<h2 id="openarc-list">openarc list<a class="headerlink" href="#openarc-list" title="Permanent link">&para;</a></h2>
+<p>Reads added configurations from <code>openarc_config.json</code>.</p>
+<p>Display all added models:
+<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>openarc list
+</span></code></pre></div></p>
+<p>Display config metadata for a specific model:
+<div class="language-text highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>openarc list \
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>  &lt;model-name&gt; \
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>  -v
+</span></code></pre></div></p>
+<p>Remove a configuration:
+<div class="language-text highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>openarc list \
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>  --remove &lt;model-name&gt;
+</span></code></pre></div></p>
+<h2 id="openarc-serve">openarc serve<a class="headerlink" href="#openarc-serve" title="Permanent link">&para;</a></h2>
+<p>Starts the server.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>openarc serve start # defauls to 0.0.0.0:8000
+</span></code></pre></div>
+<p>Configure host and port</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>openarc serve start \
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>  --host \
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>  --port
+</span></code></pre></div>
+<p>To load models on startup:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>openarc serve start \
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>  --load-models model1 model2
+</span></code></pre></div>
+<h2 id="openarc-load">openarc load<a class="headerlink" href="#openarc-load" title="Permanent link">&para;</a></h2>
+<p>After using <code>openarc add</code> you can use <code>openarc load</code> to read the added configuration and load models onto the OpenArc server. </p>
+<p>OpenArc uses arguments from <code>openarc add</code> as metadata to make routing decisions internally; you are querying for correct inference code.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>openarc load \
+</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>  &lt;model-name&gt;
+</span></code></pre></div>
+<p>To load multiple models at once, use:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>openarc load \
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>  &lt;model-name1&gt; \
+</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>  &lt;model-name2&gt; \
+</span><span id="__span-16-4"><a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>  &lt;model-name3&gt;
+</span></code></pre></div>
+<p>Be mindful of your resources; loading models can be resource intensive! On the first load, OpenVINO performs model compilation for the target <code>--device</code>.</p>
+<p>When <code>openarc load</code> fails, the CLI tool displays a full stack trace to help you figure out why.</p>
+<h2 id="openarc-status">openarc status<a class="headerlink" href="#openarc-status" title="Permanent link">&para;</a></h2>
+<p>Calls /openarc/status endpoint and returns a report. Shows loaded models.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>openarc status
+</span></code></pre></div>
+<h2 id="openarc-bench">openarc bench<a class="headerlink" href="#openarc-bench" title="Permanent link">&para;</a></h2>
+<p>Benchmark <code>llm</code> performance with pseudo-random input tokens.</p>
+<p>This approach follows <a href="https://github.com/ggml-org/llama.cpp/blob/683fa6ba/tools/llama-bench/llama-bench.cpp#L1922">llama-bench</a>, providing a baseline for the community to assess inference performance between <code>llama.cpp</code> backends and <code>openvino</code>.</p>
+<p>To support different <code>llm</code> tokenizers, we need to standardize how tokens are chosen for benchmark inference. When you set <code>--p</code> we select <code>512</code> pseudo-random tokens as input_ids from the set of all tokens in the vocabulary. </p>
+<p><code>--n</code> controls the maximum amount of tokens we allow the model to generate; this bypasses <code>eos</code> and sets a hard upper limit.</p>
+<p>Default values are:
+<div class="language-text highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>openarc bench \
+</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>  &lt;model-name&gt; \
+</span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>  --p &lt;512&gt; \
+</span><span id="__span-18-4"><a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>  --n &lt;128&gt; \
+</span><span id="__span-18-5"><a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>  --r &lt;5&gt;
+</span></code></pre></div>
+Which gives:</p>
+<p><img alt="openarc bench" src="../assets/openarc_bench_sample.png" /></p>
+<p><code>openarc bench</code> also records metrics in a sqlite database <code>openarc_bench.db</code> for easy analysis.</p>
+<h2 id="openarc-tool">openarc tool<a class="headerlink" href="#openarc-tool" title="Permanent link">&para;</a></h2>
+<p>Utility scripts.</p>
+<p>To see <code>openvino</code> properties your device supports use:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>openarc tool \
+</span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>  device-props
+</span></code></pre></div>
+<p>To see available devices use:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>openarc tool \
+</span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>  device-detect
+</span></code></pre></div>
+<p><img alt="device-detect" src="../assets/cli_tool_device-detect.png" /></p>
 
 
 
@@ -1216,6 +1323,9 @@ Getting VLM to work the way I wanted required using VLMPipeline in ways that are
 
 
 
+
+  
+  
 
 
 
