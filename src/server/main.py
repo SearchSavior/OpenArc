@@ -21,17 +21,16 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.server.model_registry import ModelRegistry
-from src.server.models.registration import ModelLoadConfig, ModelUnloadConfig
-from src.server.models.openvino import OV_KokoroGenConfig
+from src.server.models.registration import ModelLoadConfig, ModelType, ModelUnloadConfig
 from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
 from src.server.models.optimum import PreTrainedTokenizerConfig, RerankerConfig
 from src.server.models.requests_internal import OpenArcBenchRequest
 from src.server.models.requests_openai import (
     EmbeddingsRequest,
+    OpenArcASRConfig,
     OpenAIChatCompletionRequest,
     OpenAICompletionRequest,
-    OpenAIKokoroRequest,
-    OpenAIWhisperRequest,
+    OpenAISpeechRequest,
     RerankRequest,
 )
 from src.server.worker_registry import WorkerRegistry
@@ -637,24 +636,37 @@ async def openai_completions(request: OpenAICompletionRequest, raw_request: Requ
 async def openai_audio_transcriptions(
     file: UploadFile = File(..., description="The audio file to transcribe"),
     model: str = Form(..., description="ID of the model to use"),
-    language: Optional[str] = Form(None, description="Language of the input audio"),
-    prompt: Optional[str] = Form(None, description="Optional text to guide the model"),
     response_format: Optional[str] = Form("json", description="Format of output"),
-    temperature: Optional[float] = Form(0.0, description="Sampling temperature")
+    openarc_asr: Optional[str] = Form(None, description="JSON: OpenArcASRConfig with qwen3_asr params"),
 ):
     try:
         logger.info(f'"{model}" request received')
-        # Read the uploaded audio file
         audio_bytes = await file.read()
+        audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
 
-        # Convert to base64 for internal processing
-        audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
+        selected_model_type = None
+        async with _registry._lock:
+            for record in _registry._models.values():
+                if record.model_name == model:
+                    selected_model_type = record.model_type
+                    break
 
-        # Create generation config with base64 audio
-        gen_config = OVGenAI_WhisperGenConfig(audio_base64=audio_base64)
+        if selected_model_type is None:
+            raise ValueError(f"Model '{model}' is not loaded")
 
-        # Process transcription
-        result = await _workers.transcribe_whisper(model, gen_config)
+        normalized_model_type = ModelType(selected_model_type)
+
+        if normalized_model_type == ModelType.QWEN3_ASR:
+            if not openarc_asr:
+                raise ValueError("openarc_asr required for Qwen3 ASR models")
+            cfg = OpenArcASRConfig.model_validate(json.loads(openarc_asr))
+            if not cfg.qwen3_asr:
+                raise ValueError("openarc_asr.qwen3_asr required for Qwen3 ASR models")
+            gen_config = cfg.qwen3_asr.model_copy(update={"audio_base64": audio_base64})
+            result = await _workers.transcribe_qwen3_asr(model, gen_config)
+        else:
+            gen_config = OVGenAI_WhisperGenConfig(audio_base64=audio_base64)
+            result = await _workers.transcribe_whisper(model, gen_config)
         metrics = result.get("metrics", {})
 
         logger.info(f"[audio/transcriptions] model={model} metrics={metrics}")
@@ -665,7 +677,7 @@ async def openai_audio_transcriptions(
         elif response_format == "verbose_json":
             return {
                 "text": result.get("text", ""),
-                "language": language,
+                "language": metrics.get("language"),
                 "duration": metrics.get("duration"),
                 "metrics": metrics
             }
@@ -680,35 +692,53 @@ async def openai_audio_transcriptions(
 
 
 @app.post("/v1/audio/speech", dependencies=[Depends(verify_api_key)])
-async def openai_audio_speech(request: OpenAIKokoroRequest):
-    """OpenAI-compatible endpoint for text-to-speech using Kokoro models.
-
-    Returns a WAV file containing the synthesized speech.
-    """
+async def openai_audio_speech(request: OpenAISpeechRequest):
+    """OpenAI-compatible endpoint for text-to-speech. Routes to Kokoro or Qwen3 TTS based on model type."""
     try:
         logger.info(f'"{request.model}" request received')
 
-        gen_config = OV_KokoroGenConfig(
-            kokoro_message=request.input,
-            voice=request.voice,
-            lang_code=request.language,
-            speed=request.speed,
-            response_format=request.response_format
-        )
+        selected_model_type = None
+        async with _registry._lock:
+            for record in _registry._models.values():
+                if record.model_name == request.model:
+                    selected_model_type = record.model_type
+                    break
 
-        result = await _workers.generate_speech_kokoro(request.model, gen_config)
+        if selected_model_type is None:
+            raise ValueError(f"Model '{request.model}' is not loaded")
+
+        normalized = ModelType(selected_model_type)
+
+        if normalized in (
+            ModelType.QWEN3_TTS_CUSTOM_VOICE,
+            ModelType.QWEN3_TTS_VOICE_DESIGN,
+            ModelType.QWEN3_TTS_VOICE_CLONE,
+        ):
+            if not request.openarc_tts or not request.openarc_tts.qwen3_tts:
+                raise ValueError("openarc_tts.qwen3_tts required for Qwen3 TTS models")
+            gen_config = request.openarc_tts.qwen3_tts
+            gen_config.input = request.input
+            if gen_config.stream:
+                return StreamingResponse(
+                    _workers.stream_generate_speech_qwen3_tts(request.model, gen_config),
+                    media_type="audio/L16;rate=24000;channels=1",
+                )
+            result = await _workers.generate_speech_qwen3_tts(request.model, gen_config)
+        else:
+            if not request.openarc_tts or not request.openarc_tts.kokoro:
+                raise ValueError("openarc_tts.kokoro required for Kokoro models")
+            gen_config = request.openarc_tts.kokoro
+            gen_config.input = request.input
+            result = await _workers.generate_speech_kokoro(request.model, gen_config)
+
         metrics = result.get("metrics", {})
-        
         logger.info(f"[audio/speech] model={request.model} voice={request.voice} metrics={metrics}")
 
-        # Decode base64 audio and return as WAV file
-        import base64
         audio_bytes = base64.b64decode(result.get("audio_base64", ""))
-
         return StreamingResponse(
             iter([audio_bytes]),
             media_type="audio/wav",
-            headers={"Content-Disposition": "attachment; filename=speech.wav"}
+            headers={"Content-Disposition": "attachment; filename=speech.wav"},
         )
 
     except ValueError as exc:

@@ -13,6 +13,8 @@ __pycache__/
 openarc_api.log
 openarc_config.json
 CONTRIBUTING-wip.md
+
+docs/superpowers
 docker-compose.override.yaml
 .pytest_cache/
 .mypy_cache/
@@ -23,4 +25,7 @@ docker-compose.override.yaml
 openarc_bench.db
 gpt-oss.ipynb
 gpt_oss_convert.py
+scratchpad.md
+site/
+.cache/
 scratchpad.md

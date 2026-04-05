@@ -1,12 +1,11 @@
 import os
-import base64
 import sounddevice as sd
 import soundfile as sf
 import numpy as np
 import threading
 import time
 import tempfile
-from openai import OpenAI
+import requests
 
 
 def transcribe_example():
@@ -16,11 +15,7 @@ def transcribe_example():
         print("OPENARC_API_KEY is not set. Export it before running this test.")
         return
 
-    # Initialize OpenAI client with custom HTTP client for base64 audio
-    client = OpenAI(
-        api_key=api_key,
-        base_url="http://localhost:8000/v1"
-    )
+    base_url = "http://localhost:8000/v1/audio/transcriptions"
     
     model_name = "whisper"
     
@@ -119,23 +114,18 @@ def transcribe_example():
     print("💾 Audio saved to temporary WAV file")
     
     try:
-        # Read WAV file and encode as base64 (OpenArc server expects this format)
         with open(tmp_path, "rb") as f:
-            audio_b64 = base64.b64encode(f.read()).decode("utf-8")
-        
-        # Use custom request since OpenArc expects audio_base64 in JSON
-        response = client.post(
-            "/audio/transcriptions",
-            cast_to=object,
-            body={
-                "model": model_name,
-                "audio_base64": audio_b64
-            },
-            options={"headers": {"Content-Type": "application/json"}}
-        )
-        
-        text = response.get("text", "")
-        metrics = response.get("metrics", {})
+            response = requests.post(
+                base_url,
+                headers={"Authorization": f"Bearer {api_key}"},
+                data={"model": model_name},
+                files={"file": (os.path.basename(tmp_path), f, "audio/wav")},
+                timeout=120,
+            )
+        response.raise_for_status()
+        payload = response.json()
+        text = payload.get("text", "")
+        metrics = payload.get("metrics", {})
         
         print("\n📝 Transcription:\n", text)
         

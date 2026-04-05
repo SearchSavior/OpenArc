@@ -2,7 +2,22 @@ from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel
 
+from src.server.models.openvino import (
+    OV_KokoroGenConfig,
+    OV_Qwen3ASRGenConfig,
+    OV_Qwen3TTSGenConfig,
+)
 from src.server.models.optimum import PreTrainedTokenizerConfig
+
+
+class OpenArcASRConfig(BaseModel):
+    """Backend config for /v1/audio/transcriptions. Only qwen3_asr extra params; audio_base64 from file."""
+    qwen3_asr: Optional[OV_Qwen3ASRGenConfig] = None
+
+
+class OpenArcTTSConfig(BaseModel):
+    kokoro: Optional[OV_KokoroGenConfig] = None
+    qwen3_tts: Optional[OV_Qwen3TTSGenConfig] = None
 
 
 class OpenAIChatCompletionRequest(BaseModel):
@@ -46,13 +61,15 @@ class OpenAIWhisperRequest(BaseModel):
 
 
 
-class OpenAIKokoroRequest(BaseModel):
+class OpenAISpeechRequest(BaseModel):
+    """OpenAI-compatible request for /v1/audio/speech; backend config in openarc_tts."""
     model: str
     input: str
     voice: Optional[str] = None
-    speed: Optional[float] = None
+    instructions: Optional[str] = None
     language: Optional[str] = None
     response_format: Optional[str] = "wav"
+    openarc_tts: Optional[OpenArcTTSConfig] = None
 
 
 # https://platform.openai.com/docs/api-reference/embeddings

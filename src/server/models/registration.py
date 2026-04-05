@@ -27,14 +27,22 @@ class ModelType(str, Enum):
     - llm: Text-to-text LLM models
     - vlm: Image-to-text VLM models
     - whisper: Whisper ASR models
+    - qwen3_asr: Qwen3 ASR models
     - kokoro: Kokoro TTS models
+    - qwen3_tts_custom_voice: Qwen3-TTS with predefined speaker
+    - qwen3_tts_voice_design: Qwen3-TTS with free-form voice description
+    - qwen3_tts_voice_clone: Qwen3-TTS cloning a reference audio
     - emb: Text-to-vector models    
     - rerank: Reranker models"""    
     
     LLM = "llm"
     VLM = "vlm"
     WHISPER = "whisper"
+    QWEN3_ASR = "qwen3_asr"
     KOKORO = "kokoro"
+    QWEN3_TTS_CUSTOM_VOICE = "qwen3_tts_custom_voice"
+    QWEN3_TTS_VOICE_DESIGN = "qwen3_tts_voice_design"
+    QWEN3_TTS_VOICE_CLONE = "qwen3_tts_voice_clone"
     EMB = "emb"
     RERANK = "rerank"
 

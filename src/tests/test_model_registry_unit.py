@@ -134,3 +134,8 @@ def test_create_model_instance_rejects_unknown_combination() -> None:
     message = asyncio.run(_run())
     assert "not supported" in message
 
+
+def test_model_class_registry_includes_qwen3_asr() -> None:
+    key = (EngineType.OPENVINO, ModelType.QWEN3_ASR)
+    assert registry_module.MODEL_CLASS_REGISTRY[key] == "src.engine.openvino.qwen3_asr.infer.OVQwen3ASR"
+
