@@ -12,6 +12,14 @@ import uuid
 import base64
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Dict, List, Optional
+import psutil
+from pydantic import BaseModel
+
+from src.server.downloader import global_downloader
+from src.server.models.requests_management import (
+    DownloaderRequest,
+    DownloaderActionRequest,
+)
 
 from fastapi import Depends, FastAPI, HTTPException, Request, File, Form, UploadFile
 from fastapi.exceptions import RequestValidationError
@@ -244,6 +252,232 @@ async def unload_model(unload_config: ModelUnloadConfig):
 async def get_status():
     """Get registry status showing all loaded models."""
     return await _registry.status()
+
+class UpdateModelConfigRequest(BaseModel):
+    model_path: str
+    config: Dict[str, Any]
+
+
+@app.post("/openarc/models/update", dependencies=[Depends(verify_api_key)])
+async def update_local_model_config(req: UpdateModelConfigRequest):
+    import json
+    from pathlib import Path
+
+    target_path = Path(req.model_path)
+    if not target_path.exists() or not target_path.is_dir():
+        raise HTTPException(status_code=404, detail="Model directory not found")
+
+    config_path = target_path / "openarc.json"
+
+    current_config = {}
+    if config_path.exists():
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                current_config = json.load(f)
+        except Exception:
+            pass
+
+    current_config.update(req.config)
+
+    try:
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(current_config, f, indent=4)
+        return {"status": "success", "config": current_config}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save config: {str(e)}")
+
+
+@app.get("/openarc/models", dependencies=[Depends(verify_api_key)])
+async def get_local_models(path: Optional[str] = None):
+    import os
+    import json
+    from pathlib import Path
+
+    if path:
+        target_path = Path(path)
+    else:
+        target_path = Path.home() / ".cache" / "openarc" / "models"
+
+    models = []
+    if target_path.exists() and target_path.is_dir():
+        for entry in target_path.iterdir():
+            if entry.is_dir():
+                folder_name = entry.name
+                config_path = entry / "openarc.json"
+                has_config = config_path.exists()
+
+                model_name = folder_name
+                model_type = None
+
+                if has_config:
+                    try:
+                        with open(config_path, "r", encoding="utf-8") as f:
+                            config_data = json.load(f)
+                            model_name = config_data.get("model_name", model_name)
+                            model_type = config_data.get("model_type")
+                    except Exception:
+                        pass
+                else:
+                    config_data = {}
+
+                models.append(
+                    {
+                        "id": folder_name,
+                        "path": str(entry),
+                        "model_name": model_name,
+                        "model_type": model_type,
+                        "engine": config_data.get("engine"),
+                        "vlm_type": config_data.get("vlm_type"),
+                        "draft_model_path": config_data.get("draft_model_path"),
+                        "draft_device": config_data.get("draft_device"),
+                        "num_assistant_tokens": config_data.get("num_assistant_tokens"),
+                        "assistant_confidence_threshold": config_data.get(
+                            "assistant_confidence_threshold"
+                        ),
+                        "runtime_config": config_data.get("runtime_config", {}),
+                        "has_config": has_config,
+                    }
+                )
+    return {"models": models}
+
+
+@app.get("/openarc/version", dependencies=[Depends(verify_api_key)])
+async def get_version():
+    return {"version": "v2.0.4"}
+
+
+def get_intel_gpu_metrics():
+    gpus = []
+    cpu_info = {"id": "CPU", "name": "System CPU"}
+    npus = []
+
+    try:
+        import openvino as ov
+        import psutil
+
+        core = ov.Core()
+        devices = core.available_devices
+        for device in devices:
+            try:
+                name = core.get_property(device, "FULL_DEVICE_NAME")
+            except Exception:
+                name = device
+
+            if "CPU" in device:
+                cpu_info["name"] = str(name)
+            elif "NPU" in device:
+                npus.append({"id": device, "name": str(name)})
+            elif "GPU" in device:
+                # mock usage/memory for now cause standad python dont easily expose intel gpu telemetry without root/external tools
+                usage = 0.0
+                total_vram_mb = 0
+                used_vram_mb = 0
+                is_shared = False
+
+                # try getting memory info if avialable in openvino
+                try:
+                    total_vram = core.get_property(device, "DEVICE_TOTAL_MEM_SIZE")
+                    total_vram_mb = total_vram // (1024 * 1024)
+                except Exception:
+                    # if openvino cannot report DEVICE_TOTAL_MEM_SIZE it usually mean its an integrated
+                    # gpu sharing system memory. lets return the system memory but flag it as shared.
+                    vm = psutil.virtual_memory()
+                    total_vram_mb = vm.total // (1024 * 1024)
+                    is_shared = True
+
+                gpus.append(
+                    {
+                        "id": device,
+                        "name": str(name),
+                        "total_vram": int(total_vram_mb),
+                        "used_vram": int(used_vram_mb),
+                        "usage": float(usage),
+                        "is_shared": is_shared,
+                    }
+                )
+    except ImportError:
+        pass
+    except Exception as e:
+        import logging
+
+        logging.error(f"Failed to query OpenVINO devices: {e}")
+
+    return {"cpu": cpu_info, "gpus": gpus, "npus": npus}
+
+
+@app.get("/openarc/metrics", dependencies=[Depends(verify_api_key)])
+async def get_metrics():
+    import psutil
+
+    vm = psutil.virtual_memory()
+    ov_metrics = get_intel_gpu_metrics()
+
+    return {
+        "cpus": [
+            {
+                "id": ov_metrics["cpu"]["id"],
+                "name": ov_metrics["cpu"]["name"],
+                "cores": psutil.cpu_count(logical=False) or 1,
+                "threads": psutil.cpu_count(logical=True) or 1,
+                "usage": psutil.cpu_percent(),
+            }
+        ],
+        "total_ram": vm.total // (1024 * 1024),
+        "used_ram": vm.used // (1024 * 1024),
+        "gpus": ov_metrics["gpus"],
+        "npus": ov_metrics["npus"],
+    }
+
+
+@app.post("/openarc/downloader", dependencies=[Depends(verify_api_key)])
+async def start_download(request: DownloaderRequest):
+    success = await global_downloader.start(request.model_name, request.path)
+    if success:
+        return {"status": "success", "message": "Model download started successfully."}
+    return JSONResponse(
+        status_code=400,
+        content={"status": "error", "message": "Download already in progress."},
+    )
+
+
+@app.get("/openarc/downloader", dependencies=[Depends(verify_api_key)])
+async def list_downloads():
+    return {"models": global_downloader.list_tasks()}
+
+
+@app.delete("/openarc/downloader", dependencies=[Depends(verify_api_key)])
+async def cancel_download(request: DownloaderActionRequest):
+    if global_downloader.cancel(request.model_name):
+        return {
+            "status": "success",
+            "message": "Model download cancelled successfully.",
+        }
+    return JSONResponse(
+        status_code=404,
+        content={"status": "error", "message": "Download task not found."},
+    )
+
+
+@app.post("/openarc/downloader/pause", dependencies=[Depends(verify_api_key)])
+async def pause_download(request: DownloaderActionRequest):
+    if global_downloader.pause(request.model_name):
+        return {"status": "success", "message": "Model download paused successfully."}
+    return JSONResponse(
+        status_code=404,
+        content={"status": "error", "message": "Active download task not found."},
+    )
+
+
+@app.post("/openarc/downloader/resume", dependencies=[Depends(verify_api_key)])
+async def resume_download(request: DownloaderActionRequest):
+    # resume is basicly start
+    success = await global_downloader.start(request.model_name)
+    if success:
+        return {"status": "success", "message": "Model download resumed successfully."}
+    return JSONResponse(
+        status_code=400,
+        content={"status": "error", "message": "Download already in progress."},
+    )
 
 @app.post("/openarc/bench", dependencies=[Depends(verify_api_key)])
 async def benchmark(request: OpenArcBenchRequest):
