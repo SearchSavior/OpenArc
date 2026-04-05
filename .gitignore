@@ -27,3 +27,4 @@ gpt-oss.ipynb
 gpt_oss_convert.py
 scratchpad.md
 site/
+.cache/
