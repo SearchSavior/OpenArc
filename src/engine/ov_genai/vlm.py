@@ -141,13 +141,21 @@ class OVGenAI_VLM:
         Yields in order: metrics (dict), new_text (str).
         """
         try:
-            generation_kwargs = GenerationConfig(
-                max_new_tokens=gen_config.max_tokens,
-                temperature=gen_config.temperature,
-                top_k=gen_config.top_k,
-                top_p=gen_config.top_p,
-                repetition_penalty=gen_config.repetition_penalty,
-            )
+            if isinstance(self.model_path, VLMPipeline):
+                generation_kwargs = self.model_path.get_generation_config()
+                generation_kwargs.max_new_tokens = gen_config.max_tokens
+                generation_kwargs.temperature = gen_config.temperature
+                generation_kwargs.top_k = gen_config.top_k
+                generation_kwargs.top_p = gen_config.top_p
+                generation_kwargs.repetition_penalty = gen_config.repetition_penalty
+            else:
+                generation_kwargs = GenerationConfig(
+                    max_new_tokens=gen_config.max_tokens,
+                    temperature=gen_config.temperature,
+                    top_k=gen_config.top_k,
+                    top_p=gen_config.top_p,
+                    repetition_penalty=gen_config.repetition_penalty,
+                )
 
             prompt, ov_images = self.prepare_inputs(gen_config.messages, gen_config.tools)
             
@@ -176,13 +184,21 @@ class OVGenAI_VLM:
         Async streaming generation for VLM.
         Yields token chunks (str) as they arrive, then metrics (dict).
         """
-        generation_kwargs = GenerationConfig(
-            max_new_tokens=gen_config.max_tokens,
-            temperature=gen_config.temperature,
-            top_k=gen_config.top_k,
-            top_p=gen_config.top_p,
-            repetition_penalty=gen_config.repetition_penalty,
-        )
+        if isinstance(self.model_path, VLMPipeline):
+            generation_kwargs = self.model_path.get_generation_config()
+            generation_kwargs.max_new_tokens = gen_config.max_tokens
+            generation_kwargs.temperature = gen_config.temperature
+            generation_kwargs.top_k = gen_config.top_k
+            generation_kwargs.top_p = gen_config.top_p
+            generation_kwargs.repetition_penalty = gen_config.repetition_penalty
+        else:
+            generation_kwargs = GenerationConfig(
+                max_new_tokens=gen_config.max_tokens,
+                temperature=gen_config.temperature,
+                top_k=gen_config.top_k,
+                top_p=gen_config.top_p,
+                repetition_penalty=gen_config.repetition_penalty,
+            )
 
         decoder_tokenizer = self.model_path.get_tokenizer()
         streamer = ChunkStreamer(decoder_tokenizer, gen_config)
