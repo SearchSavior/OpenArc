@@ -5,8 +5,12 @@ icon: lucide/chess-rook
 
 # Start Here
 
-Welcome to the OpenArc documentation!
+Welcome to the OpenArc documentation! These docs are under construction but cover everything in the 2.0.3 README.
 
+[![Discord](https://img.shields.io/discord/1341627368581628004?logo=Discord&logoColor=%23ffffff&label=Discord&link=https%3A%2F%2Fdiscord.gg%2FmaMY7QjG)](https://discord.gg/Bzz9hax9Jq)
+[![Hugging Face](https://img.shields.io/badge/🤗%20Hugging%20Face-Echo9Zulu-yellow)](https://huggingface.co/Echo9Zulu)
+[![Devices](https://img.shields.io/badge/Devices-CPU%2FGPU%2FNPU-blue)](https://github.com/openvinotoolkit/openvino)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/SearchSavior/OpenArc)
 
 
 
@@ -21,13 +25,13 @@ Welcome to the OpenArc documentation!
 
 OpenArc includes a command line tool for controlling the server.
 
-- [openarc add](commands.md#openarc-add) Add model to the config.
-- [openarc list](commands.md#openarc-list) List models added to the config.
-- [openarc serve](commands.md#openarc-serve) Start the openarc server.
-- [openarc load](commands.md#openarc-load) Load a model from the config.
-- [openarc status](commands.md#openarc-status) Check loaded models.
-- [openarc bench](commands.md#openarc-bench) Benchmarking tool for LLM's.
-- [openarc tool](commands.md#openarc-tool) OpenVINO utilities.
+- [openarc add](commands.md#add) — Add a model to the config.
+- [openarc list](commands.md#list) — List models added to the config.
+- [openarc serve](commands.md#serve) — Start the OpenArc server.
+- [openarc load](commands.md#load) — Load a model from the config.
+- [openarc status](commands.md#status) — Check loaded models.
+- [openarc bench](commands.md#bench) — Benchmarking tool for LLMs.
+- [openarc tool](commands.md#tool) — OpenVINO utilities.
 
 ## Models
 

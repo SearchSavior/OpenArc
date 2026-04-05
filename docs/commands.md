@@ -83,6 +83,10 @@ This page contains example commands to help you choose models and configure Open
 
         Qwen3-TTS has three modes, each selected by `--model-type` at add time. Inference parameters (speaker, voice description, reference audio, sampling settings) are supplied per-request via the API, not here.
 
+        CPU and GPU device are supported.
+
+        When GPU is selected as device, part of the model still runs on CPU. 
+
         Supported languages: `english`, `chinese`, `japanese`, `korean`, `german`, `french`, `spanish`, `italian`, `portuguese`, `russian`, `beijing_dialect`, `sichuan_dialect`. Pass `None` to auto-detect. See `demos/qwen3_tts_example.py` for a full request example.
 
         === "Custom voice"
@@ -111,7 +115,6 @@ This page contains example commands to help you choose models and configure Open
             response = client.audio.speech.create(
                 model="<model-name>",
                 input="Hello, this is a test.",
-                voice="uncle_fu",
                 extra_body={
                     "openarc_tts": {
                         "qwen3_tts": {
