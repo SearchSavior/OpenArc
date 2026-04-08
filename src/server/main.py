@@ -34,6 +34,7 @@ from src.server.models.requests_openai import (
     RerankRequest,
 )
 from src.server.worker_registry import WorkerRegistry
+from src.server.openarc_mcp.app import mcp as openarc_tts_mcp
 
 logger = logging.getLogger(__name__)
 
@@ -76,31 +77,35 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan event handler for startup/shutdown"""
-    # Startup: Load models from env var
-    models = os.getenv("OPENARC_STARTUP_MODELS", "").strip()
-    if models:
-        from pathlib import Path
-        config_file = Path(__file__).parent.parent.parent / "openarc_config.json"
-        if config_file.exists():
-            with open(config_file) as f:
-                config = json.load(f)
-            
-            for name in models.split(","):
-                name = name.strip()
-                model_config = config.get("models", {}).get(name)
-                if not model_config:
-                    logger.warning(f"Startup: model '{name}' not in config, skipping")
-                    continue
-                try:
-                    await _registry.register_load(ModelLoadConfig(**model_config))
-                    logger.info(f"Startup: loaded '{name}'")
-                except Exception as e:
-                    logger.error(f"Startup: failed to load '{name}': {e}")
-    
-    yield
-    # Shutdown: (add cleanup here if needed)
+    # Mounted Starlette MCP app does not receive lifespan from FastAPI; session_manager.run()
+    # must run here so Streamable HTTP has a task group (see FastMCP session_manager docs).
+    async with openarc_tts_mcp.session_manager.run():
+        models = os.getenv("OPENARC_STARTUP_MODELS", "").strip()
+        if models:
+            from pathlib import Path
+            config_file = Path(__file__).parent.parent.parent / "openarc_config.json"
+            if config_file.exists():
+                with open(config_file) as f:
+                    config = json.load(f)
+
+                for name in models.split(","):
+                    name = name.strip()
+                    model_config = config.get("models", {}).get(name)
+                    if not model_config:
+                        logger.warning(f"Startup: model '{name}' not in config, skipping")
+                        continue
+                    try:
+                        await _registry.register_load(ModelLoadConfig(**model_config))
+                        logger.info(f"Startup: loaded '{name}'")
+                    except Exception as e:
+                        logger.error(f"Startup: failed to load '{name}': {e}")
+
+        yield
 
 app = FastAPI(lifespan=lifespan)
+
+# MCP TTS: Streamable HTTP at /openarc/tts/mcp; internal calls to /v1/audio/speech use OPENARC_API_KEY.
+app.mount("/openarc/tts", openarc_tts_mcp.streamable_http_app())
 
 # API key authentication
 API_KEY = os.getenv("OPENARC_API_KEY")
