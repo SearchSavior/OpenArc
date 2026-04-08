@@ -319,6 +319,7 @@ async def openai_chat_completions(request: OpenAIChatCompletionRequest, raw_requ
             "tools": request.tools,
             "seed": request.seed,
             "frequency_penalty": request.frequency_penalty,
+            "presence_penalty": request.presence_penalty,
         }
         # Remove keys with value None
         config_kwargs = {k: v for k, v in config_kwargs.items() if v is not None}

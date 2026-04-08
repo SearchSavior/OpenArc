@@ -79,6 +79,10 @@ class OVGenAI_GenConfig(BaseModel):
         default=None,
         description="Penalty for repeated tokens."
     )
+    presence_penalty: Optional[float] = Field(
+        default=None,
+        description="Flat penalty for tokens which appeared at least once."
+    )
 
     @property
     def text_messages(self) -> List[Dict[str, Any]]:
