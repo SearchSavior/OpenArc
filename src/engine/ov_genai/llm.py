@@ -294,7 +294,6 @@ class OVGenAI_LLM:
         logging.info(f"[{self.load_config.model_name}] unloaded successfully")
         return removed
 
-
     def create_generation_config(self, config: OVGenAI_GenConfig) -> GenerationConfig:
         """
         Converts the config received by the API to the OpenVino-compatible config.
@@ -326,5 +325,3 @@ class OVGenAI_LLM:
             else:
                 default_tokens = int(os.getenv('OPENARC_DEFAULT_NUM_ASSISTANT_TOKENS', '3'))
                 generation_kwargs.num_assistant_tokens = default_tokens
-        
-            
