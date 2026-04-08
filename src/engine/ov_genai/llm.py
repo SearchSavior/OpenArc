@@ -2,6 +2,7 @@ import asyncio
 import gc
 import logging
 from typing import Any, AsyncIterator, Dict, List, Optional, Union
+import os
 
 import openvino as ov
 import openvino_genai
@@ -97,7 +98,6 @@ class OVGenAI_LLM:
             )
 
         # Add speculative decoding parameters (mutually exclusive per OpenVINO docs)
-        import os
         if gen_config.num_assistant_tokens is not None:
             generation_kwargs.num_assistant_tokens = gen_config.num_assistant_tokens
         elif gen_config.assistant_confidence_threshold is not None:
@@ -155,7 +155,6 @@ class OVGenAI_LLM:
             )
 
         # Add speculative decoding parameters (mutually exclusive per OpenVINO docs)
-        import os
         if gen_config.num_assistant_tokens is not None:
             generation_kwargs.num_assistant_tokens = gen_config.num_assistant_tokens
         elif gen_config.assistant_confidence_threshold is not None:
@@ -299,7 +298,6 @@ class OVGenAI_LLM:
                     self.model_num_assistant_tokens = None
                     self.model_assistant_confidence_threshold = loader.assistant_confidence_threshold
                 else:
-                    import os
                     default_tokens = int(os.getenv('OPENARC_DEFAULT_NUM_ASSISTANT_TOKENS', '3'))
                     self.model_num_assistant_tokens = default_tokens
                     self.model_assistant_confidence_threshold = None
