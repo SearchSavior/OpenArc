@@ -81,36 +81,8 @@ class OVGenAI_LLM:
         Async non-streaming text generation.
         Yields in order: metrics (dict), new_text (str).
         """
-        if isinstance(self.model, LLMPipeline):
-            generation_kwargs = self.model.get_generation_config()
-            generation_kwargs.max_new_tokens = gen_config.max_tokens
-            generation_kwargs.temperature = gen_config.temperature
-            generation_kwargs.top_k = gen_config.top_k
-            generation_kwargs.top_p = gen_config.top_p
-            generation_kwargs.repetition_penalty = gen_config.repetition_penalty
-        else:
-            generation_kwargs = GenerationConfig(
-                max_new_tokens=gen_config.max_tokens,
-                temperature=gen_config.temperature,
-                top_k=gen_config.top_k,
-                top_p=gen_config.top_p,
-                repetition_penalty=gen_config.repetition_penalty,
-            )
+        generation_kwargs = self.create_generation_config(gen_config)
 
-        # Add speculative decoding parameters (mutually exclusive per OpenVINO docs)
-        if gen_config.num_assistant_tokens is not None:
-            generation_kwargs.num_assistant_tokens = gen_config.num_assistant_tokens
-        elif gen_config.assistant_confidence_threshold is not None:
-            generation_kwargs.assistant_confidence_threshold = gen_config.assistant_confidence_threshold
-        elif getattr(self, 'draft_model_loaded', False):
-            if self.model_num_assistant_tokens is not None:
-                generation_kwargs.num_assistant_tokens = self.model_num_assistant_tokens
-            elif self.model_assistant_confidence_threshold is not None:
-                generation_kwargs.assistant_confidence_threshold = self.model_assistant_confidence_threshold
-            else:
-                default_tokens = int(os.getenv('OPENARC_DEFAULT_NUM_ASSISTANT_TOKENS', '3'))
-                generation_kwargs.num_assistant_tokens = default_tokens
-        
         # Support pre-encoded input_ids, raw prompts, and chat messages
         if gen_config.input_ids:
             # Pre-encoded input IDs (used by /openarc/bench endpoint for benchmarking)
@@ -138,36 +110,8 @@ class OVGenAI_LLM:
         Async streaming text generation.
         Yields token chunks (str) as they arrive, then metrics (dict), then final new_text (str).
         """
-        if isinstance(self.model, LLMPipeline):
-            generation_kwargs = self.model.get_generation_config()
-            generation_kwargs.max_new_tokens = gen_config.max_tokens
-            generation_kwargs.temperature = gen_config.temperature
-            generation_kwargs.top_k = gen_config.top_k
-            generation_kwargs.top_p = gen_config.top_p
-            generation_kwargs.repetition_penalty = gen_config.repetition_penalty
-        else:
-            generation_kwargs = GenerationConfig(
-                max_new_tokens=gen_config.max_tokens,
-                temperature=gen_config.temperature,
-                top_k=gen_config.top_k,
-                top_p=gen_config.top_p,
-                repetition_penalty=gen_config.repetition_penalty,
-            )
 
-        # Add speculative decoding parameters (mutually exclusive per OpenVINO docs)
-        if gen_config.num_assistant_tokens is not None:
-            generation_kwargs.num_assistant_tokens = gen_config.num_assistant_tokens
-        elif gen_config.assistant_confidence_threshold is not None:
-            generation_kwargs.assistant_confidence_threshold = gen_config.assistant_confidence_threshold
-        elif getattr(self, 'draft_model_loaded', False):
-            if self.model_num_assistant_tokens is not None:
-                generation_kwargs.num_assistant_tokens = self.model_num_assistant_tokens
-            elif self.model_assistant_confidence_threshold is not None:
-                generation_kwargs.assistant_confidence_threshold = self.model_assistant_confidence_threshold
-            else:
-                default_tokens = int(os.getenv('OPENARC_DEFAULT_NUM_ASSISTANT_TOKENS', '3'))
-                generation_kwargs.num_assistant_tokens = default_tokens
-        
+        generation_kwargs = self.create_generation_config(gen_config)
         decoder_tokenizer = self.model.get_tokenizer()
         streamer = ChunkStreamer(decoder_tokenizer, gen_config)
         
@@ -351,3 +295,29 @@ class OVGenAI_LLM:
         return removed
 
 
+    def create_generation_config(self, config: OVGenAI_GenConfig) -> GenerationConfig:
+        """
+        Converts the config received by the API to the OpenVino-compatible config.
+        """
+        generation_kwargs = self.model.get_generation_config() if self.model else GenerationConfig()
+        generation_kwargs.max_new_tokens = config.max_tokens
+        generation_kwargs.temperature = config.temperature
+        generation_kwargs.top_k = config.top_k
+        generation_kwargs.top_p = config.top_p
+        generation_kwargs.repetition_penalty = config.repetition_penalty
+
+            # Add speculative decoding parameters (mutually exclusive per OpenVINO docs)
+        if config.num_assistant_tokens is not None:
+            generation_kwargs.num_assistant_tokens = config.num_assistant_tokens
+        elif config.assistant_confidence_threshold is not None:
+            generation_kwargs.assistant_confidence_threshold = config.assistant_confidence_threshold
+        elif getattr(self, 'draft_model_loaded', False):
+            if self.model_num_assistant_tokens is not None:
+                generation_kwargs.num_assistant_tokens = self.model_num_assistant_tokens
+            elif self.model_assistant_confidence_threshold is not None:
+                generation_kwargs.assistant_confidence_threshold = self.model_assistant_confidence_threshold
+            else:
+                default_tokens = int(os.getenv('OPENARC_DEFAULT_NUM_ASSISTANT_TOKENS', '3'))
+                generation_kwargs.num_assistant_tokens = default_tokens
+        
+            
