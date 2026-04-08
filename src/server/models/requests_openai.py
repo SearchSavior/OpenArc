@@ -34,6 +34,9 @@ class OpenAIChatCompletionRequest(BaseModel):
     repetition_penalty: Optional[float] = None
     do_sample: Optional[bool] = None
     num_return_sequences: Optional[int] = None
+    seed: Optional[int] = None
+    frequency_penalty: Optional[float] = None
+    presence_penalty: Optional[float] = None
 
 
 class OpenAICompletionRequest(BaseModel):

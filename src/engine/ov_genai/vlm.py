@@ -141,21 +141,7 @@ class OVGenAI_VLM:
         Yields in order: metrics (dict), new_text (str).
         """
         try:
-            if isinstance(self.model_path, VLMPipeline):
-                generation_kwargs = self.model_path.get_generation_config()
-                generation_kwargs.max_new_tokens = gen_config.max_tokens
-                generation_kwargs.temperature = gen_config.temperature
-                generation_kwargs.top_k = gen_config.top_k
-                generation_kwargs.top_p = gen_config.top_p
-                generation_kwargs.repetition_penalty = gen_config.repetition_penalty
-            else:
-                generation_kwargs = GenerationConfig(
-                    max_new_tokens=gen_config.max_tokens,
-                    temperature=gen_config.temperature,
-                    top_k=gen_config.top_k,
-                    top_p=gen_config.top_p,
-                    repetition_penalty=gen_config.repetition_penalty,
-                )
+            generation_kwargs = self.create_generation_config(gen_config)
 
             prompt, ov_images = self.prepare_inputs(gen_config.messages, gen_config.tools)
             
@@ -184,21 +170,7 @@ class OVGenAI_VLM:
         Async streaming generation for VLM.
         Yields token chunks (str) as they arrive, then metrics (dict).
         """
-        if isinstance(self.model_path, VLMPipeline):
-            generation_kwargs = self.model_path.get_generation_config()
-            generation_kwargs.max_new_tokens = gen_config.max_tokens
-            generation_kwargs.temperature = gen_config.temperature
-            generation_kwargs.top_k = gen_config.top_k
-            generation_kwargs.top_p = gen_config.top_p
-            generation_kwargs.repetition_penalty = gen_config.repetition_penalty
-        else:
-            generation_kwargs = GenerationConfig(
-                max_new_tokens=gen_config.max_tokens,
-                temperature=gen_config.temperature,
-                top_k=gen_config.top_k,
-                top_p=gen_config.top_p,
-                repetition_penalty=gen_config.repetition_penalty,
-            )
+        generation_kwargs = self.create_generation_config(gen_config)
 
         decoder_tokenizer = self.model_path.get_tokenizer()
         streamer = ChunkStreamer(decoder_tokenizer, gen_config)
@@ -322,4 +294,21 @@ class OVGenAI_VLM:
         gc.collect()
         logger.info(f"[{self.load_config.model_name}] unloaded successfully")
         return removed
+        
+    def create_generation_config(self, config: OVGenAI_GenConfig) -> GenerationConfig:
+        """
+        Converts the config received by the API to the OpenVino-compatible config.
+        """
+        generation_kwargs = self.model_path.get_generation_config() if self.model_path else GenerationConfig()
+        generation_kwargs.max_new_tokens = config.max_tokens
+        generation_kwargs.temperature = config.temperature
+        generation_kwargs.top_k = config.top_k
+        generation_kwargs.top_p = config.top_p
+        generation_kwargs.repetition_penalty = config.repetition_penalty
 
+        if config.seed:
+            generation_kwargs.rng_seed = config.seed
+        if config.frequency_penalty:
+            generation_kwargs.frequency_penalty = config.frequency_penalty
+        if config.presence_penalty:
+            generation_kwargs.presence_penalty = config.presence_penalty

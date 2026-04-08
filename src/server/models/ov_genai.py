@@ -43,7 +43,7 @@ class OVGenAI_GenConfig(BaseModel):
     )
     repetition_penalty: float = Field(
         default=1.0,
-        description="Penalty for repeating tokens."
+        description="Penalty for repeating sequences of tokens."
     )
 
     num_assistant_tokens: Optional[int] = Field(
@@ -70,6 +70,18 @@ class OVGenAI_GenConfig(BaseModel):
     request_id: Optional[str] = Field(
         default=None,
         description="Request ID for tracking and cancellation."
+    )
+    seed: Optional[int] = Field(
+        default=None,
+        description="Fix the RNG seed used for generation. Setting this will cause the model to return the same text for the same prompt."
+    )
+    frequency_penalty: Optional[float] = Field(
+        default=None,
+        description="Penalty for repeated tokens."
+    )
+    presence_penalty: Optional[float] = Field(
+        default=None,
+        description="Flat penalty for tokens which appeared at least once."
     )
 
     @property
