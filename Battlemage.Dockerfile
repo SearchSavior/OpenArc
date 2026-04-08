@@ -1,5 +1,6 @@
 # ============================================================================
 # OpenARC From Scratch - Ubuntu Base + Manual Intel Setup
+# NOTE: For Battlemage or newer GPUs
 # ============================================================================
 FROM ubuntu:24.04
 

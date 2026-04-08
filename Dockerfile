@@ -1,5 +1,8 @@
 # ============================================================================
 # OpenARC From Scratch - Ubuntu Base + Manual Intel Setup
+# NOTE: 
+#       Newer GPUs require using the `libze` packages instead of `level-zero`.
+#       For Battlemage or newer, you should use `Battlemage.Dockerfile` instead.
 # ============================================================================
 FROM ubuntu:24.04
 
