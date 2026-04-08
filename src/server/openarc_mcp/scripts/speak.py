@@ -6,6 +6,7 @@ import asyncio
 import copy
 import io
 import json
+import logging
 import os
 import re
 from dataclasses import dataclass
@@ -24,8 +25,10 @@ from src.server.models.registration import ModelType
 SPEAK_TOOL_NAME = "speak"
 SPEAK_TOOL_TITLE = "Speak (OpenArc TTS)"
 SPEAK_TOOL_DESCRIPTION = """
-Use this tool to speak to the user.
+Use this tool to speak to the user. Returns [DONE] as soon as the TTS HTTP request succeeds.
 """.strip()
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_L16_RATE = 24000
 
@@ -141,21 +144,13 @@ def _l16_rate_from_content_type(content_type: str) -> int:
     return _DEFAULT_L16_RATE
 
 
-def _play_streaming_l16(response: httpx.Response, sample_rate: int) -> None:
-    pending = bytearray()
-    with sd.OutputStream(samplerate=sample_rate, channels=1, dtype="float32") as out:
-        for chunk in response.iter_bytes(chunk_size=8192):
-            if not chunk:
-                continue
-            pending.extend(chunk)
-            n_bytes = (len(pending) // 2) * 2
-            if n_bytes == 0:
-                continue
-            raw = bytes(pending[:n_bytes])
-            del pending[:n_bytes]
-            samples = np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
-            if samples.size:
-                out.write(samples.reshape(-1, 1))
+def _play_l16_pcm_bytes(data: bytes, sample_rate: int) -> None:
+    n = (len(data) // 2) * 2
+    if n == 0:
+        return
+    samples = np.frombuffer(data[:n], dtype="<i2").astype(np.float32) / 32768.0
+    sd.play(samples, sample_rate)
+    sd.wait()
 
 
 def _play_wav_body(body: bytes) -> None:
@@ -165,25 +160,39 @@ def _play_wav_body(body: bytes) -> None:
     sd.wait()
 
 
-def _speak_sync(speech_url: str, api_key: str, body: dict) -> None:
+def _play_audio_body(raw: bytes, content_type: str) -> None:
+    ct = content_type.lower()
+    if "l16" in ct:
+        sr = _l16_rate_from_content_type(content_type)
+        _play_l16_pcm_bytes(raw, sr)
+    else:
+        _play_wav_body(raw)
+
+
+async def _speak_playback_worker(
+    gate: asyncio.Future[None],
+    speech_url: str,
+    api_key: str,
+    body: dict,
+) -> None:
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
-    with httpx.Client(timeout=120.0) as client:
-        with client.stream("POST", speech_url, json=body, headers=headers) as response:
-            response.raise_for_status()
-            content_type = response.headers.get("content-type", "")
-            if "l16" in content_type.lower():
-                sr = _l16_rate_from_content_type(content_type)
-                _play_streaming_l16(response, sr)
-                return
-
-            chunks: list[bytes] = []
-            for chunk in response.iter_bytes(chunk_size=8192):
-                if chunk:
-                    chunks.append(chunk)
-            _play_wav_body(b"".join(chunks))
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client:
+            async with client.stream("POST", speech_url, json=body, headers=headers) as response:
+                response.raise_for_status()
+                if not gate.done():
+                    gate.set_result(None)
+                content_type = response.headers.get("content-type", "") or ""
+                raw = await response.aread()
+        await asyncio.to_thread(_play_audio_body, raw, content_type)
+    except Exception as e:
+        if not gate.done():
+            gate.set_exception(e)
+        else:
+            logger.exception("speak: playback failed after HTTP 2xx (client already got [DONE])")
 
 
 async def speak(
@@ -199,8 +208,10 @@ async def speak(
     if "qwen3_tts" in oa and oa["qwen3_tts"] is not None:
         oa["qwen3_tts"]["input"] = input
 
-    await asyncio.to_thread(_speak_sync, cfg.speech_url, cfg.api_key, body)
-    return ""
+    gate: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+    asyncio.create_task(_speak_playback_worker(gate, cfg.speech_url, cfg.api_key, body))
+    await gate
+    return "[DONE], end this turn."
 
 
 def register_openarc_tts_tool(mcp: FastMCP) -> None:
