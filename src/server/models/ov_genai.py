@@ -43,7 +43,7 @@ class OVGenAI_GenConfig(BaseModel):
     )
     repetition_penalty: float = Field(
         default=1.0,
-        description="Penalty for repeating tokens."
+        description="Penalty for repeating sequences of tokens."
     )
 
     num_assistant_tokens: Optional[int] = Field(
