@@ -308,3 +308,5 @@ class OVGenAI_VLM:
 
         if config.seed:
             generation_kwargs.rng_seed = config.seed
+        if config.frequency_penalty:
+            generation_kwargs.frequency_penalty = config.frequency_penalty

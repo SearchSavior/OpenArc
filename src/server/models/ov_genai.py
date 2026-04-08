@@ -75,6 +75,10 @@ class OVGenAI_GenConfig(BaseModel):
         default=None,
         description="Fix the RNG seed used for generation. Setting this will cause the model to return the same text for the same prompt."
     )
+    frequency_penalty: Optional[float] = Field(
+        default=None,
+        description="Penalty for repeated tokens."
+    )
 
     @property
     def text_messages(self) -> List[Dict[str, Any]]:
