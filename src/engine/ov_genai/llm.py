@@ -306,6 +306,8 @@ class OVGenAI_LLM:
         generation_kwargs.top_p = config.top_p
         generation_kwargs.repetition_penalty = config.repetition_penalty
 
+        if config.seed:
+            generation_kwargs.rng_seed = config.seed
             # Add speculative decoding parameters (mutually exclusive per OpenVINO docs)
         if config.num_assistant_tokens is not None:
             generation_kwargs.num_assistant_tokens = config.num_assistant_tokens

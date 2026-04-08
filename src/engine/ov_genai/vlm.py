@@ -306,3 +306,5 @@ class OVGenAI_VLM:
         generation_kwargs.top_p = config.top_p
         generation_kwargs.repetition_penalty = config.repetition_penalty
 
+        if config.seed:
+            generation_kwargs.rng_seed = config.seed

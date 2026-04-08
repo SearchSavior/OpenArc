@@ -71,6 +71,10 @@ class OVGenAI_GenConfig(BaseModel):
         default=None,
         description="Request ID for tracking and cancellation."
     )
+    seed: Optional[int] = Field(
+        default=None,
+        description="Fix the RNG seed used for generation. Setting this will cause the model to return the same text for the same prompt."
+    )
 
     @property
     def text_messages(self) -> List[Dict[str, Any]]:
