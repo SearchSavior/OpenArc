@@ -312,7 +312,7 @@ class OVGenAI_LLM:
         if config.presence_penalty:
             generation_kwargs.presence_penalty = config.presence_penalty
             
-            # Add speculative decoding parameters (mutually exclusive per OpenVINO docs)
+        # Add speculative decoding parameters (mutually exclusive per OpenVINO docs)
         if config.num_assistant_tokens is not None:
             generation_kwargs.num_assistant_tokens = config.num_assistant_tokens
         elif config.assistant_confidence_threshold is not None:
