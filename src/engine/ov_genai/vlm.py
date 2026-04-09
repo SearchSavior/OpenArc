@@ -312,3 +312,4 @@ class OVGenAI_VLM:
             generation_kwargs.frequency_penalty = config.frequency_penalty
         if config.presence_penalty:
             generation_kwargs.presence_penalty = config.presence_penalty
+        return generation_kwargs
