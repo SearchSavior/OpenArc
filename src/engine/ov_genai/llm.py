@@ -325,3 +325,4 @@ class OVGenAI_LLM:
             else:
                 default_tokens = int(os.getenv('OPENARC_DEFAULT_NUM_ASSISTANT_TOKENS', '3'))
                 generation_kwargs.num_assistant_tokens = default_tokens
+        return generation_kwargs
