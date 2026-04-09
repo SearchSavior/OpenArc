@@ -5,13 +5,13 @@ icon: lucide/chess-rook
 
 # Start Here
 
-Welcome to the OpenArc documentation! These docs are under construction but cover everything in the 2.0.3 README.
 
 [![Discord](https://img.shields.io/discord/1341627368581628004?logo=Discord&logoColor=%23ffffff&label=Discord&link=https%3A%2F%2Fdiscord.gg%2FmaMY7QjG)](https://discord.gg/Bzz9hax9Jq)
 [![Hugging Face](https://img.shields.io/badge/🤗%20Hugging%20Face-Echo9Zulu-yellow)](https://huggingface.co/Echo9Zulu)
 [![Devices](https://img.shields.io/badge/Devices-CPU%2FGPU%2FNPU-blue)](https://github.com/openvinotoolkit/openvino)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/SearchSavior/OpenArc)
 
+Welcome to the OpenArc documentation! These docs are under construction but cover everything in the 2.0.3 README.
 
 
 
@@ -41,6 +41,7 @@ OpenArc is deeply integrated with the Huggingface Ecosytem and has been written 
 
 We are working on improving this process with experimental GGUF support coming, as well as a new frontend application similar to LM-Studio!
 
+Below are some models to get started which are known to work. 
 
 
 
