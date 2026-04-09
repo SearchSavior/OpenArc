@@ -2,23 +2,23 @@
 icon: lucide/cog
 ---
 
+Use the instructions here for your operating system. They will walk you through building the project as a python environment for your OS. 
 
+OpenArc supports *most* OpenVINO devices (including AMD CPUs). You can use CPUs, NPUs, and GPUs; however these require different drivers.
+
+Visit [OpenVINO System Requirments](https://docs.openvino.ai/2025/about-openvino/release-notes-openvino/system-requirements.html#cpu) for the latest information on drivers for your device and OS.
 
 === "Linux"
 
-    1. OpenVINO requires **device specifc drivers**.
-    
-        - Visit [OpenVINO System Requirments](https://docs.openvino.ai/2025/about-openvino/release-notes-openvino/system-requirements.html#cpu) for the latest information on drivers.
+    1. Install uv from [astral](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)
 
-    2. Install uv from [astral](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)
-
-    3. After cloning use:
+    2. After cloning use:
 
         ```
         uv sync
         ```
 
-    4. Activate your environment with:
+    3. Activate your environment with:
 
         ```
         source .venv/bin/activate
@@ -34,12 +34,12 @@ icon: lucide/cog
         uv pip install --pre -U openvino-genai --extra-index-url https://storage.openvinotoolkit.org/simple/wheels/nightly
         ```
 
-    5. Set your API key as an environment variable:
+    4. Set your API key as an environment variable:
         ```
         export OPENARC_API_KEY=api-key
         ```
 
-    6. To get started, run:
+    5. To get started, run:
 
         ```
         openarc --help
@@ -47,18 +47,14 @@ icon: lucide/cog
 
 === "Windows"
 
-    1. OpenVINO requires **device specifc drivers**.
-    
-        - Visit [OpenVINO System Requirments](https://docs.openvino.ai/2025/about-openvino/release-notes-openvino/system-requirements.html#cpu) to get the latest information on drivers.
+    1. Install uv from [astral](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)
 
-    2. Install uv from [astral](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)
-
-    3. Clone OpenArc, enter the directory and run:
+    2. Clone OpenArc, enter the directory and run:
     ```
     uv sync
     ```
 
-    4. Activate your environment with:
+    3. Activate your environment with:
 
         ```
         .venv\Scripts\activate
@@ -74,12 +70,12 @@ icon: lucide/cog
         uv pip install --pre -U openvino-genai --extra-index-url https://storage.openvinotoolkit.org/simple/wheels/nightly
         ```
 
-    5. **Set your API key as an environment variable:**
+    4. **Set your API key as an environment variable:**
         ```
         setx OPENARC_API_KEY openarc-api-key
         ```
 
-    6. To get started, run:
+    5. To get started, run:
 
         ```
         openarc --help
@@ -115,3 +111,7 @@ icon: lucide/cog
 
 
     Take a look at the [Dockerfile](Dockerfile) and [docker-compose](docker-compose.yaml) for more details.
+
+
+
+    
