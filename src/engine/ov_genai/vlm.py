@@ -189,8 +189,15 @@ class OVGenAI_VLM:
                 generation_config=generation_kwargs,
                 streamer=streamer,
             )
+        def _generation_exception_handler(task: asyncio.Task):
+            exc = task.exception()
+            if exc and not task.cancelled():
+                # Force break the below loop
+                streamer.text_queue.put_nowait(None)
+                raise exc
 
         gen_task = asyncio.create_task(_run_generation())
+        gen_task.add_done_callback(_generation_exception_handler)
 
         try:
             while True:
