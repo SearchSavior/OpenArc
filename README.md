@@ -202,7 +202,7 @@ docker-compose up --build -d
 ```
 
 
-Take a look at the [Dockerfile](Dockerfile) and [docker-compose](docker-compose.yaml) for more details.
+Take a look at the [docker-compose](docker-compose.yaml) and [Dockerfile](Dockerfile) ([Battlemage Dockerfile](Battlemage.Dockerfile)) for more details.
 
 </details>
 

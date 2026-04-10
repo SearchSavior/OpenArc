@@ -1,8 +1,6 @@
 # ============================================================================
 # OpenARC From Scratch - Ubuntu Base + Manual Intel Setup
-# NOTE: 
-#       Newer GPUs require using the `libze` packages instead of `level-zero`.
-#       For Battlemage or newer, you should use `Battlemage.Dockerfile` instead.
+# NOTE: For Battlemage or newer GPUs
 # ============================================================================
 FROM ubuntu:24.04
 
@@ -11,6 +9,10 @@ ENV DEBIAN_FRONTEND=noninteractive
 # ============================================================================
 # System Dependencies
 # ============================================================================
+RUN apt-get update && apt-get install -y \
+    software-properties-common
+RUN add-apt-repository ppa:kobuk-team/intel-graphics
+
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     curl \
@@ -33,10 +35,8 @@ RUN wget -qO - https://repositories.intel.com/gpu/intel-graphics.key | \
     echo "deb [arch=amd64 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://repositories.intel.com/gpu/ubuntu noble client" | \
     tee /etc/apt/sources.list.d/intel-gpu-noble.list && \
     apt-get update && apt-get install -y \
-    intel-opencl-icd \
-    intel-level-zero-gpu \
-    level-zero \
-    level-zero-dev && \
+    libze-intel-gpu1 \
+    intel-opencl-icd && \
     rm -rf /var/lib/apt/lists/*
 
 # ============================================================================
