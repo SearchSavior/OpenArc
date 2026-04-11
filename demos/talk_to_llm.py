@@ -33,7 +33,7 @@ QWEN3_ASR_CONFIG = {
     "min_window_ms": 100.0,
 }
 # Voice clone: reference WAV + transcript (ICL). Omit speaker (custom_voice only).
-VOICE_CLONE_REF_WAV = "/home/echo/Projects/OpenArc/interstellar-tars_absolute-honesty-isn-t-always-the-most-diplomatic-nor-the.mp3"
+VOICE_CLONE_REF_WAV = "/home/echo/Desktop/interstellar-tars_absolute-honesty-isn-t-always-the-most-diplomatic-nor-the.mp3"
 VOICE_CLONE_REF_TEXT = """
 Absolute honesty isn't always the most diplomatic, nor the most tactful, nor the
 """
@@ -68,8 +68,8 @@ QWEN3_TTS_CONFIG = {
     "subtalker_top_p": 1.0,
     "subtalker_temperature": 0.9,
     "stream": True,
-    "stream_chunk_frames": 300,
-    "stream_left_context": 25,
+    "stream_chunk_frames": 8,
+    "stream_left_context": 4,
 }
 LLM_CONFIG = {
     "temperature": 0.8,
