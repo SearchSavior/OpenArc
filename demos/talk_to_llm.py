@@ -68,8 +68,8 @@ QWEN3_TTS_CONFIG = {
     "subtalker_top_p": 1.0,
     "subtalker_temperature": 0.9,
     "stream": True,
-    "stream_chunk_frames": 8,
-    "stream_left_context": 4,
+    "stream_chunk_frames": 300,
+    "stream_left_context": 25,
 }
 LLM_CONFIG = {
     "temperature": 0.8,
