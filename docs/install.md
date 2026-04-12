@@ -2,7 +2,7 @@
 icon: lucide/cog
 ---
 
-Use the instructions here for your operating system. They will walk you through building the project as a python environment for your OS. 
+Use the instructions here for your operating system or deployment strategy. They will walk you through building the project as a python environment for your OS. 
 
 OpenArc supports *most* OpenVINO devices (including AMD CPUs). You can use CPUs, NPUs, and GPUs; however these require different drivers.
 
@@ -100,7 +100,7 @@ Visit [OpenVINO System Requirments](https://docs.openvino.ai/2025/about-openvino
     docker exec -it openarc /bin/bash
     ```
 
-    ## Environment Variables
+    Environment Variables
 
     ```bash
     export OPENARC_API_KEY="openarc-api-key" # default, set it to whatever you want
