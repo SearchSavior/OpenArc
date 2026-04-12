@@ -123,14 +123,6 @@ class OVQwen3TTS:
             CP_MAX_POS, CP_HEAD_DIM, CP_ROPE_THETA,
         )
 
-        # Use LATENCY hint everywhere: this pipeline is a single-stream AR decode
-        # loop at batch=1. Without an explicit hint the GPU plugin uses
-        # PerformanceMode.UNDEFINED, which doesn't optimize for single-stream
-        # latency. LATENCY pins one execution stream and minimizes per-infer
-        # dispatch overhead — measured ~3-4x speedup on talker decode
-        # (22 ms/frame vs 68-92 ms/frame on B70/Xe2 OpenVINO 2024.x GPU plugin).
-        # CPU already defaults to LATENCY-like behavior; set explicitly for
-        # consistency.
         _hint = {"PERFORMANCE_HINT": "LATENCY"}
         self._text_model_c = core.compile_model(str(p / "text_model.xml"), device, _hint)
         self._codec_emb_c = core.compile_model(str(p / "codec_embedding.xml"), device, _hint)
