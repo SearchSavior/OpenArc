@@ -107,8 +107,9 @@ Visit [OpenVINO System Requirments](https://docs.openvino.ai/2025/about-openvino
     export OPENARC_AUTOLOAD_MODEL="model_name" # model_name to load on startup
     export MODEL_PATH="/path/to/your/models" # mount your models to `/models` inside the container
     docker-compose up --build -d
-    ```
+```
  
+
     Take a look at the [Dockerfile](Dockerfile) and [docker-compose](docker-compose.yaml) for more details.
 
 
