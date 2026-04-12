@@ -45,7 +45,7 @@ Copyright &copy; 2026 The authors
 #
 # Read more: https://zensical.org/docs/setup/navigation/
 nav = [
-  { "Start Here" = "home.md" },
+  { "Start Here" = "index.md" },
   { "Install" = "install.md" },
   { "Models" = "models.md" },
   { "Commands" = "commands.md" },
