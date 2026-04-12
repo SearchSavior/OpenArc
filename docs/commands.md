@@ -408,6 +408,12 @@ This page contains example commands to help you choose models and configure Open
     ```
     openarc serve start # defaults to 0.0.0.0:8000
     ```
+    Windows 11:
+
+    To exclude _Request failed_ in Windows, you need to specify this address
+    ```
+    openarc serve start --host 127.0.0.1
+    ```
 
     Configure host and port:
 
