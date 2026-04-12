@@ -162,6 +162,9 @@ class OV_Qwen3TTSGenConfig(BaseModel):
     subtalker_top_p: float = Field(default=1.0, description="Nucleus filter for code predictor.")
     subtalker_temperature: float = Field(default=0.9, description="Temperature for code predictor.")
     # --- streaming (HTTP: audio/L16 chunked response when stream=True) ---
+
+    # defaults taken from https://github.com/QwenLM/Qwen3-TTS/blob/022e286b98fbec7e1e916cb940cdf532cd9f488e/qwen_tts/core/tokenizer_12hz/modeling_qwen3_tts_tokenizer_v2.py#L886
+    # these apply only for the 12.5hz tokenizer model. 
     stream: bool = Field(default=True, description="Enable streaming audio output (chunked PCM).")
-    stream_chunk_frames: int = Field(default=50, description="Codec frames per streaming chunk.")
-    stream_left_context: int = Field(default=25, description="Left context frames for chunk boundary continuity.")
+    stream_chunk_frames: int = Field(default=300, description="Codec frames per streaming chunk. Audio codebooks are autoregressive — each set depends on the previous — so coherent chunks require enough frames for stable prosody.")
+    stream_left_context: int = Field(default=25, description="Left context frames for chunk boundary continuity (matches upstream Qwen3-TTS left_context_size=25).")
