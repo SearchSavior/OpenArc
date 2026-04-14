@@ -33,7 +33,8 @@ class ModelType(str, Enum):
     - qwen3_tts_voice_design: Qwen3-TTS with free-form voice description
     - qwen3_tts_voice_clone: Qwen3-TTS cloning a reference audio
     - emb: Text-to-vector models    
-    - rerank: Reranker models"""    
+    - rerank: Reranker models
+    - optimum_vlm: Optimum-Intel OpenVINO visual causal LM (no VLM token lookup)"""    
     
     LLM = "llm"
     VLM = "vlm"
@@ -45,6 +46,7 @@ class ModelType(str, Enum):
     QWEN3_TTS_VOICE_CLONE = "qwen3_tts_voice_clone"
     EMB = "emb"
     RERANK = "rerank"
+    OPTIMUM_VLM = "optimum_vlm"
 
 
 class EngineType(str, Enum):
