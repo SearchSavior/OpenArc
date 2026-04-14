@@ -162,6 +162,11 @@ uv pip install --pre -U openvino-genai --extra-index-url https://storage.openvin
 setx OPENARC_API_KEY openarc-api-key
 ```
 
+Or specify a variable in each CMD window:
+```
+set OPENARC_API_KEY=234 # example
+```
+
 6. To get started, run:
 
 ```
