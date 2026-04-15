@@ -430,6 +430,14 @@ This page contains example commands to help you choose models and configure Open
       --load-models model1 model2
     ```
 
+    To require API key authentication:
+
+    ```
+    openarc serve start --use-api-key
+    ```
+
+    When `--use-api-key` is passed, clients must authenticate with a `Bearer` token matching `OPENARC_API_KEY`. If the environment variable is not set, the server will not start. Without the flag, no authentication is required.
+
 === "load"
 
     After using `openarc add` you can use `openarc load` to read the added configuration and load models onto the OpenArc server.
