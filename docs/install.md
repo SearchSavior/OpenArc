@@ -34,10 +34,12 @@ Visit [OpenVINO System Requirments](https://docs.openvino.ai/2025/about-openvino
         uv pip install --pre -U openvino-genai --extra-index-url https://storage.openvinotoolkit.org/simple/wheels/nightly
         ```
 
-    4. Set your API key as an environment variable:
+    4. Optionally, set an API key to authenticate clients connecting to the server:
         ```
         export OPENARC_API_KEY=api-key
         ```
+
+        Pass `--use-api-key` to `openarc serve start` to enforce authentication. See [serve](commands.md#serve) for details.
 
     5. To get started, run:
 
@@ -70,10 +72,12 @@ Visit [OpenVINO System Requirments](https://docs.openvino.ai/2025/about-openvino
         uv pip install --pre -U openvino-genai --extra-index-url https://storage.openvinotoolkit.org/simple/wheels/nightly
         ```
 
-    4. **Set your API key as an environment variable:**
+    4. **Optionally, set an API key to authenticate clients connecting to the server:**
         ```
         setx OPENARC_API_KEY openarc-api-key
         ```
+
+        Pass `--use-api-key` to `openarc serve start` to enforce authentication. See [serve](commands.md#serve) for details.
 
     5. To get started, run:
 
@@ -103,11 +107,13 @@ Visit [OpenVINO System Requirments](https://docs.openvino.ai/2025/about-openvino
     Environment Variables
 
     ```bash
-    export OPENARC_API_KEY="openarc-api-key" # default, set it to whatever you want
+    export OPENARC_API_KEY="openarc-api-key" # optional — pass --use-api-key to openarc serve start to enforce
     export OPENARC_AUTOLOAD_MODEL="model_name" # model_name to load on startup
     export MODEL_PATH="/path/to/your/models" # mount your models to `/models` inside the container
     docker-compose up --build -d
-```
+    ```
+
+    Pass `--use-api-key` to `openarc serve start` to require clients to authenticate. See [serve](commands.md#serve) for details.
  
 
     Take a look at the [Dockerfile](Dockerfile) and [docker-compose](docker-compose.yaml) for more details.

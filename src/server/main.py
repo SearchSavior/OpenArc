@@ -97,6 +97,7 @@ async def lifespan(app: FastAPI):
                 except Exception as e:
                     logger.error(f"Startup: failed to load '{name}': {e}")
     
+    logger.info(f"OPENARC_API_KEY_REQUIRED={AUTH_REQUIRED}")
     yield
     # Shutdown: (add cleanup here if needed)
 
@@ -104,7 +105,8 @@ app = FastAPI(lifespan=lifespan)
 
 # API key authentication
 API_KEY = os.getenv("OPENARC_API_KEY")
-security = HTTPBearer()
+AUTH_REQUIRED = os.getenv("OPENARC_API_KEY_REQUIRED", "false").lower() == "true"
+security = HTTPBearer(auto_error=False)
 
 # Add request logging middleware (before CORS so it logs all requests)
 app.add_middleware(RequestLoggingMiddleware)
@@ -120,14 +122,15 @@ app.add_middleware(
 
 async def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Verify the API key provided in the Authorization header"""
-    if credentials.credentials != API_KEY:
-        logger.error(f"Invalid API key: {credentials.credentials}")
+    if not AUTH_REQUIRED:
+        return None
+    if credentials is None or credentials.credentials != API_KEY:
+        logger.error(f"Invalid API key: {credentials.credentials if credentials else 'missing'}")
         raise HTTPException(
             status_code=401,
             detail="Invalid API key",
             headers={"WWW-Authenticate": "Bearer"},
         )
-
     return credentials.credentials
 
 @app.exception_handler(RequestValidationError)
