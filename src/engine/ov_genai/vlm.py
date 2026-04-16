@@ -125,6 +125,19 @@ class OVGenAI_VLM:
 
         return tokenized_messages, ov_images
 
+    def _resolve_prompt_and_images(
+        self, gen_config: OVGenAI_GenConfig
+    ) -> Tuple[str, List[ov.Tensor]]:
+        """
+        Build (prompt, images) for VLMPipeline: bench input_ids / raw prompt / chat messages.
+        """
+        if gen_config.input_ids:
+            prompt = self.tokenizer.decode(gen_config.input_ids, skip_special_tokens=False)
+            return prompt, []
+        if gen_config.prompt:
+            return gen_config.prompt, []
+        return self.prepare_inputs(gen_config.messages, gen_config.tools)
+
     def generate_type(self, gen_config: OVGenAI_GenConfig):
         """
         Unified generation method that routes to streaming or non-streaming
@@ -143,8 +156,8 @@ class OVGenAI_VLM:
         try:
             generation_kwargs = self.create_generation_config(gen_config)
 
-            prompt, ov_images = self.prepare_inputs(gen_config.messages, gen_config.tools)
-            
+            prompt, ov_images = self._resolve_prompt_and_images(gen_config)
+
             result = await asyncio.to_thread(
                 self.model_path.generate,
                 prompt=prompt,
@@ -179,7 +192,7 @@ class OVGenAI_VLM:
         self._active_request_id = gen_config.request_id
         self._active_streamer = streamer
         
-        prompt, ov_images = self.prepare_inputs(gen_config.messages, gen_config.tools)
+        prompt, ov_images = self._resolve_prompt_and_images(gen_config)
 
         async def _run_generation():
             return await asyncio.to_thread(

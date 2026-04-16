@@ -250,10 +250,9 @@ async def get_status():
 
 @app.post("/openarc/bench", dependencies=[Depends(verify_api_key)])
 async def benchmark(request: OpenArcBenchRequest):
-    """Benchmark endpoint that accepts pre-encoded input_ids and returns only metrics."""
+    """Benchmark endpoint: pre-encoded input_ids (LLM) or calibrated prompt string (VLM). Returns only metrics."""
     try:
         config_kwargs = {
-            "input_ids": request.input_ids,
             "max_tokens": request.max_tokens,
             "temperature": request.temperature,
             "top_p": request.top_p,
@@ -261,6 +260,11 @@ async def benchmark(request: OpenArcBenchRequest):
             "repetition_penalty": request.repetition_penalty,
             "stream": False,  # Benchmarking is always non-streaming
         }
+        if request.input_ids is not None and len(request.input_ids) > 0:
+            config_kwargs["input_ids"] = request.input_ids
+        else:
+            config_kwargs["prompt"] = request.prompt
+
         # Remove keys with value None
         config_kwargs = {k: v for k, v in config_kwargs.items() if v is not None}
 
@@ -269,7 +273,10 @@ async def benchmark(request: OpenArcBenchRequest):
         result = await _workers.generate(request.model, generation_config)
         metrics = result.get("metrics", {}) or {}
         
-        logger.info(f"[bench] model={request.model} input_ids_len={len(request.input_ids)} metrics={metrics}")
+        if request.input_ids is not None and len(request.input_ids) > 0:
+            logger.info(f"[bench] model={request.model} input_ids_len={len(request.input_ids)} metrics={metrics}")
+        else:
+            logger.info(f"[bench] model={request.model} prompt_len={len(request.prompt or '')} metrics={metrics}")
         
         return {"metrics": metrics}
     except ValueError as exc:
