@@ -228,8 +228,6 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs, depth, temperature, t
     results_table.add_column("[cyan]run[/cyan]", justify="right")
     results_table.add_column("[cyan]d[/cyan]", justify="right")
     results_table.add_column("[cyan]p[/cyan]", justify="right")
-    if use_vlm_bench:
-        results_table.add_column("[cyan]p_actual[/cyan]", justify="right")
     results_table.add_column("[cyan]n[/cyan]", justify="right")
     results_table.add_column("[cyan]ttft(s)[/cyan]", justify="right")
     results_table.add_column("[cyan]tpot(ms)[/cyan]", justify="right")
@@ -244,8 +242,6 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs, depth, temperature, t
             str(result['d']),
             str(result['p']),
         ]
-        if use_vlm_bench:
-            row.append(str(int(result.get('input_token', 0))))
         row.extend([
             str(result['n']),
             f"{result['ttft']:.2f}",
