@@ -141,6 +141,57 @@ class OpenArcBenchmarks:
 
         return sample(depth) + sample(num_tokens)
 
+    @staticmethod
+    def calibrated_prompt(model_path: str, num_tokens: int, *, depth: int = 0) -> str:
+        """
+        Build a text prompt whose tokenizer will produce exactly ``depth + num_tokens``
+        tokens (BPE-stabilized: decode random IDs, re-encode, truncate, decode).
+
+        Used for VLM bench: ``VLMPipeline`` accepts only ``prompt: str``, not ``input_ids``.
+
+        Args:
+            model_path: Hugging Face tokenizer path (same as the loaded model).
+            num_tokens: Prompt segment length in tokens after optional depth prefix.
+            depth: Synthetic prior context length in tokens (default 0). Total target is d+p.
+
+        Returns:
+            Calibrated prompt string.
+
+        Raises:
+            ValueError: If the vocabulary cannot supply enough distinct non-special IDs.
+            RuntimeError: If calibration cannot satisfy the target after several attempts.
+        """
+        tokenizer = AutoTokenizer.from_pretrained(model_path)
+        vocab_size = len(tokenizer)
+        special_token_ids = set(tokenizer.all_special_ids)
+        valid_token_ids = [i for i in range(vocab_size) if i not in special_token_ids]
+        target = depth + num_tokens
+
+        if target <= 0:
+            return ""
+        if target > len(valid_token_ids):
+            raise ValueError(
+                f"Need {target} distinct non-special token IDs but vocabulary only has "
+                f"{len(valid_token_ids)}."
+            )
+
+        max_attempts = 32
+        for _ in range(max_attempts):
+            raw_ids = random.sample(valid_token_ids, target)
+            decoded = tokenizer.decode(raw_ids, skip_special_tokens=False)
+            stabilized_ids = tokenizer.encode(decoded, add_special_tokens=False)
+            if len(stabilized_ids) < target:
+                continue
+            stabilized_ids = stabilized_ids[:target]
+            calibrated = tokenizer.decode(stabilized_ids, skip_special_tokens=False)
+            final_ids = tokenizer.encode(calibrated, add_special_tokens=False)
+            if len(final_ids) == target:
+                return calibrated
+
+        raise RuntimeError(
+            f"Could not calibrate prompt to exactly {target} tokens after {max_attempts} attempts."
+        )
+
 
 # Example usage:
 # if __name__ == "__main__":

@@ -34,7 +34,10 @@ from ..utils import validate_model_path
 @click.pass_context
 def bench(ctx, model_name, input_tokens, max_tokens, runs, depth, temperature, top_k, top_p, repetition_penalty):
     """- Benchmark inference with pseudo-random input tokens.
-    
+
+    LLM models send pre-encoded ``input_ids``. VLM models send a calibrated ``prompt`` string
+    (same target token count via tokenizer stabilize+truncate on the client).
+
     Examples:
         openarc bench Dolphin-X1
         openarc bench Dolphin-X1 --p 512 --n 128 -r 10
@@ -96,6 +99,9 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs, depth, temperature, t
     if not model_path:
         console.print("[red]model_path not found in configuration[/red]")
         ctx.exit(1)
+
+    model_type = (model_config.get('model_type') or 'llm').lower()
+    use_vlm_bench = model_type == 'vlm'
     
     # Validate model path
     if not validate_model_path(model_path):
@@ -135,16 +141,25 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs, depth, temperature, t
                     )
                     
                     try:
-                        # Prior context (d) + swept prompt segment (p)
-                        input_ids = OpenArcBenchmarks.random_input_ids(model_path, p, depth=depth)
-                        
-                        # Make benchmark request
                         bench_url = f"{cli_instance.base_url}/openarc/bench"
-                        payload = {
-                            "model": model_name,
-                            "input_ids": input_ids,
-                            "max_tokens": n
-                        }
+                        if use_vlm_bench:
+                            prompt = OpenArcBenchmarks.calibrated_prompt(
+                                model_path, p, depth=depth
+                            )
+                            payload = {
+                                "model": model_name,
+                                "prompt": prompt,
+                                "max_tokens": n,
+                            }
+                        else:
+                            input_ids = OpenArcBenchmarks.random_input_ids(
+                                model_path, p, depth=depth
+                            )
+                            payload = {
+                                "model": model_name,
+                                "input_ids": input_ids,
+                                "max_tokens": n,
+                            }
 
                         # Add optional parameters if provided
                         if temperature is not None:
@@ -222,17 +237,20 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs, depth, temperature, t
 
     
     for result in results:
-        results_table.add_row(
+        row = [
             str(result['run']),
             str(result['d']),
             str(result['p']),
+        ]
+        row.extend([
             str(result['n']),
             f"{result['ttft']:.2f}",
             f"{result['tpot']:.2f}",
             f"{result['prefill_throughput']:.1f}",
             f"{result['decode_throughput']:.1f}",
-            f"{result['decode_duration']:.2f}"
-            )
+            f"{result['decode_duration']:.2f}",
+        ])
+        results_table.add_row(*row)
     
     console.print(results_table)
     
