@@ -73,7 +73,6 @@ async def lifespan(app: FastAPI):
     yield
 
 
-
 app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(RequestLoggingMiddleware)
@@ -84,7 +83,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 
 @app.exception_handler(RequestValidationError)
