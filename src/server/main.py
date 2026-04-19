@@ -21,7 +21,6 @@ from src.server.routes.openarc import router as openarc_router
 
 logger = logging.getLogger(__name__)
 
-
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         start_time = time.time()
@@ -74,6 +73,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
+
 app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(RequestLoggingMiddleware)
@@ -84,6 +84,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 
 @app.exception_handler(RequestValidationError)
