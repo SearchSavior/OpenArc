@@ -452,9 +452,11 @@ def get_hardware_metrics():
 @app.get("/openarc/metrics", dependencies=[Depends(verify_api_key)])
 async def get_metrics():
     import psutil
+    import asyncio
 
     vm = psutil.virtual_memory()
-    hw_metrics = get_hardware_metrics()
+    # Run the blocking hardware metrics query in a thread to avoid blocking the event loop
+    hw_metrics = await asyncio.to_thread(get_hardware_metrics)
 
     return {
         "cpus": [
@@ -475,7 +477,13 @@ async def get_metrics():
 
 @app.post("/openarc/downloader", dependencies=[Depends(verify_api_key)])
 async def start_download(request: DownloaderRequest):
-    success = await global_downloader.start(request.model_name, request.path)
+    try:
+        success = await global_downloader.start(request.model_name, request.path)
+    except ValueError as e:
+        return JSONResponse(
+            status_code=400,
+            content={"status": "error", "message": str(e)},
+        )
     if success:
         return {"status": "success", "message": "Model download started successfully."}
     return JSONResponse(
@@ -514,13 +522,11 @@ async def pause_download(request: DownloaderActionRequest):
 
 @app.post("/openarc/downloader/resume", dependencies=[Depends(verify_api_key)])
 async def resume_download(request: DownloaderActionRequest):
-    # resume is basicly start
-    success = await global_downloader.start(request.model_name)
-    if success:
+    if global_downloader.resume(request.model_name):
         return {"status": "success", "message": "Model download resumed successfully."}
     return JSONResponse(
-        status_code=400,
-        content={"status": "error", "message": "Download already in progress."},
+        status_code=404,
+        content={"status": "error", "message": "No paused download found for this model."},
     )
 
 
