@@ -13,9 +13,9 @@
 
 Serve LLMs, VLMs, Whisper, Kokoro-TTS, Qwen-TTS, Qwen-ASR, Embedding and Reranker models over OpenAI compatible endpoints, powered by OpenVINO on your device. Local, private, open source AI.  
 
-Drawing on ideas from `llama.cpp`, `vLLM` OpenArc has been a way for me to learn about inference engines by trying to build one myself.
+OpenArc is a community-driven effort to make acceleration from OpenVINO easier to access. Over time I have added su
 
-Along the way a Discord community has formed around this project! If you are interested in using Intel devices for AI and machine learning, feel free to stop by. 
+If you are interested in using Intel devices for AI and machine learning, feel free to stop by our Discord, where we are tracking almost the whole stack, including development of llama.cpp SYCL backend. 
 
 Thanks to everyone on Discord for their continued support!
 
