@@ -2,7 +2,9 @@
 
 import asyncio
 import gc
+import json
 import logging
+from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Union
 
 import torch
@@ -22,13 +24,44 @@ from src.server.models.registration import ModelLoadConfig
 
 
 
+_VALID_POOL_MODES = ("cls", "mean", "last")
+
+
 class Optimum_EMB:
-    
+
     def __init__(self, load_config: ModelLoadConfig):
         self.model_path = None
         self.encoder_tokenizer = None
         self.load_config = load_config
-    
+        self.pool_mode = "last"
+
+    @staticmethod
+    def _detect_pool_mode(model_path: str) -> str:
+        pool_cfg = Path(model_path) / "1_Pooling" / "config.json"
+        if not pool_cfg.is_file():
+            return "last"
+        try:
+            cfg = json.loads(pool_cfg.read_text())
+        except (OSError, json.JSONDecodeError):
+            return "last"
+        if cfg.get("pooling_mode_cls_token"):
+            return "cls"
+        if cfg.get("pooling_mode_mean_tokens"):
+            return "mean"
+        return "last"
+
+    @staticmethod
+    def _resolve_pool_mode(loader: ModelLoadConfig) -> str:
+        override = (loader.runtime_config or {}).get("pool_mode")
+        if override is not None:
+            if override not in _VALID_POOL_MODES:
+                raise ValueError(
+                    f"Unknown pool_mode {override!r} for model {loader.model_name!r}; "
+                    f"expected one of {_VALID_POOL_MODES}"
+                )
+            return override
+        return Optimum_EMB._detect_pool_mode(loader.model_path)
+
     def last_token_pool(self, last_hidden_states: Tensor, attention_mask: Tensor) -> Tensor:
         left_padding = attention_mask[:, -1].sum() == attention_mask.shape[0]
         if left_padding:
@@ -38,8 +71,26 @@ class Optimum_EMB:
             batch_size = last_hidden_states.shape[0]
             return last_hidden_states[torch.arange(batch_size, device=last_hidden_states.device), sequence_lengths]
 
+    @staticmethod
+    def cls_pool(last_hidden_states: Tensor, attention_mask: Tensor) -> Tensor:
+        return last_hidden_states[:, 0]
+
+    @staticmethod
+    def mean_pool(last_hidden_states: Tensor, attention_mask: Tensor) -> Tensor:
+        mask = attention_mask.unsqueeze(-1).to(last_hidden_states.dtype)
+        summed = (last_hidden_states * mask).sum(dim=1)
+        counts = mask.sum(dim=1).clamp(min=1e-9)
+        return summed / counts
+
+    def pool(self, last_hidden_states: Tensor, attention_mask: Tensor) -> Tensor:
+        if self.pool_mode == "cls":
+            return self.cls_pool(last_hidden_states, attention_mask)
+        if self.pool_mode == "mean":
+            return self.mean_pool(last_hidden_states, attention_mask)
+        return self.last_token_pool(last_hidden_states, attention_mask)
+
     async def generate_embeddings(self, tok_config: PreTrainedTokenizerConfig) -> AsyncIterator[Union[Dict[str, Any], str]]:
-        
+
         # Tokenize the input texts
         batch_dict = self.tokenizer(
             text=tok_config.text,
@@ -65,7 +116,7 @@ class Optimum_EMB:
         )
         batch_dict.to(self.model.device)
         outputs = self.model(**batch_dict)
-        embeddings = self.last_token_pool(outputs.last_hidden_state, batch_dict["attention_mask"])
+        embeddings = self.pool(outputs.last_hidden_state, batch_dict["attention_mask"])
         # normalize embeddings
         if tok_config.return_tensors=="pt":
             embeddings = F.normalize(embeddings, p=2, dim=1)
@@ -81,12 +132,13 @@ class Optimum_EMB:
             loader: ModelLoadConfig containing model_path, device, engine, and runtime_config.
         """
 
-        self.model = OVModelForFeatureExtraction.from_pretrained(loader.model_path, 
-            device=loader.device, 
+        self.model = OVModelForFeatureExtraction.from_pretrained(loader.model_path,
+            device=loader.device,
             export=False)
 
         self.tokenizer = AutoTokenizer.from_pretrained(loader.model_path)
-        logging.info(f"Model loaded successfully: {loader.model_name}")
+        self.pool_mode = self._resolve_pool_mode(loader)
+        logging.info(f"Model loaded successfully: {loader.model_name} (pool_mode={self.pool_mode})")
 
     async def unload_model(self, registry: ModelRegistry, model_name: str) -> bool:
         """Unregister model from registry and free memory resources.
