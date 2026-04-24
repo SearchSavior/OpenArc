@@ -92,7 +92,7 @@ class KokoroVoice(str, Enum):
     PM_SANTA = "pm_santa"
 
 class OV_KokoroGenConfig(BaseModel):
-    input: str = Field(..., description="Text to convert to speech")
+    input: Optional[str] = Field(default=None, description="Injected from top-level request.input by the handler; do not set here.")
     voice: KokoroVoice = Field(KokoroVoice.AF_SARAH, description="Voice token from available Kokoro voices")
     lang_code: KokoroLanguage = Field(KokoroLanguage.AMERICAN_ENGLISH, description="Language code for the voice")
     speed: float = Field(1.0, description="Speech speed multiplier")
@@ -137,7 +137,7 @@ class OV_Qwen3TTSGenConfig(BaseModel):
     All modes accept the sampling fields.
     """
     # --- content ---
-    input: str = Field(..., description="Text to synthesise.")
+    input: Optional[str] = Field(default=None, description="Injected from top-level request.input by the handler; do not set here.")
     # [custom_voice]
     speaker: str | None = Field(default=None, description="[custom_voice] Predefined speaker name.")
     instruct: str | None = Field(default=None, description="[custom_voice, voice_clone] Optional style instruction.")
