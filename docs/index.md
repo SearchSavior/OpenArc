@@ -11,8 +11,7 @@ icon: lucide/chess-rook
 [![Devices](https://img.shields.io/badge/Devices-CPU%2FGPU%2FNPU-blue)](https://github.com/openvinotoolkit/openvino)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/SearchSavior/OpenArc)
 
-Welcome to the OpenArc documentation! These docs are under construction but cover everything in the 2.0.3 README.
-
+Welcome to the OpenArc documentation! 
 
 
 ## Installation
@@ -41,9 +40,7 @@ OpenArc is deeply integrated with the Huggingface Ecosytem and has been written 
 
 We are working on improving this process with experimental GGUF support coming, as well as a new frontend application similar to LM-Studio!
 
-Below are some models to get started which are known to work. 
-
-
+Below are some models to get started which are known to work. My hugg
 
 - [Model Sources](models.md#sources)
 - [LLMs](models.md#llms)

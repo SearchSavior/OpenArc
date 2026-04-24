@@ -38,6 +38,7 @@ If you need help converting a particular model join Discord and we can help you!
     | [Cydonia-24B-v4.3-OpenVINO-INT4](https://huggingface.co/DudePls/Cydonia-24B-v4.3-OpenVINO-INT4) |
     | [Nemotron-Cascade-14B-Thinking-int4_asym-se-ov](https://huggingface.co/Echo9Zulu/Nemotron-Cascade-14B-Thinking-int4_asym-se-ov) |
     | [NousCoder-14B-int4_sym-ov](https://huggingface.co/Echo9Zulu/NousCoder-14B-int4_sym-ov) |
+    | [Anubis-Mini-8B-v1-int4_asym-ov](https://huggingface.co/Echo9Zulu/Anubis-Mini-8B-v1-int4_asym-ov) |
 
 === "VLMs"
 
@@ -47,6 +48,7 @@ If you need help converting a particular model join Discord and we can help you!
     | [Gemma-3-12b-it-qat-int4_asym-ov](https://huggingface.co/Echo9Zulu/Gemma-3-12b-it-qat-int4_asym-ov) |
     | [Qwen2.5-VL-7B-Instruct-int4_sym-ov](https://huggingface.co/Echo9Zulu/Qwen2.5-VL-7B-Instruct-int4_sym-ov/tree/main) |
     | [Nanonets-OCR2-3B-LM-INT4_ASYM-VE-FP16-ov](https://huggingface.co/Echo9Zulu/Nanonets-OCR2-3B-LM-INT4_ASYM-VE-FP16-ov) |
+    | [Qwen3-VL-4B-Instruct-int4_asym-ov](https://huggingface.co/Echo9Zulu/Qwen3-VL-4B-Instruct-int4_asym-ov) |
 
 === "ASR"
 
