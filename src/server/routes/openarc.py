@@ -1,4 +1,5 @@
 import asyncio
+import importlib.metadata
 import json
 import logging
 from pathlib import Path
@@ -10,10 +11,13 @@ from pydantic import BaseModel
 
 from src.server.deps import _registry, _workers, verify_api_key
 from src.server.downloader import global_downloader
-from src.server.models.registration import ModelLoadConfig, ModelUnloadConfig
 from src.server.models.ov_genai import OVGenAI_GenConfig
+from src.server.models.registration import ModelLoadConfig, ModelUnloadConfig
 from src.server.models.requests_internal import OpenArcBenchRequest
-from src.server.models.requests_management import DownloaderActionRequest, DownloaderRequest
+from src.server.models.requests_management import (
+    DownloaderActionRequest,
+    DownloaderRequest,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +142,11 @@ async def get_local_models(path: Optional[str] = None):
 
 @router.get("/version", dependencies=[Depends(verify_api_key)])
 async def get_version():
-    return {"version": "v2.0.4"}
+    try:
+        version = importlib.metadata.version("openarc")
+    except Exception:
+        version = "v0"
+    return {"version": version}
 
 
 def get_hardware_metrics():
