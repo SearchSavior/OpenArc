@@ -1,6 +1,6 @@
 [project]
 name = "OpenArc"
-version = "2.0"
+version = "2.0.4"
 description = "OpenArc is an inference server for OpenVINO AI models."
 authors = [
     {name = "Emerson Tatelbaum", email = "etatelbaum.psc@gmail.com"}
