@@ -1,10 +1,11 @@
 import asyncio
 import logging
 import os
-import threading
 import time
 from pathlib import Path
 from typing import Dict, List, Optional
+
+import huggingface_hub
 
 logger = logging.getLogger(__name__)
 
@@ -49,11 +50,12 @@ class DownloadTask:
         self.error_msg = ""
         self.started_at = time.time()
         self.completed_at: Optional[float] = None
+        self.download_speed = 0
 
-        # Thread-safe control signals
-        self._cancel = threading.Event()
-        self._pause = threading.Event()
-        self._pause.set()  # Not paused by default
+        # async control signals
+        self._cancel = asyncio.Event()
+        self._pause = asyncio.Event()
+        self._pause.set()  # not paused by default
 
 
 class Downloader:
@@ -81,51 +83,53 @@ class Downloader:
             task.task = asyncio.create_task(self._download_worker(task))
             return True
 
-    def pause(self, model_name: str) -> bool:
-        """Pause an active download. The worker thread blocks between files."""
-        task = self.tasks.get(model_name)
-        if not task or task.status != "downloading":
-            return False
-        task.status = "paused"
-        task._pause.clear()
-        return True
+    async def pause(self, model_name: str) -> bool:
+        """Pause an active download. The worker blocks between files."""
+        async with self._lock:
+            task = self.tasks.get(model_name)
+            if not task or task.status != "downloading":
+                return False
+            task.status = "paused"
+            task._pause.clear()
+            return True
 
-    def resume(self, model_name: str) -> bool:
+    async def resume(self, model_name: str) -> bool:
         """Resume a paused download."""
-        task = self.tasks.get(model_name)
-        if not task or task.status != "paused":
-            return False
-        task.status = "downloading"
-        task._pause.set()
-        return True
+        async with self._lock:
+            task = self.tasks.get(model_name)
+            if not task or task.status != "paused":
+                return False
+            task.status = "downloading"
+            task._pause.set()
+            return True
 
-    def cancel(self, model_name: str) -> bool:
+    async def cancel(self, model_name: str) -> bool:
         """Cancel an active or paused download."""
-        task = self.tasks.get(model_name)
-        if not task or task.status in ("completed", "cancelled"):
-            return False
-        task.status = "cancelled"
-        task.completed_at = time.time()
-        task._cancel.set()
-        task._pause.set()  # Unblock thread so it can exit
-        if task.task:
-            task.task.cancel()
-        return True
+        async with self._lock:
+            task = self.tasks.get(model_name)
+            if not task or task.status in ("completed", "cancelled"):
+                return False
+            task.status = "cancelled"
+            task.completed_at = time.time()
+            task._cancel.set()
+            task._pause.set()  # unblock worker so it can exit
+            if task.task:
+                task.task.cancel()
+            return True
 
     def list_tasks(self) -> List[Dict]:
         self._cleanup_stale()
         return [
             {
                 "model_name": t.model_name,
+                "total_size": t.total_bytes,
+                "downloaded_size": t.downloaded_bytes,
                 "status": t.status,
-                "progress": round(t.progress, 2),
-                "total_bytes": t.total_bytes,
-                "downloaded_bytes": t.downloaded_bytes,
-                "total_files": t.total_files,
-                "completed_files": t.completed_files,
-                "error": t.error_msg,
-                "started_at": t.started_at,
-                "completed_at": t.completed_at,
+                "progress": int(t.progress),
+                "download_speed": t.download_speed,
+                "path": t.path or "",
+                "started_at": str(t.started_at),
+                "finished_at": str(t.completed_at) if t.completed_at is not None else None,
             }
             for t in self.tasks.values()
         ]
@@ -145,7 +149,7 @@ class Downloader:
 
     async def _download_worker(self, task: DownloadTask):
         try:
-            await asyncio.to_thread(self._download_sync, task)
+            await self._download_files(task)
             if not task._cancel.is_set():
                 task.status = "completed"
                 task.progress = 100.0
@@ -153,22 +157,20 @@ class Downloader:
                 logger.info(f"Download completed for {task.model_name}")
         except asyncio.CancelledError:
             logger.info(f"Download {task.status} for {task.model_name}")
+            raise
         except Exception as e:
             task.status = "error"
             task.error_msg = str(e)
             task.completed_at = time.time()
             logger.error(f"Download failed for {task.model_name}: {e}")
 
-    def _download_sync(self, task: DownloadTask):
-        """Blocking download in a worker thread.
-
-        Downloads files individually via hf_hub_download so we can report
-        per-file progress and honour pause/cancel signals between files.
+    async def _download_files(self, task: DownloadTask):
+        """Async download loop. Each file is fetched in a thread so the event loop stays free,
+        but pause/cancel work between files without blocking the loop.
         """
-        import huggingface_hub
-
         api = huggingface_hub.HfApi()
-        repo = api.repo_info(task.model_name, files_metadata=True)
+
+        repo = await asyncio.to_thread(api.repo_info, task.model_name, files_metadata=True)
         siblings = repo.siblings or []
 
         files = [(f.rfilename, getattr(f, "size", None) or 0) for f in siblings]
@@ -182,17 +184,23 @@ class Downloader:
             if task._cancel.is_set():
                 return
 
-            # Block here while paused
-            task._pause.wait()
+            # block here while paused
+            await task._pause.wait()
 
             if task._cancel.is_set():
                 return
 
-            huggingface_hub.hf_hub_download(
+            # run blocking download in a thread so the event loop stays free
+            file_start = time.time()
+            await asyncio.to_thread(
+                huggingface_hub.hf_hub_download,
                 repo_id=task.model_name,
                 filename=filename,
                 local_dir=task.path,
             )
+            elapsed = time.time() - file_start
+            if elapsed > 0:
+                task.download_speed = int(file_size / elapsed)
 
             task.completed_files += 1
             task.downloaded_bytes += file_size

@@ -266,7 +266,7 @@ async def list_downloads():
 
 @router.delete("/downloader", dependencies=[Depends(verify_api_key)])
 async def cancel_download(request: DownloaderActionRequest):
-    if global_downloader.cancel(request.model_name):
+    if await global_downloader.cancel(request.model_name):
         return {
             "status": "success",
             "message": "Model download cancelled successfully.",
@@ -279,7 +279,7 @@ async def cancel_download(request: DownloaderActionRequest):
 
 @router.post("/downloader/pause", dependencies=[Depends(verify_api_key)])
 async def pause_download(request: DownloaderActionRequest):
-    if global_downloader.pause(request.model_name):
+    if await global_downloader.pause(request.model_name):
         return {"status": "success", "message": "Model download paused successfully."}
     return JSONResponse(
         status_code=404,
@@ -289,7 +289,7 @@ async def pause_download(request: DownloaderActionRequest):
 
 @router.post("/downloader/resume", dependencies=[Depends(verify_api_key)])
 async def resume_download(request: DownloaderActionRequest):
-    if global_downloader.resume(request.model_name):
+    if await global_downloader.resume(request.model_name):
         return {"status": "success", "message": "Model download resumed successfully."}
     return JSONResponse(
         status_code=404,
