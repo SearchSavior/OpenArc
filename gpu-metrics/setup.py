@@ -10,7 +10,7 @@ ext_modules = [
             "/usr/include",
             "/usr/lib/pkgconfig/../../include",
         ],
-        libraries=["ze_loader"],  # cruical: links the level zero sysman api
+        libraries=["ze_loader"],  # crucial: links the level zero sysman api
         extra_compile_args=["-std=c++17"],
     ),
 ]
