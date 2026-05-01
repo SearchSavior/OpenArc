@@ -10,7 +10,7 @@ from openvino_genai import (
     GenerationConfig,
     LLMPipeline,
 )
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, BatchEncoding
 
 from src.server.models.ov_genai import OVGenAI_GenConfig
 from src.server.model_registry import ModelRegistry
@@ -57,6 +57,8 @@ class OVGenAI_LLM:
             skip_special_tokens=True,
             return_tensors="np"
             )
+        if isinstance(prompt_token_ids, BatchEncoding):
+            prompt_token_ids = prompt_token_ids['input_ids']
         return ov.Tensor(prompt_token_ids)
     
     def generate_type(self, gen_config: OVGenAI_GenConfig):
