@@ -35,7 +35,7 @@ from ..utils import validate_model_path
     default=None,
     help='OpenVINO runtime configuration as JSON string (e.g., \'{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}\').')
 @click.option('--vlm-type', '--vt',
-    type=click.Choice(['internvl2', 'llava15', 'llavanext', 'minicpmv26', 'phi3vision', 'phi4mm', 'qwen2vl', 'qwen25vl', 'gemma3']),
+    type=click.Choice(['internvl2', 'llava15', 'llavanext', 'minicpmv26', 'phi3vision', 'phi4mm', 'qwen2vl', 'qwen25vl', 'qwen3vl', 'gemma3', 'gemma4']),
     required=False,
     default=None,
     help='Vision model type. Used to map correct vision tokens.')

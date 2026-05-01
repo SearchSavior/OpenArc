@@ -408,6 +408,12 @@ This page contains example commands to help you choose models and configure Open
     ```
     openarc serve start # defaults to 0.0.0.0:8000
     ```
+    Windows 11:
+
+    To exclude _Request failed_ in Windows, you need to specify this address
+    ```
+    openarc serve start --host 127.0.0.1
+    ```
 
     Configure host and port:
 
@@ -423,6 +429,14 @@ This page contains example commands to help you choose models and configure Open
     openarc serve start \
       --load-models model1 model2
     ```
+
+    To require API key authentication:
+
+    ```
+    openarc serve start --use-api-key
+    ```
+
+    When `--use-api-key` is passed, clients must authenticate with a `Bearer` token matching `OPENARC_API_KEY`. If the environment variable is not set, the server will not start. Without the flag, no authentication is required.
 
 === "load"
 
