@@ -3,7 +3,7 @@ import time
 from typing import List, Dict, Optional
 
 import openvino as ov
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, BatchEncoding
 from openvino_genai import (
     GenerationConfig,
     ContinuousBatchingPipeline,
@@ -92,6 +92,8 @@ class OVGenAI_ContinuousBatchText:
             skip_special_tokens=True,
             return_tensors="np",           # returns numpy.ndarray
         )
+        if isinstance(prompt_token_ids, BatchEncoding):
+            prompt_token_ids = prompt_token_ids['input_ids']
         return ov.Tensor(prompt_token_ids)
         
     def generate(self, prompts: List[List[Dict[str, str]]], generation_config: GenerationConfig):
