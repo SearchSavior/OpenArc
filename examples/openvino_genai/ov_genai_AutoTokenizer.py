@@ -1,6 +1,6 @@
 import openvino as ov
 from openvino_genai import GenerationConfig, LLMPipeline
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, BatchEncoding
 
 model_dir = "/mnt/Ironwolf-4TB/Models/OpenVINO/gpt-oss-nano-int4_sym-ov"
 
@@ -20,6 +20,7 @@ prompt = "You're the fastest Llama this side of the equator. What's your favorit
 messages = [{"role": "user", "content": prompt}]
 # Build proper chat prompt for Qwen-style instruct models and get prompt_token_ids directly
 prompt_token_ids = tokenizer.apply_chat_template(messages, add_generation_prompt=True, return_tensors="np", reasoning_effort="low")
+prompt_token_ids = prompt_token_ids['input_ids'] if isinstance(prompt_token_ids, BatchEncoding) else prompt_token_ids
 
 num_iterations = 3  # Number of generations to run
 
