@@ -104,5 +104,7 @@ VLM_VISION_TOKENS = {
     "qwen25vl": "<|vision_start|><|image_pad|><|vision_end|>",
     "qwen3vl": "<|vision_start|><|image_pad|><|vision_end|>",
     "gemma3": "<start_of_image>",
+    "gemma4": "<|image><|image|><image|>"
+    
 }
 
