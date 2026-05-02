@@ -89,19 +89,32 @@ Visit [OpenVINO System Requirments](https://docs.openvino.ai/2025/about-openvino
 
     Instead of fighting with Intel's own docker images, we built our own which is as close to boilerplate as possible. For a primer on docker [check out this video](https://www.youtube.com/watch?v=DQdB7wFEygo).
 
+    The Dockerfiles and Compose file live in [`.devops/`](https://github.com/SearchSavior/OpenArc/tree/main/.devops). Run all commands below from the repository root.
 
-    **Build and run the container:**
+    **Build and start the container:**
     ```bash
-    docker-compose up --build -d
+    docker compose -f .devops/docker-compose.yaml up --build -d
     ```
 
-    **Run the container:**
+    **Stop and remove the container:**
     ```bash
-    docker run -d -p 8000:8000 openarc:latest
+    docker compose -f .devops/docker-compose.yaml down
     ```
+
+    **View logs:**
+    ```bash
+    docker compose -f .devops/docker-compose.yaml logs -f
+    ```
+
     **Enter the container:**
     ```bash
-    docker exec -it openarc /bin/bash
+    docker compose -f .devops/docker-compose.yaml exec openarc /bin/bash
+    ```
+
+    **Battlemage (or newer) GPUs:** the default `Dockerfile` targets older Intel GPUs. For Battlemage, build with `Battlemage.Dockerfile` instead:
+    ```bash
+    docker build -f .devops/Battlemage.Dockerfile -t openarc:latest .
+    docker compose -f .devops/docker-compose.yaml up -d
     ```
 
     Environment Variables
@@ -110,13 +123,13 @@ Visit [OpenVINO System Requirments](https://docs.openvino.ai/2025/about-openvino
     export OPENARC_API_KEY="openarc-api-key" # optional — pass --use-api-key to openarc serve start to enforce
     export OPENARC_AUTOLOAD_MODEL="model_name" # model_name to load on startup
     export MODEL_PATH="/path/to/your/models" # mount your models to `/models` inside the container
-    docker-compose up --build -d
+    docker compose -f .devops/docker-compose.yaml up --build -d
     ```
 
     Pass `--use-api-key` to `openarc serve start` to require clients to authenticate. See [serve](commands.md#serve) for details.
- 
 
-    Take a look at the [Dockerfile](Dockerfile) and [docker-compose](docker-compose.yaml) for more details.
+
+    Take a look at the [Dockerfile](https://github.com/SearchSavior/OpenArc/blob/main/.devops/Dockerfile) and [docker-compose](https://github.com/SearchSavior/OpenArc/blob/main/.devops/docker-compose.yaml) for more details.
 
 
 
