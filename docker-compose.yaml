@@ -3,7 +3,7 @@ version: '3.8'
 services:
   openarc:
     build:
-      context: ..
+      context: .
       dockerfile: .devops/Dockerfile
     image: openarc:latest
     container_name: openarc
@@ -14,7 +14,7 @@ services:
     
     # Volumes
     volumes:
-      - ${MODEL_PATH:-../models}:/models
+      - ${MODEL_PATH:-./models}:/models
       - openarc-config:/persist
     
     # Ports
