@@ -1,6 +1,6 @@
 [project]
 name = "OpenArc"
-version = "2.0"
+version = "2.0.5"
 description = "OpenArc is an inference server for OpenVINO AI models."
 authors = [
     {name = "Emerson Tatelbaum", email = "etatelbaum.psc@gmail.com"}
@@ -24,6 +24,8 @@ dependencies = [
     "openvino-genai>=2025.3.0.0",
     "optimum[openvino]>1.26.1",
     "pip>=25.2",
+    "pybind11>=3.0.3",
+    "gpu-metrics",
     "pydantic>=2.11.7",
     "pynput>=1.8.1",
     "pytest>=8.4.2",
@@ -58,6 +60,7 @@ url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [tool.uv.sources]
+gpu-metrics = { path = "gpu-metrics" }
 torch = { index = "pytorch-cpu" }
 torchvision = { index = "pytorch-cpu" }
 
