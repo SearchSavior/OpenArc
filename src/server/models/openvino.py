@@ -94,10 +94,40 @@ class KokoroVoice(str, Enum):
 class OV_KokoroGenConfig(BaseModel):
     input: Optional[str] = Field(default=None, description="Injected from top-level request.input by the handler; do not set here.")
     voice: KokoroVoice = Field(KokoroVoice.AF_SARAH, description="Voice token from available Kokoro voices")
+    # Optional weighted blend of voicepacks. Overrides `voice` when set.
+    # Format: "af_heart,af_nicole" (equal weights) or
+    #         "af_heart:0.7,af_nicole:0.3" (weights normalised by engine).
+    voice_blend: Optional[str] = Field(
+        default=None,
+        description="Optional weighted blend of voicepacks, e.g. 'af_heart:0.7,af_nicole:0.3'. Overrides `voice`.",
+    )
     lang_code: KokoroLanguage = Field(KokoroLanguage.AMERICAN_ENGLISH, description="Language code for the voice")
     speed: float = Field(1.0, description="Speech speed multiplier")
     character_count_chunk: int = Field(100, description="Max characters per chunk")
     response_format: str = Field("wav", description="Output format")
+
+    @field_validator("voice_blend")
+    @classmethod
+    def _validate_voice_blend(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or not v.strip():
+            return None
+        parts = [p.strip() for p in v.split(",") if p.strip()]
+        if not parts:
+            return None
+        valid = {item.value for item in KokoroVoice}
+        for part in parts:
+            name, _, weight = part.partition(":")
+            name = name.strip()
+            if name not in valid:
+                raise ValueError(f"Unknown voice in blend: {name!r}")
+            if weight.strip():
+                try:
+                    w = float(weight)
+                except ValueError as exc:
+                    raise ValueError(f"Invalid weight in blend for {name!r}: {weight!r}") from exc
+                if w < 0:
+                    raise ValueError(f"Negative weight not allowed for {name!r}: {w}")
+        return v
 
 
 

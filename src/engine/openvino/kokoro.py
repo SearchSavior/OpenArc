@@ -132,6 +132,10 @@ class OV_Kokoro(KModel):
         from kokoro.pipeline import KPipeline
         pipeline = KPipeline(model=self, lang_code=config.lang_code.value)
 
+        # Resolve the voice once. If voice_blend is set, this returns a
+        # blended FloatTensor; otherwise the plain voice name.
+        voice_arg = self._resolve_voice(config, pipeline)
+
         text_chunks = self.make_chunks(config.input, config.character_count_chunk)
         total_chunks = len(text_chunks)
 
@@ -140,7 +144,7 @@ class OV_Kokoro(KModel):
             def infer_on_chunk():
                 """Blocking inference run in background thread."""
                 with torch.no_grad():
-                    infer = pipeline(chunk_text, voice=config.voice, speed=config.speed)
+                    infer = pipeline(chunk_text, voice=voice_arg, speed=config.speed)
                     result = next(infer) if hasattr(infer, "__iter__") else infer
                     return result
 
@@ -153,3 +157,35 @@ class OV_Kokoro(KModel):
                 chunk_index=idx,
                 total_chunks=total_chunks,
             )
+
+    @staticmethod
+    def _parse_blend(blend: str) -> list[tuple[str, float]]:
+        """Parse a blend string into [(name, weight)] with weights normalised
+        to sum to 1.0. Missing weights default to 1.0, so bare comma lists
+        become equal-weight averages. Names are validated upstream."""
+        items: list[tuple[str, float]] = []
+        for part in blend.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            name, _, weight = part.partition(":")
+            name = name.strip()
+            try:
+                w = float(weight) if weight.strip() else 1.0
+            except ValueError:
+                w = 1.0
+            items.append((name, max(0.0, w)))
+        total = sum(w for _, w in items) or 1.0
+        return [(n, w / total) for n, w in items]
+
+    def _resolve_voice(self, config: "OV_KokoroGenConfig", pipeline):
+        """Return the voice argument for KPipeline. Plain voice name when
+        voice_blend is unset, otherwise a weighted-sum FloatTensor of the
+        named voicepacks."""
+        if not getattr(config, "voice_blend", None):
+            return config.voice.value if hasattr(config.voice, "value") else config.voice
+        components = self._parse_blend(config.voice_blend)
+        if len(components) == 1:
+            return components[0][0]
+        packs = [pipeline.load_single_voice(n) * w for n, w in components]
+        return torch.stack(packs).sum(dim=0)
