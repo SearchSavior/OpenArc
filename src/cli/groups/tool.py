@@ -1,6 +1,8 @@
 """
 Tool command group - Utility scripts.
 """
+from pathlib import Path
+
 import click
 from rich.panel import Panel
 from rich.table import Table
@@ -83,4 +85,62 @@ def device_detect(ctx):
             
     except Exception as e:
         console.print(f"[red]Sanity test failed: No OpenVINO devices found! Maybe check your drivers?[/red] {e}")
+        ctx.exit(1)
+
+
+@tool.command("inspect-ir")
+@click.argument("model_ref", required=True)
+@click.option(
+    "-s",
+    "--search-targets",
+    required=False,
+    default=None,
+    help="Comma delimited list of ops you want to check for.",
+)
+@click.pass_context
+def inspect_ir(ctx, model_ref, search_targets):
+    """
+    - Inspect OpenVINO IR ops by model name or model path value.
+    """
+    resolved_path = None
+    model_config = ctx.obj.server_config.get_model_config(model_ref)
+
+    if model_config:
+        resolved_path = model_config.get("model_path")
+        if not resolved_path:
+            console.print(f"[red]No model_path found in configuration for:[/red] {model_ref}")
+            ctx.exit(1)
+    else:
+        candidate_path = Path(model_ref).expanduser()
+        if not candidate_path.exists():
+            console.print(
+                f"[red]'{model_ref}' is not a saved model name and does not exist as a path.[/red]"
+            )
+            console.print("[yellow]Tip: Use 'openarc list' to see saved configurations.[/yellow]")
+            ctx.exit(1)
+
+        has_model_xml = False
+        if candidate_path.is_file():
+            has_model_xml = candidate_path.name.lower().endswith("_model.xml")
+        elif candidate_path.is_dir():
+            has_model_xml = any(
+                p.is_file() and p.name.lower().endswith("_model.xml")
+                for p in candidate_path.rglob("*")
+            )
+
+        if not has_model_xml:
+            console.print(
+                f"[red]Path must contain at least one '*_model.xml' file:[/red] {candidate_path}"
+            )
+            ctx.exit(1)
+
+        resolved_path = candidate_path
+
+    try:
+        from ..modules.inspect_openvino_ir import parse_search_targets, run_inspection
+
+        targets = parse_search_targets(search_targets)
+        run_inspection(Path(resolved_path), search_targets=targets)
+    except Exception as e:
+        console.print(f"[red]Error inspecting OpenVINO IR:[/red] {e}")
         ctx.exit(1)
