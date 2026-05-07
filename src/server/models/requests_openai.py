@@ -37,6 +37,7 @@ class OpenAIChatCompletionRequest(BaseModel):
     seed: Optional[int] = None
     frequency_penalty: Optional[float] = None
     presence_penalty: Optional[float] = None
+    chat_template_kwargs: Optional[dict] = {}
 
 
 class OpenAICompletionRequest(BaseModel):

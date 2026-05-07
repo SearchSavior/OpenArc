@@ -141,6 +141,7 @@ async def openai_chat_completions(
             "seed": request.seed,
             "frequency_penalty": request.frequency_penalty,
             "presence_penalty": request.presence_penalty,
+            "chat_template_kwargs": request.chat_template_kwargs,
         }
         config_kwargs = {k: v for k, v in config_kwargs.items() if v is not None}
 

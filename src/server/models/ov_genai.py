@@ -83,6 +83,10 @@ class OVGenAI_GenConfig(BaseModel):
         default=None,
         description="Flat penalty for tokens which appeared at least once."
     )
+    chat_template_kwargs: dict = Field(
+        default={},
+        description="Additional arguments to apply to the chat template."
+    )
 
     @property
     def text_messages(self) -> List[Dict[str, Any]]:

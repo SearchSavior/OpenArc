@@ -35,7 +35,9 @@ class OVGenAI_LLM:
 
     def prepare_inputs(self,
         messages: List[Dict[str, Any]],
-        tools: Optional[List[Dict[str, Any]]] = None) -> ov.Tensor:
+        tools: Optional[List[Dict[str, Any]]] = None,
+        chat_template_kwargs: dict = {}
+    ) -> ov.Tensor:
         """
         Convert a messages (list of {role, content}) into ov.Tensor using the cached AutoTokenizer
         and its chat template.
@@ -55,7 +57,8 @@ class OVGenAI_LLM:
             tools=tools,
             add_generation_prompt=True,
             skip_special_tokens=True,
-            return_tensors="np"
+            return_tensors="np",
+            **chat_template_kwargs,
             )
         if isinstance(prompt_token_ids, BatchEncoding):
             prompt_token_ids = prompt_token_ids['input_ids']
@@ -95,7 +98,7 @@ class OVGenAI_LLM:
             prompt_token_ids = ov.Tensor(self.encoder_tokenizer.encode(gen_config.prompt, return_tensors="np"))
         else:
             # Chat template tokenization for messages (used by /v1/chat/completions endpoint)
-            prompt_token_ids = self.prepare_inputs(gen_config.messages, gen_config.tools)
+            prompt_token_ids = self.prepare_inputs(gen_config.messages, gen_config.tools, gen_config.chat_template_kwargs)
         
         result = await asyncio.to_thread(self.model.generate, prompt_token_ids, generation_kwargs)
         
@@ -127,7 +130,7 @@ class OVGenAI_LLM:
             prompt_token_ids = ov.Tensor(self.encoder_tokenizer.encode(gen_config.prompt, return_tensors="np"))
         else:
             # Chat template tokenization for messages (used by /v1/chat/completions endpoint)
-            prompt_token_ids = self.prepare_inputs(gen_config.messages, gen_config.tools)
+            prompt_token_ids = self.prepare_inputs(gen_config.messages, gen_config.tools, gen_config.chat_template_kwargs)
 
         # DEBUG: Log what we're about to send
         logger.error(f"[DEBUG] draft_model_loaded: {getattr(self, 'draft_model_loaded', False)}")
