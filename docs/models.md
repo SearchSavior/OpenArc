@@ -39,6 +39,8 @@ If you need help converting a particular model join Discord and we can help you!
     | [Nemotron-Cascade-14B-Thinking-int4_asym-se-ov](https://huggingface.co/Echo9Zulu/Nemotron-Cascade-14B-Thinking-int4_asym-se-ov) |
     | [NousCoder-14B-int4_sym-ov](https://huggingface.co/Echo9Zulu/NousCoder-14B-int4_sym-ov) |
     | [Anubis-Mini-8B-v1-int4_asym-ov](https://huggingface.co/Echo9Zulu/Anubis-Mini-8B-v1-int4_asym-ov) |
+    | [Qwen3.6-27B-int4-asym-ov](https://huggingface.co/droans/qwen3.6-27B-int4-asym-ov) |
+    | [Qwen3.5-9B-int4-asym-ov](https://huggingface.co/droans/qwen3.5-9B-int4-asym-ov) |
 
 === "VLMs"
 
