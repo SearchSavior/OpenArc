@@ -1,12 +1,34 @@
 """
 List command - List saved model configurations.
 """
+from pathlib import Path
+
 import click
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
 from ..main import cli, console
+
+
+def _path_has_bin_or_xml(model_path):
+    """Return True when model_path contains at least one .bin or .xml file."""
+    if not model_path:
+        return False
+
+    path = Path(model_path)
+    if not path.exists():
+        return False
+
+    search_dir = path.parent if path.is_file() else path
+    try:
+        for file_path in search_dir.rglob("*"):
+            if file_path.is_file() and file_path.suffix.lower() in (".bin", ".xml"):
+                return True
+    except (OSError, PermissionError):
+        return False
+
+    return False
 
 
 @cli.command("list")
@@ -23,6 +45,7 @@ def list(ctx, model_name, verbose, remove):
         openarc list                    # List all model names
         openarc list model_name --v     # Show metadata for specific model
         openarc list model_name --rm    # Remove a model configuration
+        openarc list prune              # Remove stale configs with no .bin/.xml files
     """
     if remove:
         if not model_name:
@@ -42,14 +65,42 @@ def list(ctx, model_name, verbose, remove):
             console.print(f"[red]Failed to remove model configuration:[/red] {model_name}")
             ctx.exit(1)
         return
-    
+
     models = ctx.obj.server_config.get_all_models()
-    
+
     if not models:
         console.print("[yellow]No model configurations found.[/yellow]")
         console.print("[dim]Use 'openarc add --help' to see how to save configurations.[/dim]")
         return
-    
+
+    # Reserved command mode: openarc list prune
+    if model_name == "prune" and not verbose:
+        stale_models = []
+        for name, model_config in models.items():
+            model_path = model_config.get("model_path")
+            if not _path_has_bin_or_xml(model_path):
+                stale_models.append((name, model_path))
+
+        if not stale_models:
+            console.print("[green]No stale model configurations found.[/green]")
+            return
+
+        console.print(f"[yellow]Found {len(stale_models)} stale model configuration(s):[/yellow]")
+        for name, path in stale_models:
+            console.print(f"  [cyan]{name}[/cyan] [dim](model_path: {path})[/dim]")
+
+        if not click.confirm("Delete these entries from config?", default=False):
+            console.print("[blue]Prune cancelled.[/blue]")
+            return
+
+        removed = 0
+        for name, _ in stale_models:
+            if ctx.obj.server_config.remove_model_config(name):
+                removed += 1
+
+        console.print(f"[green]Prune complete.[/green] Removed {removed}/{len(stale_models)} entries.")
+        return
+
     # Case 1: Show metadata for specific model with -v flag
     if model_name and verbose:
         if model_name not in models:
@@ -100,3 +151,4 @@ def list(ctx, model_name, verbose, remove):
     
     console.print("[dim]Use 'openarc list <model_name> --v' to see model metadata.[/dim]")
     console.print("[dim]Use 'openarc list <model_name> --rm' to remove a configuration.[/dim]")
+    console.print("[dim]Use 'openarc list prune' to remove stale configurations.[/dim]")
