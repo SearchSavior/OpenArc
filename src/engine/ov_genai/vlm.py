@@ -320,6 +320,7 @@ class OVGenAI_VLM:
         generation_kwargs.top_k = config.top_k
         generation_kwargs.top_p = config.top_p
         generation_kwargs.repetition_penalty = config.repetition_penalty
+        generation_kwargs.apply_chat_template = False
 
         if config.seed:
             generation_kwargs.rng_seed = config.seed
