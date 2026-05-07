@@ -46,7 +46,8 @@ class OVGenAI_VLM:
 
     def prepare_inputs(self,
         messages: List[Dict[str, Any]],
-        tools: Optional[List[Dict[str, Any]]] = None
+        tools: Optional[List[Dict[str, Any]]] = None,
+        chat_template_kwargs: dict = {},
     ) -> Tuple[str, List[ov.Tensor]]:
         """
         Parse a messages list and prepare text prompt + image tensors for VLM inference.
@@ -113,7 +114,8 @@ class OVGenAI_VLM:
             text_messages,
             tokenize=False,
             tools=tools,
-            add_generation_prompt=True
+            add_generation_prompt=True,
+            **chat_template_kwargs,
         )
 
         # Step 3: Convert images to OpenVINO Tensors
@@ -136,7 +138,7 @@ class OVGenAI_VLM:
             return prompt, []
         if gen_config.prompt:
             return gen_config.prompt, []
-        return self.prepare_inputs(gen_config.messages, gen_config.tools)
+        return self.prepare_inputs(gen_config.messages, gen_config.tools, gen_config.chat_template_kwargs)
 
     def generate_type(self, gen_config: OVGenAI_GenConfig):
         """
@@ -318,6 +320,7 @@ class OVGenAI_VLM:
         generation_kwargs.top_k = config.top_k
         generation_kwargs.top_p = config.top_p
         generation_kwargs.repetition_penalty = config.repetition_penalty
+        generation_kwargs.apply_chat_template = False
 
         if config.seed:
             generation_kwargs.rng_seed = config.seed
