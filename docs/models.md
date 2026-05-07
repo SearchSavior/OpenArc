@@ -94,3 +94,22 @@ If you need help converting a particular model join Discord and we can help you!
     | **Models** |
     | --- |
     | [Qwen3-Reranker-0.6B-fp16-ov](https://huggingface.co/OpenVINO/Qwen3-Reranker-0.6B-fp16-ov) |
+
+
+## Model-Specific Instructions
+
+### Qwen3.5/3.6
+
+**Is Qwen3.5/3.6 supported?**
+
+Qwen3.5 models has unofficial support. However, they do require you to build `openvion` and `openvino.genai` from source. You will also need to install the latest version of `optimum-intel`. 
+
+To add a model, run the command `openarc add --model-name MODEL_NAME --model-path /path/to/model --model-type vlm --device GPU|CPU|NPU --runtime-config '{"ATTENTION_BACKEND": "SDPA"}' --vlm-type qwen35`. Intel is currently working on adding support for Qwen3.5 to utilize the PA attention backend but it has not been merged yet. This currently appears to be much more performant. If you have built `openvino.genai` with the support included, you may change the runtime config parameter to use PA instead.
+
+**How do I control thinking?**
+
+Qwen3.5 utilizes chat instructions for thinking control. You can enable thinking by using the parameter `chat_template_kwargs` with a value of `{"enable_thinking": true}` and disable it by setting the value to `{"enable_thinking": false}`. 
+
+Previous reasoning is also retained within a conversation. You can enable or disable it similarily by adding `preserve_previous_think` to `chat_template_kwargs`.
+
+For example, to enable thinking and disable previous reasoning, you would pass `chat_template_kwargs` with a value of `{"enable_thinking": true, "preserve_previous_think": false}`.
