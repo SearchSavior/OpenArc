@@ -11,15 +11,17 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from src.server.deps import _registry, _workers, verify_api_key
+from src.server.models.openvino import KokoroLanguage, KokoroVoice
 from src.server.models.optimum import PreTrainedTokenizerConfig, RerankerConfig
 from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
-from src.server.models.registration import ModelType
+from src.server.models.registration import ModelLoadConfig, ModelType, ModelUnloadConfig
+from src.server.models.requests_internal import OpenArcBenchRequest
 from src.server.models.requests_openai import (
     EmbeddingsRequest,
-    OpenArcASRConfig,
     OpenAIChatCompletionRequest,
     OpenAICompletionRequest,
     OpenAISpeechRequest,
+    OpenArcASRConfig,
     RerankRequest,
 )
 
@@ -566,9 +568,17 @@ async def openai_audio_speech(request: OpenAISpeechRequest):
                 raise ValueError("openarc_tts.qwen3_tts required for Qwen3 TTS models")
             gen_config = request.openarc_tts.qwen3_tts
             gen_config.input = request.input
+            if request.language is not None and "language" not in gen_config.model_fields_set:
+                gen_config.language = request.language
+            if request.instructions is not None and "instruct" not in gen_config.model_fields_set:
+                gen_config.instruct = request.instructions
+            if request.voice is not None and "speaker" not in gen_config.model_fields_set:
+                gen_config.speaker = request.voice
             if gen_config.stream:
                 return StreamingResponse(
-                    _workers.stream_generate_speech_qwen3_tts(request.model, gen_config),
+                    _workers.stream_generate_speech_qwen3_tts(
+                        request.model, gen_config
+                    ),
                     media_type="audio/L16;rate=24000;channels=1",
                 )
             result = await _workers.generate_speech_qwen3_tts(request.model, gen_config)
@@ -577,6 +587,18 @@ async def openai_audio_speech(request: OpenAISpeechRequest):
                 raise ValueError("openarc_tts.kokoro required for Kokoro models")
             gen_config = request.openarc_tts.kokoro
             gen_config.input = request.input
+            if request.voice is not None and "voice" not in gen_config.model_fields_set:
+                try:
+                    gen_config.voice = KokoroVoice(request.voice)
+                except ValueError:
+                    raise ValueError(f"Unknown Kokoro voice: '{request.voice}'. See KokoroVoice for valid values.")
+            if request.language is not None and "lang_code" not in gen_config.model_fields_set:
+                try:
+                    gen_config.lang_code = KokoroLanguage(request.language)
+                except ValueError:
+                    raise ValueError(f"Unknown Kokoro language code: '{request.language}'. See KokoroLanguage for valid values.")
+            if "response_format" not in gen_config.model_fields_set and request.response_format is not None:
+                gen_config.response_format = request.response_format
             result = await _workers.generate_speech_kokoro(request.model, gen_config)
 
         metrics = result.get("metrics", {})
