@@ -320,9 +320,7 @@ async def benchmark(request: OpenArcBenchRequest):
         result = await _workers.generate(request.model, generation_config)
         metrics = result.get("metrics", {}) or {}
 
-        logger.info(
-            f"[bench] model={request.model} input_ids_len={len(request.input_ids)} metrics={metrics}"
-        )
+        logger.info(f"[bench] model={request.model} metrics={metrics}")
 
         return {"metrics": metrics}
     except ValueError as exc:

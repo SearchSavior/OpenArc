@@ -1,8 +1,10 @@
 """
 Bench command - Benchmark inference with pseudo-random input tokens.
 """
+import json
 import uuid
 from pathlib import Path
+from typing import Dict, Tuple
 
 import click
 import requests
@@ -11,6 +13,57 @@ from rich.table import Table
 
 from ..main import cli, console
 from ..utils import validate_model_path
+
+
+def _resolve_bench_device_label(configured_device: str) -> Tuple[str, str]:
+    """
+    Resolve configured OpenVINO device string into human-readable FULL_DEVICE_NAME label.
+
+    Returns:
+        (db_device_value, hetero_notice_message)
+    """
+    if not configured_device:
+        return ("", "")
+
+    from ..modules.device_query import DeviceDataQuery
+
+    try:
+        device_query = DeviceDataQuery()
+    except Exception:
+        return (configured_device, "")
+
+    def full_name(device_id: str) -> str:
+        try:
+            return str(device_query.core.get_property(device_id, "FULL_DEVICE_NAME"))
+        except Exception:
+            return device_id
+
+    normalized = configured_device.strip()
+    if normalized.upper().startswith("HETERO:"):
+        backends = normalized.split(":", 1)[1]
+        hetero_devices = [d.strip() for d in backends.split(",") if d.strip()]
+        if not hetero_devices:
+            return (normalized, "")
+
+        resolved = [full_name(d) for d in hetero_devices]
+        notice = f"HETERO configuration detected: {', '.join(resolved)}"
+        return ("HETERO: " + ", ".join(resolved), notice)
+
+    return (full_name(normalized), "")
+
+
+def _sanitize_runtime_config(runtime_config: Dict[str, object]) -> Dict[str, object]:
+    """
+    Sanitize runtime config values for display/storage.
+    Any property key containing '_DIR' gets path-like value sanitized.
+    """
+    sanitized: Dict[str, object] = {}
+    for key, value in runtime_config.items():
+        if "_DIR" in str(key).upper() and isinstance(value, str) and value:
+            sanitized[key] = Path(value).name or value
+        else:
+            sanitized[key] = value
+    return sanitized
 
 
 @cli.command()
@@ -102,6 +155,13 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs, depth, temperature, t
 
     model_type = (model_config.get('model_type') or 'llm').lower()
     use_vlm_bench = model_type == 'vlm'
+    configured_device = str(model_config.get('device') or "").strip()
+    resolved_device, hetero_notice = _resolve_bench_device_label(configured_device)
+    runtime_config = model_config.get('runtime_config') or {}
+    if not isinstance(runtime_config, dict):
+        runtime_config = {}
+    sanitized_runtime_config = _sanitize_runtime_config(runtime_config)
+    runtime_config_json = json.dumps(sanitized_runtime_config, sort_keys=True) if sanitized_runtime_config else ""
     
     # Validate model path
     if not validate_model_path(model_path):
@@ -109,10 +169,18 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs, depth, temperature, t
         ctx.exit(1)
     
     # Run benchmarks
-    console.print(f"depth (prior): {depth}")
+    console.print(f"depth: [{depth}]")
     console.print(f"input tokens: {p_values}")
     console.print(f"max tokens:   {n_values}")
     console.print(f"runs: {runs}\n")
+    if hetero_notice:
+        console.print(hetero_notice)
+        console.print("")
+    elif resolved_device:
+        console.print(f"device: {resolved_device}")
+        console.print("")
+    if sanitized_runtime_config:
+        console.print(f"runtime_config: {runtime_config_json}")
     
     # Generate unique run_id for this benchmark session
     run_id = str(uuid.uuid4())
@@ -186,6 +254,7 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs, depth, temperature, t
                         
                         # Store individual result
                         result = {
+                            'device': resolved_device,
                             'd': depth,
                             'p': p,
                             'n': n,
@@ -202,7 +271,14 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs, depth, temperature, t
                         results.append(result)
                         
                         # Save result to database
-                        ctx.obj.benchmark_db.save_result(model_name, result, run_id)
+                        ctx.obj.benchmark_db.save_result(model_name, result, run_id, device=resolved_device)
+                        ctx.obj.benchmark_db.save_result(
+                            model_name,
+                            result,
+                            run_id,
+                            device=resolved_device,
+                            runtime_config=runtime_config_json,
+                        )
                         
                     except Exception as e:
                         console.print(f"\n[yellow]Error in run {r+1}: {e}[/yellow]")
