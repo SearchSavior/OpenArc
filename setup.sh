@@ -9,19 +9,22 @@ if ! command -v uv &> /dev/null; then
     export PATH="$HOME/.local/bin:$PATH"
 fi
 
-if [ ! -f "/opt/intel/oneapi/setvars.sh" ]; then
-    echo "ERROR: Intel oneAPI not found."
-    echo "install from https://www.intel.com/content/www/us/en/developer/tools/oneapi/base-toolkit.html"
-    exit 1
-fi
-
-source /opt/intel/oneapi/setvars.sh intel64 --force
-
 uv sync
 source .venv/bin/activate
 
 uv pip install "optimum-intel[openvino] @ git+https://github.com/huggingface/optimum-intel"
 uv pip install --pre -U openvino-genai --extra-index-url https://storage.openvinotoolkit.org/simple/wheels/nightly
+
+echo "checking for Intel oneAPI..."
+if [ ! -f "/opt/intel/oneapi/setvars.sh" ]; then
+    echo "Warning: Intel oneAPI not found. Skipping gpu-metrics install."
+    echo "install from https://www.intel.com/content/www/us/en/developer/tools/oneapi/base-toolkit.html"
+else
+    source /opt/intel/oneapi/setvars.sh intel64 --force
+
+    echo "installing gpu-metrics (soft dependency)..."
+    uv pip install ./gpu-metrics || echo "Warning: gpu-metrics build failed. Intel GPU telemetry will be unavailable."
+fi
 
 read -p "set OPENARC_API_KEY? (y/N): " set_key
 if [[ "$set_key" =~ ^[Yy]$ ]]; then

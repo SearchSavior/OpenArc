@@ -2,6 +2,8 @@ import asyncio
 import importlib.metadata
 import json
 import logging
+from multiprocessing import cpu_count
+from operator import is_
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -19,9 +21,135 @@ from src.server.models.requests_management import (
     DownloaderRequest,
 )
 
-logger = logging.getLogger(__name__)
+import openvino as ov
 
+
+
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/openarc")
+
+is_gpu_metrics_installed = True
+
+class GPUInfo(BaseModel):
+    id: str
+    name: str
+    total_vram: Optional[int] = None
+    used_vram: Optional[int] = None
+    usage: Optional[float] = None
+    is_shared: Optional[bool] = None
+
+
+def get_gpu_info_with_metrics():
+    gpus = []
+    try:
+        import gpu_metrics
+
+        data = gpu_metrics.get_gpu_metrics()
+        for idx_str, gpu_data in data.items():
+            name = gpu_data.get("name", f"Intel GPU {idx_str}")
+            total_vram_mb = 0
+            used_vram_mb = 0
+            is_shared = False
+
+            mem_list = gpu_data.get("memory", [])
+            if mem_list and len(mem_list) > 0:
+                total_vram_mb = mem_list[0].get("total", 0) // (1024 * 1024)
+                used_vram_mb = mem_list[0].get("used", 0) // (1024 * 1024)
+            else:
+                import psutil
+
+                vm = psutil.virtual_memory()
+                total_vram_mb = vm.total // (1024 * 1024)
+                is_shared = True
+
+            gpus.append(
+                GPUInfo(
+                    id=f"GPU.{idx_str}",
+                    name=name,
+                    total_vram=total_vram_mb,
+                    used_vram=used_vram_mb,
+                    usage=gpu_data.get("utilization", 0.0),
+                    is_shared=is_shared,
+                ).model_dump()
+            )
+    except ImportError:
+        is_gpu_metrics_installed = False
+        return False, []
+    except Exception as e:
+        logging.error(f"Failed to fetch GPU metrics: {e}")
+        return False, []
+    return True, gpus
+
+
+
+def get_cpu_info():
+    cpu_info = {"id": "CPU", "name": "System CPU"}
+    try:
+        core = ov.Core()
+        devices = core.available_devices
+        for device in devices:
+            if "CPU" in device:
+                try:
+                    cpu_info["name"] = str(core.get_property(device, "FULL_DEVICE_NAME"))
+                except Exception:
+                    cpu_info["name"] = device
+                break
+    except Exception as e:
+        logging.error(f"Failed to query CPU info: {e}")
+
+    return cpu_info
+
+def get_npu_info():
+    npus = []
+    try:
+        core = ov.Core()
+        devices = core.available_devices
+        for device in devices:
+            if "NPU" in device:
+                try:
+                    name = core.get_property(device, "FULL_DEVICE_NAME")
+                except Exception:
+                    name = device
+                npus.append({"id": device, "name": str(name)})
+    except Exception as e:
+        logging.error(f"Failed to query NPU info: {e}")
+    return npus
+
+def get_gpu_info():
+    gpu_metrics_status = False
+    gpus = []
+
+    if is_gpu_metrics_installed:
+        gpu_metrics_status, gpus = get_gpu_info_with_metrics()
+
+    if not gpu_metrics_status:
+        try:
+            core = ov.Core()
+            devices = core.available_devices
+            for device in devices:
+                if "GPU" in device:
+                    try:
+                        name = core.get_property(device, "FULL_DEVICE_NAME")
+                    except Exception:
+                        name = device
+
+                    vram_bytes = core.get_property(device, "GPU_DEVICE_TOTAL_MEM_SIZE")
+                    total_vram_mb = vram_bytes // (1024 * 1024)
+                    gpus.append(
+                        GPUInfo(
+                            id=device,
+                            name=str(name),
+                            total_vram=total_vram_mb,
+                            used_vram=0,
+                            usage=0,
+                            is_shared=False,
+                        ).dict()
+                    )
+        except Exception as e:
+            logging.error(f"Failed to query GPU info: {e}")
+
+    return gpus, gpu_metrics_status
+
 
 
 @router.post("/load", dependencies=[Depends(verify_api_key)])
@@ -150,73 +278,10 @@ async def get_version():
 
 
 def get_hardware_metrics():
-    gpus = []
-    cpu_info = {"id": "CPU", "name": "System CPU"}
-    npus = []
-
-    try:
-        import cpuinfo
-
-        info = cpuinfo.get_cpu_info()
-        cpu_info["name"] = info.get("brand_raw", "System CPU")
-    except Exception as e:
-        logging.error(f"Failed to query CPU info: {e}")
-
-    try:
-        import openvino as ov
-
-        core = ov.Core()
-        devices = core.available_devices
-        for device in devices:
-            if "NPU" in device:
-                try:
-                    name = core.get_property(device, "FULL_DEVICE_NAME")
-                except Exception:
-                    name = device
-                npus.append({"id": device, "name": str(name)})
-    except Exception:
-        pass
-
-    try:
-        import gpu_metrics
-
-        data = gpu_metrics.get_gpu_metrics()
-        for idx_str, gpu_data in data.items():
-            name = gpu_data.get("name", f"Intel GPU {idx_str}")
-            total_vram_mb = 0
-            used_vram_mb = 0
-            is_shared = False
-
-            mem_list = gpu_data.get("memory", [])
-            if mem_list and len(mem_list) > 0:
-                total_vram_mb = mem_list[0].get("total", 0) // (1024 * 1024)
-                used_vram_mb = mem_list[0].get("used", 0) // (1024 * 1024)
-            else:
-                import psutil
-
-                vm = psutil.virtual_memory()
-                total_vram_mb = vm.total // (1024 * 1024)
-                is_shared = True
-
-            gpus.append(
-                {
-                    "id": f"GPU.{idx_str}",
-                    "name": str(name),
-                    "total_vram": int(total_vram_mb),
-                    "used_vram": int(used_vram_mb),
-                    "usage": 0.0,
-                    "is_shared": is_shared,
-                }
-            )
-    except ImportError:
-        logging.warning(
-            "gpu_metrics module not found. Intel GPU telemetry will be missing."
-        )
-    except Exception as e:
-        logging.error(f"Failed to fetch GPU metrics: {e}")
-
-    return {"cpu": cpu_info, "gpus": gpus, "npus": npus}
-
+    cpu_info = get_cpu_info()
+    gpu_info, gpu_metrics_status = get_gpu_info()
+    npu_info = get_npu_info()
+    return cpu_info, gpu_info, npu_info, gpu_metrics_status
 
 @router.get("/metrics", dependencies=[Depends(verify_api_key)])
 async def get_metrics():
@@ -225,11 +290,12 @@ async def get_metrics():
     vm = psutil.virtual_memory()
     hw_metrics = await asyncio.to_thread(get_hardware_metrics)
 
+    cpu_info, gpus, npus, gpu_metrics_status = hw_metrics
     return {
         "cpus": [
             {
-                "id": hw_metrics["cpu"]["id"],
-                "name": hw_metrics["cpu"]["name"],
+                "id": cpu_info["id"],
+                "name": cpu_info["name"],
                 "cores": psutil.cpu_count(logical=False) or 1,
                 "threads": psutil.cpu_count(logical=True) or 1,
                 "usage": psutil.cpu_percent(),
@@ -237,8 +303,9 @@ async def get_metrics():
         ],
         "total_ram": vm.total // (1024 * 1024),
         "used_ram": vm.used // (1024 * 1024),
-        "gpus": hw_metrics["gpus"],
-        "npus": hw_metrics["npus"],
+        "gpus": gpus,
+        "npus": npus,
+        "gpu_metrics_worked": gpu_metrics_status,
     }
 
 

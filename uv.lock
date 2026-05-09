@@ -961,17 +961,6 @@ http = [
 ]
 
 [[package]]
-name = "gpu-metrics"
-version = "0.1.0"
-source = { directory = "gpu-metrics" }
-dependencies = [
-    { name = "pybind11" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "pybind11" }]
-
-[[package]]
 name = "grapheme"
 version = "0.6.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2197,7 +2186,6 @@ dependencies = [
     { name = "click" },
     { name = "ddgs" },
     { name = "fastapi" },
-    { name = "gpu-metrics" },
     { name = "huggingface-hub", extra = ["cli"] },
     { name = "ipykernel" },
     { name = "ipywidgets" },
@@ -2231,7 +2219,6 @@ requires-dist = [
     { name = "click", specifier = ">=8.2.1" },
     { name = "ddgs", specifier = ">=9.6.1" },
     { name = "fastapi", specifier = ">=0.116.1" },
-    { name = "gpu-metrics", directory = "gpu-metrics" },
     { name = "huggingface-hub", extras = ["cli"], specifier = ">=0.33.4" },
     { name = "ipykernel", specifier = ">=7.0.1" },
     { name = "ipywidgets", specifier = ">=8.1.7" },
