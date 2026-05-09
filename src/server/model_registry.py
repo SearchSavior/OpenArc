@@ -17,7 +17,6 @@ from src.server.models.registration import (
 )
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 @dataclass(frozen=False, slots=True)
 class ModelRecord:
@@ -52,7 +51,7 @@ class ModelRecord:
         if self.error_message:
             result["error_message"] = self.error_message
         return result
-    
+
 class ModelRegistry:
     """Tracks loaded models by private model_id. Async-safe."""
 
@@ -71,7 +70,7 @@ class ModelRegistry:
 
     async def register_load(self, loader: ModelLoadConfig) -> str:
         """Register and load a model, waiting for completion.
-        
+
         Raises:
             ValueError: If model name already exists
             Exception: Any exception during loading is propagated to caller
@@ -82,7 +81,7 @@ class ModelRegistry:
                 if existing_record.model_name == loader.model_name:
                     logger.info(f"Load failed! model_name '{loader.model_name}' already exists")
                     raise ValueError(f"model_name '{loader.model_name}' already registered")
-        
+
         # Create a model record with LOADING status
         record = ModelRecord(
             model_path=loader.model_path,
@@ -93,19 +92,19 @@ class ModelRegistry:
             runtime_config=loader.runtime_config,
             status=ModelStatus.LOADING,
         )
-        
+
         # Register the model record immediately
         async with self._lock:
             self._models[record.model_id] = record
-        
+
         # Start loading task
         loading_task = asyncio.create_task(self._load_task(record.model_id, loader))
-        
+
         # Update the record with the task reference
         async with self._lock:
             if record.model_id in self._models:
                 self._models[record.model_id].loading_task = loading_task
-        
+
         # Wait for loading to complete and propagate exceptions
         try:
             await loading_task
@@ -118,7 +117,7 @@ class ModelRegistry:
                         raise RuntimeError(f"Model loading failed: {error_msg}")
         except asyncio.CancelledError:
             raise RuntimeError("Model loading was cancelled")
-        
+
         return record.model_id
 
     async def register_unload(self, model_name: str) -> bool:
@@ -130,20 +129,20 @@ class ModelRegistry:
                 if record.model_name == model_name:
                     model_id = mid
                     break
-            
+
             if model_id is None:
                 return False
-            
+
             # Start background unload task
             asyncio.create_task(self._unload_task(model_id))
             return True
-    
+
     async def _load_task(self, model_id: str, load_config: ModelLoadConfig) -> None:
         """Background task to load a model and update its status."""
         try:
             # Load the model instance
             model_instance = await create_model_instance(load_config)
-            
+
             # Update the record with successful loading
             async with self._lock:
                 if model_id in self._models:
@@ -157,7 +156,7 @@ class ModelRegistry:
             # Fire loaded event callbacks outside the lock
             for cb in self._on_loaded:
                 asyncio.create_task(cb(record))
-                    
+
         except Exception as e:
             # Log the full exception with traceback
             logger.error(f"Model loading failed for {load_config.model_name}", exc_info=True)
@@ -169,7 +168,7 @@ class ModelRegistry:
                     record.status = ModelStatus.FAILED
                     record.error_message = str(e)
                     record.loading_task = None
-     
+
     async def _unload_task(self, model_id: str) -> None:
         """Background task to unload a model and clean up resources."""
         try:
@@ -178,7 +177,7 @@ class ModelRegistry:
                     return
                 record = self._models[model_id]
                 model_instance = record.model_instance
-            
+
             # Call the model's unload_model method if it exists and model is loaded
             if model_instance and hasattr(model_instance, 'unload_model'):
                 unload_fn = getattr(model_instance, 'unload_model')
@@ -191,7 +190,7 @@ class ModelRegistry:
                 # Await if coroutine/awaitable
                 if inspect.isawaitable(result):
                     await result
-            
+
             # Remove from registry
             async with self._lock:
                 removed_record = None
@@ -206,7 +205,7 @@ class ModelRegistry:
             if removed_record is not None:
                 for cb in self._on_unloaded:
                     asyncio.create_task(cb(removed_record))
-                    
+
         except Exception as e:
             logger.info(f"Error during model unload: {e}")
 
@@ -237,7 +236,7 @@ MODEL_CLASS_REGISTRY = {
 async def create_model_instance(load_config: ModelLoadConfig) -> Any:
     """Factory function to create the appropriate model instance based on engine type."""
     key = (load_config.engine, load_config.model_type)
-    
+
     if key not in MODEL_CLASS_REGISTRY:
         available = [f"{engine.value}/{model.value}" for engine, model in MODEL_CLASS_REGISTRY.keys()]
         error_msg = (
@@ -246,16 +245,14 @@ async def create_model_instance(load_config: ModelLoadConfig) -> Any:
         )
         logger.info(f"Model load failed: {error_msg}")
         raise ValueError(error_msg)
-    
+
     # Dynamic import and instantiation
     class_path = MODEL_CLASS_REGISTRY[key]
     module_path, class_name = class_path.rsplit('.', 1)
     module = importlib.import_module(module_path)
     model_class = getattr(module, class_name)
-    
+
     # Create and load model instance
     model_instance = model_class(load_config)
     await asyncio.to_thread(model_instance.load_model, load_config)
     return model_instance
-
-            

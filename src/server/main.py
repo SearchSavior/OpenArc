@@ -20,6 +20,7 @@ from src.server.routes.openai import router as openai_router
 from src.server.routes.openarc import router as openarc_router
 
 logger = logging.getLogger(__name__)
+_access_logger = logging.getLogger("openarc.access")
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
@@ -27,21 +28,21 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         start_time = time.time()
         client_ip = request.client.host if request.client else "unknown"
 
-        logger.info(
+        _access_logger.info(
             f"Request received: {request.method} {request.url.path} from {client_ip}"
         )
 
         try:
             response = await call_next(request)
             process_time = time.time() - start_time
-            logger.info(
+            _access_logger.info(
                 f"Request completed: {request.method} {request.url.path} "
                 f"status={response.status_code} duration={process_time:.3f}s"
             )
             return response
         except Exception as e:
             process_time = time.time() - start_time
-            logger.error(
+            _access_logger.error(
                 f"Request failed: {request.method} {request.url.path} "
                 f"error={str(e)} duration={process_time:.3f}s"
             )

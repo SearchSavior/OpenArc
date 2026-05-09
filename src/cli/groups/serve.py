@@ -21,9 +21,9 @@ def serve():
               help="""
               - Host to bind the server to
               """)
-@click.option("--port", 
-              type=int, 
-              default=8000, 
+@click.option("--port",
+              type=int,
+              default=8000,
               show_default=True,
               help="""
               - Port to bind the server to
@@ -33,43 +33,45 @@ def serve():
               help="Load models on startup. Specify once followed by space-separated model names.")
 @click.option("--use-api-key", is_flag=True, default=False,
               help="Require OPENARC_API_KEY for all requests.")
+@click.option("-v", "--verbose", count=True, default=0,
+              help="Increase verbosity: -v for warnings, -vv for info, -vvv for full access logs.")
 @click.argument('startup_models', nargs=-1, required=False)
 @click.pass_context
-def start(ctx, host, port, load_models, use_api_key, startup_models):
+def start(ctx, host, port, load_models, use_api_key, verbose, startup_models):
     """
     - 'start' reads --host and --port from config or defaults to 0.0.0.0:8000
-    
+
     Examples:
         openarc serve start
         openarc serve start --load-models model1 model2
         openarc serve start --lm Dolphin-X1 kokoro whisper
     """
     from ..modules.launch_server import start_server
-    
+
     # Save server configuration for other CLI commands to use
     config_path = ctx.obj.server_config.save_server_config(host, port)
     console.print(f"[dim]Configuration saved to: {config_path}[/dim]")
-    
+
     # Handle startup models
     models_to_load = []
     if load_models:
         models_to_load.append(load_models)
     if startup_models:
         models_to_load.extend(startup_models)
-    
+
     if models_to_load:
         saved_model_names = ctx.obj.server_config.get_model_names()
         missing = [m for m in models_to_load if m not in saved_model_names]
-        
+
         if missing:
             console.print("[yellow]Warning: Models not in config (will be skipped):[/yellow]")
             for m in missing:
                 console.print(f"   • {m}")
             console.print("[dim]Use 'openarc list' to see saved configurations.[/dim]\n")
-        
+
         os.environ["OPENARC_STARTUP_MODELS"] = ",".join(models_to_load)
         console.print(f"[blue]Models to load on startup:[/blue] {', '.join(models_to_load)}\n")
-    
+
     if use_api_key:
         if not os.getenv("OPENARC_API_KEY"):
             console.print("[red]Error: You chose to require an API key but OPENARC_API_KEY has not been set.[/red]")
@@ -81,4 +83,4 @@ def start(ctx, host, port, load_models, use_api_key, startup_models):
         console.print("[blue]OPENARC_API_KEY_REQUIRED=[/blue][yellow]False[/yellow] [dim][Clients do not need to authenticate.][/dim]")
 
     console.print(f"[green]Starting OpenArc server on {host}:{port}[/green]")
-    start_server(host=host, port=port)
+    start_server(host=host, port=port, verbose=verbose)

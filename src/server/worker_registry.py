@@ -25,7 +25,6 @@ from src.server.model_registry import ModelRecord, ModelRegistry
 from src.server.models.registration import ModelType
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 @dataclass
 class WorkerPacket:
@@ -73,11 +72,11 @@ class WorkerPacket:
 class InferWorker:
     """
     Handles generation for individual packets.
-    
+
     Responsibilities:
     - Execute generation requests using pipelines
 
-    
+
     Methods:
     - infer_llm: Process text-to-text generation requests
     - infer_vlm: Process image-to-text generation requests
@@ -86,7 +85,7 @@ class InferWorker:
     - infer_emb: Process embedding requests
     - infer_rerank: Process reranking requests
     """
-    
+
     @staticmethod
     async def infer_llm(packet: WorkerPacket, llm_instance: OVGenAI_LLM) -> WorkerPacket:
         """Generate text for a single packet using the OVGenAI_LLM pipeline"""
@@ -120,7 +119,7 @@ class InferWorker:
             # Signal error to stream if streaming
             if packet.gen_config.stream and packet.stream_queue is not None:
                 await packet.stream_queue.put(None)
-                
+
         return packet
 
     @staticmethod
@@ -156,7 +155,7 @@ class InferWorker:
             # Signal error to stream if streaming
             if packet.gen_config.stream and packet.stream_queue is not None:
                 await packet.stream_queue.put(None)
-                
+
         return packet
 
     @staticmethod
@@ -184,7 +183,7 @@ class InferWorker:
             # Store error in packet response
             packet.response = f"Error: {str(e)}"
             packet.metrics = None
-            
+
         return packet
 
     @staticmethod
@@ -253,7 +252,7 @@ class InferWorker:
             packet.metrics = None
 
         return packet
-    
+
     @staticmethod
     async def infer_qwen3_tts(packet: WorkerPacket, tts_model: OVQwen3TTS) -> WorkerPacket:
         """Generate speech audio for a single packet using the OVQwen3TTS engine."""
@@ -317,7 +316,7 @@ class InferWorker:
 
             packet.response = final_data
             packet.metrics = metrics
-            
+
         except Exception as e:
             # Log the full exception with traceback
             logger.error("EMB inference failed!", exc_info=True)
@@ -327,7 +326,7 @@ class InferWorker:
             # Signal error to stream if streaming
             if packet.gen_config.stream and packet.stream_queue is not None:
                 await packet.stream_queue.put(None)
-                
+
         return packet
 
     @staticmethod
@@ -345,7 +344,7 @@ class InferWorker:
 
             packet.response = final_data
             packet.metrics = metrics
-            
+
         except Exception as e:
             # Log the full exception with traceback
             logger.error("Reranking failed!", exc_info=True)
@@ -355,15 +354,15 @@ class InferWorker:
             # Signal error to stream if streaming
             if packet.gen_config.stream and packet.stream_queue is not None:
                 await packet.stream_queue.put(None)
-                
+
         return packet
-    
+
 class QueueWorker:
     """
     Manages inference worker loops for consuming and processing packets from model queues.
-    
+
     """
-    
+
     @staticmethod
     async def queue_worker_llm(model_name: str, model_queue: asyncio.Queue, llm_model: OVGenAI_LLM, registry: ModelRegistry):
         """Text model inference worker that processes packets from queue"""
@@ -486,7 +485,7 @@ class QueueWorker:
                 break
 
             # Log the text that was converted to speech
-            
+
             if completed_packet.metrics:
                 logger.info(f"[Kokoro Worker: {model_name}] Metrics: {completed_packet.metrics}")
 
@@ -569,12 +568,12 @@ class QueueWorker:
 class WorkerRegistry:
     """
     Central orchestrator for managing per-model inference workers and request routing.
-    
+
     WorkerRegistry serves as the main coordination layer that bridges the ModelRegistry
     with the actual inference execution. It automatically spawns and manages dedicated
     worker tasks for each loaded model, routing generation requests to the appropriate
     model-specific queues.
-    
+
 
     """
 
@@ -607,7 +606,7 @@ class WorkerRegistry:
         self._model_tasks_rerank: Dict[str, asyncio.Task] = {}
 
         self._lock = asyncio.Lock()
-        
+
         # Track active requests for cancellation: request_id -> (model_name, packet)
         self._active_requests: Dict[str, tuple[str, WorkerPacket]] = {}
 
@@ -687,7 +686,7 @@ class WorkerRegistry:
                     self._model_queues_emb[record.model_name] = q
                     task = asyncio.create_task(QueueWorker.queue_worker_emb(record.model_name, q, instance, self._model_registry))
                     self._model_tasks_emb[record.model_name] = task
-            
+
             elif mt == ModelType.RERANK and isinstance(instance, Optimum_RR):
                 if record.model_name not in self._model_queues_rerank:
                     q: asyncio.Queue = asyncio.Queue()
@@ -754,7 +753,7 @@ class WorkerRegistry:
                 await q.put(None)
             if t is not None and not t.done():
                 t.cancel()
-                
+
             # Try rerank dicts
             q = self._model_queues_rerank.pop(record.model_name, None)
             t = self._model_tasks_rerank.pop(record.model_name, None)
@@ -807,7 +806,7 @@ class WorkerRegistry:
         if q is not None:
             return q
         raise ValueError(f"Rerank model '{model_name}' is not loaded or no worker is available")
-    
+
     async def generate(self, model_name: str, gen_config: OVGenAI_GenConfig) -> Dict[str, Any]:
         """Generate text without streaming."""
         request_id = uuid.uuid4().hex
@@ -827,7 +826,7 @@ class WorkerRegistry:
         """Generate text with streaming."""
         request_id = uuid.uuid4().hex
         gen_config.request_id = request_id  # Set request_id for cancellation tracking
-        
+
         stream_queue: asyncio.Queue = asyncio.Queue()
         result_future: asyncio.Future = asyncio.get_running_loop().create_future()
         packet = WorkerPacket(
@@ -837,11 +836,11 @@ class WorkerRegistry:
             stream_queue=stream_queue,
             result_future=result_future,
         )
-        
+
         # Register active request
         async with self._lock:
             self._active_requests[request_id] = (model_name, packet)
-        
+
         try:
             q = self._get_model_queue(model_name)
             await q.put(packet)
@@ -858,17 +857,17 @@ class WorkerRegistry:
     async def infer_cancel(self, request_id: str) -> bool:
         """
         Cancel an ongoing inference request by request_id.
-        
+
         Args:
             request_id: The request ID to cancel
-            
+
         Returns:
             True if cancellation was triggered, False if request not found
         """
         async with self._lock:
             if request_id in self._active_requests:
                 model_name, _ = self._active_requests[request_id]
-                
+
                 # Look up model instance from ModelRegistry
                 async with self._model_registry._lock:
                     for record in self._model_registry._models.values():
@@ -968,7 +967,7 @@ class WorkerRegistry:
         await q.put(packet)
         completed = await result_future
         return {"audio_base64": completed.response or "", "metrics": completed.metrics or {}}
-    
+
     async def embed(self, model_name: str, tok_config: PreTrainedTokenizerConfig) -> Dict[str, Any]:
         """Create embeddings."""
         request_id = uuid.uuid4().hex
@@ -983,7 +982,7 @@ class WorkerRegistry:
         await q.put(packet)
         completed = await result_future
         return {"data": completed.response, "metrics": completed.metrics or {}}
-    
+
     async def rerank(self, model_name: str, rr_config: RerankerConfig) -> Dict[str, Any]:
         """Rerank documents."""
         request_id = uuid.uuid4().hex
