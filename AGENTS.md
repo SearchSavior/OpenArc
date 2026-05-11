@@ -10,3 +10,4 @@ OpenArc uses bleeding edge libraries and APIs you may not be familair with. When
 
 DO NOT:
 - Run uv sync without permission.
+- write files to /tmp. Use ./tmp instead.

@@ -18,7 +18,7 @@ from openvino_genai import (
 #MODEL_DIR    = ""
 MODEL_DIR  = "/mnt/Ironwolf-4TB/Models/OpenVINO/Deepseek/DeepSeek-R1-0528-Qwen3-8B-OpenVINO/DeepSeek-R1-0528-Qwen3-8B-int8_asym-ov/"
 DEVICE       = "HETERO:GPU.0,GPU.1"
-SONNET_PATH  = Path(__file__).parent / "sonnet.txt"
+SONNET_PATH  = "/home/echo/Projects/OpenArc/benchmark/sonnet.txt"
 
 NUM_REQUESTS = 72 # set of all requests to be processed in one step
 SEED         = 0
@@ -54,8 +54,10 @@ pipeline = ContinuousBatchingPipeline(
     scheduler_config=scheduler_config,
     properties={
         "MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"
-    }
-    #tokenizer=genai_tokenizer,
+    },
+    tokenizer_properties={},
+    vision_encoder_properties={}
+
 )
 
 # ── helpers ────────────────────────────────────────────────────────────────────
