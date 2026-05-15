@@ -19,9 +19,7 @@ from openvino_genai.py_openvino_genai import GenerationHandle
 # --------------------------------------------------------------------------- #
 
 MODEL_PATH = (
-    "/mnt/Ironwolf-4TB/Models/OpenVINO/Deepseek/"
-    "DeepSeek-R1-0528-Qwen3-8B-OpenVINO/"
-    "DeepSeek-R1-0528-Qwen3-8B-int4_asym-ov/"
+"/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen3.5/Qwen3.5-9B-int4_asym-ov/"
 )
 DEVICE = "GPU.0"
 
@@ -231,45 +229,6 @@ PROMPTS = [
     "prefer concrete defaults over open-ended choices — the reader "
     "is a competent engineer but new to fine-tuning.",
  
-    # ~600 tokens — philosophical / interpretive
-    "There's a recurring debate in the philosophy of mind about "
-    "whether large language models can be said to 'understand' "
-    "anything, or whether they only perform sophisticated pattern "
-    "matching that mimics understanding without instantiating it. "
-    "Steelman both sides of this debate as carefully as you can, "
-    "then offer your own analysis of where you think the debate "
-    "actually turns. Specifically, do the following. First, present "
-    "the strongest version of the position that LLMs do not "
-    "understand: include the Chinese Room argument, the symbol "
-    "grounding problem, and the more recent observation that "
-    "next-token prediction is in principle a purely syntactic "
-    "operation. Don't strawman these — present them as their best "
-    "proponents would. Second, present the strongest version of the "
-    "opposing view: that the dichotomy between 'real understanding' "
-    "and 'mere pattern matching' may not survive scrutiny, that "
-    "human cognition is also implemented in physical substrate "
-    "performing what could be described as pattern matching at "
-    "different levels, and that 'understanding' may be better "
-    "thought of as a graded functional property than a binary "
-    "metaphysical one. Cover the relevant empirical observations "
-    "about LLM behavior — both the failure cases that suggest "
-    "shallow processing and the success cases that suggest "
-    "something more is going on. Third, identify what you think "
-    "the debate actually turns on. Is it a substantive empirical "
-    "disagreement about what's happening inside these systems? Is "
-    "it a conceptual disagreement about what 'understanding' even "
-    "means? Is it a disagreement about which intuitions to trust "
-    "when our pre-theoretic concept of understanding is applied to "
-    "an entity quite different from a human? Be willing to take a "
-    "position, but be honest about the parts of your position that "
-    "feel less than fully resolved. Finally, propose an experiment "
-    "or observation that, if its result came out one way versus "
-    "another, would actually move you on this question — and if no "
-    "such experiment exists, explain why and what that tells us "
-    "about the nature of the debate. The response should treat the "
-    "reader as a thoughtful interlocutor capable of holding "
-    "multiple views in mind simultaneously, not as someone who "
-    "needs to be convinced of a predetermined conclusion.",
 ]
 
 
@@ -382,9 +341,9 @@ def build_scheduler_config() -> ov_genai.SchedulerConfig:
     config = ov_genai.SchedulerConfig()
     config.max_num_batched_tokens = 3072
     config.max_num_seqs = 16
-    config.cache_size = 12
+    config.cache_size = 22
     config.dynamic_split_fuse = True
-    config.enable_prefix_caching = False
+    config.enable_prefix_caching = True
     return config
 
 
