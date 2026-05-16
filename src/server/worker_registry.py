@@ -17,6 +17,7 @@ from src.engine.openvino.qwen3_asr.qwen3_asr import OVQwen3ASR
 from src.engine.openvino.qwen3_tts.qwen3_tts import OVQwen3TTS
 from src.engine.optimum.optimum_emb import Optimum_EMB
 from src.engine.optimum.optimum_rr import Optimum_RR
+from src.engine.optimum.optimum_vlm import Optimum_VLM
 
 from src.server.models.openvino import OV_KokoroGenConfig, OV_Qwen3ASRGenConfig, OV_Qwen3TTSGenConfig
 from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
@@ -85,6 +86,7 @@ class InferWorker:
     - infer_kokoro: Process speech generation requests
     - infer_emb: Process embedding requests
     - infer_rerank: Process reranking requests
+    - infer_optimum_vlm: Process Optimum-Intel VLM generation requests
     """
     
     @staticmethod
@@ -357,6 +359,14 @@ class InferWorker:
                 await packet.stream_queue.put(None)
                 
         return packet
+
+    @staticmethod
+    async def infer_optimum_vlm(packet: WorkerPacket, vlm_model: Optimum_VLM) -> WorkerPacket:
+        """Generate text from image for a single packet using the Optimum_VLM pipeline (stub)."""
+        # Implementation deferred: wire `vlm_model.generate_type` when inference is ready.
+        packet.response = ""
+        packet.metrics = None
+        return packet
     
 class QueueWorker:
     """
@@ -410,6 +420,33 @@ class QueueWorker:
 
             if completed_packet.metrics:
                 logger.info(f"[VLM Worker: {model_name}] Metrics: {completed_packet.metrics}")
+
+            if packet.result_future is not None and not packet.result_future.done():
+                packet.result_future.set_result(completed_packet)
+
+            model_queue.task_done()
+
+    @staticmethod
+    async def queue_worker_optimum_vlm(
+        model_name: str, model_queue: asyncio.Queue, vlm_model: Optimum_VLM, registry: ModelRegistry
+    ):
+        """Optimum VLM inference worker that processes packets from queue."""
+        logger.info(f"[Optimum VLM Worker: {model_name}] Started, waiting for packets...")
+        while True:
+            packet = await model_queue.get()
+            if packet is None:
+                logger.info(f"[Optimum VLM Worker: {model_name}] Shutdown signal received.")
+                break
+
+            completed_packet = await InferWorker.infer_optimum_vlm(packet, vlm_model)
+
+            if completed_packet.response and completed_packet.response.startswith("Error:"):
+                logger.error(f"[Optimum VLM Worker: {model_name}] Inference failed, triggering model unload...")
+                asyncio.create_task(registry.register_unload(model_name))
+                break
+
+            if completed_packet.metrics:
+                logger.info(f"[Optimum VLM Worker: {model_name}] Metrics: {completed_packet.metrics}")
 
             if packet.result_future is not None and not packet.result_future.done():
                 packet.result_future.set_result(completed_packet)
@@ -588,6 +625,9 @@ class WorkerRegistry:
         self._model_queues_vlm: Dict[str, asyncio.Queue] = {}
         self._model_tasks_vlm: Dict[str, asyncio.Task] = {}
 
+        self._model_queues_optimum_vlm: Dict[str, asyncio.Queue] = {}
+        self._model_tasks_optimum_vlm: Dict[str, asyncio.Task] = {}
+
         self._model_queues_whisper: Dict[str, asyncio.Queue] = {}
         self._model_tasks_whisper: Dict[str, asyncio.Task] = {}
 
@@ -644,6 +684,15 @@ class WorkerRegistry:
                     self._model_queues_vlm[record.model_name] = q
                     task = asyncio.create_task(QueueWorker.queue_worker_vlm(record.model_name, q, instance, self._model_registry))
                     self._model_tasks_vlm[record.model_name] = task
+
+            elif mt == ModelType.OPTIMUM_VLM and isinstance(instance, Optimum_VLM):
+                if record.model_name not in self._model_queues_optimum_vlm:
+                    q: asyncio.Queue = asyncio.Queue()
+                    self._model_queues_optimum_vlm[record.model_name] = q
+                    task = asyncio.create_task(
+                        QueueWorker.queue_worker_optimum_vlm(record.model_name, q, instance, self._model_registry)
+                    )
+                    self._model_tasks_optimum_vlm[record.model_name] = task
 
             elif mt == ModelType.WHISPER and isinstance(instance, OVGenAI_Whisper):
                 if record.model_name not in self._model_queues_whisper:
@@ -715,6 +764,14 @@ class WorkerRegistry:
             if t is not None and not t.done():
                 t.cancel()
 
+            # Try optimum VLM dicts
+            q = self._model_queues_optimum_vlm.pop(record.model_name, None)
+            t = self._model_tasks_optimum_vlm.pop(record.model_name, None)
+            if q is not None:
+                await q.put(None)
+            if t is not None and not t.done():
+                t.cancel()
+
             # Try whisper dicts
             q = self._model_queues_whisper.pop(record.model_name, None)
             t = self._model_tasks_whisper.pop(record.model_name, None)
@@ -770,7 +827,16 @@ class WorkerRegistry:
         q = self._model_queues_vlm.get(model_name)
         if q is not None:
             return q
+        q = self._model_queues_optimum_vlm.get(model_name)
+        if q is not None:
+            return q
         raise ValueError(f"Model '{model_name}' is not loaded or no worker is available")
+
+    def _get_optimum_vlm_queue(self, model_name: str) -> asyncio.Queue:
+        q = self._model_queues_optimum_vlm.get(model_name)
+        if q is not None:
+            return q
+        raise ValueError(f"Optimum VLM model '{model_name}' is not loaded or no worker is available")
 
     def _get_whisper_queue(self, model_name: str) -> asyncio.Queue:
         q = self._model_queues_whisper.get(model_name)

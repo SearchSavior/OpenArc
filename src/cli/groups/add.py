@@ -24,10 +24,10 @@ from ..utils import validate_model_path
     type=click.Choice([
         'llm', 'vlm', 'whisper', 'qwen3_asr', 'kokoro',
         'qwen3_tts_custom_voice', 'qwen3_tts_voice_design', 'qwen3_tts_voice_clone',
-        'emb', 'rerank',
+        'emb', 'rerank', 'optimum_vlm',
     ]),
     required=True,
-    help='Model type (llm, vlm, whisper, qwen3_asr, kokoro, qwen3_tts_custom_voice, qwen3_tts_voice_design, qwen3_tts_voice_clone, emb, rerank)')
+    help='Model type (llm, vlm, whisper, qwen3_asr, kokoro, qwen3_tts_custom_voice, qwen3_tts_voice_design, qwen3_tts_voice_clone, emb, rerank, optimum_vlm)')
 @click.option('--device', '--d',
     required=True,
     help='Device(s) to load the model on.')
