@@ -86,13 +86,40 @@ class ArcCBLLM:
         return ov.Tensor(prompt_token_ids)
 
     def add_request(self, request_id: int, gen_config: OVGenAI_GenConfig):
-        """Add one LLM request through the input_ids ContinuousBatchingPipeline overload."""
+        """
+        Add one LLM request through the input_ids ContinuousBatchingPipeline overload.
+
+        Returns:
+            (handle, n_input_tokens) so the daemon can do per-request token accounting.
+        """
         if self.model is None:
             raise RuntimeError("Continuous batching pipeline is not loaded")
 
         request_input = self.prepare_inputs(gen_config.messages, gen_config.tools)
+        n_input_tokens = int(request_input.shape[-1])
         generation_config = self.create_generation_config(gen_config)
-        return self.model.add_request(request_id, request_input, generation_config)
+        handle = self.model.add_request(request_id, request_input, generation_config)
+        return handle, n_input_tokens
+
+    def step(self) -> None:
+        """Advance the continuous batching scheduler by one step."""
+        if self.model is None:
+            raise RuntimeError("Continuous batching pipeline is not loaded")
+        self.model.step()
+
+    def has_non_finished_requests(self) -> bool:
+        if self.model is None:
+            return False
+        return self.model.has_non_finished_requests()
+
+    def decode(self, token_ids: List[int]) -> str:
+        """Decode token ids with the pipeline's own tokenizer (required for CB streaming)."""
+        if self.model is None:
+            raise RuntimeError("Continuous batching pipeline is not loaded")
+        decoded = self.model.get_tokenizer().decode(token_ids)
+        if isinstance(decoded, list):
+            return decoded[0] if decoded else ""
+        return decoded
 
     def create_generation_config(self, config: OVGenAI_GenConfig) -> genai.GenerationConfig:
         generation_config = self.model.get_config() if self.model else genai.GenerationConfig()
@@ -110,32 +137,35 @@ class ArcCBLLM:
             generation_config.presence_penalty = config.presence_penalty
         return generation_config
 
-    def collect_metrics(self) -> Dict[str, Any]:
-        """Collect all public ContinuousBatchingPipeline metrics."""
-        if self.model is None:
-            raise RuntimeError("Continuous batching pipeline is not loaded")
+    def collect_metrics(self, input_token: int, new_token: int) -> Dict[str, Any]:
+        """
+        Per-request token accounting for one streamed CB request.
 
-        metrics = self.model.get_metrics()
+        The route (/v1/chat/completions) reads `input_token`, `new_token`,
+        `total_token` to populate OpenAI `usage`. PipelineMetrics is
+        process-level (not per-request) so it is only attached as extra
+        informational fields and never substitutes the per-request counts.
+        """
         metrics_dict: Dict[str, Any] = {
-            "requests": metrics.requests,
-            "scheduled_requests": metrics.scheduled_requests,
-            "cache_usage": metrics.cache_usage,
-            "max_cache_usage": metrics.max_cache_usage,
-            "avg_cache_usage": metrics.avg_cache_usage,
-            "kv_cache_size_in_bytes": metrics.kv_cache_size_in_bytes,
+            "input_token": int(input_token),
+            "new_token": int(new_token),
+            "total_token": int(input_token) + int(new_token),
+            "stream": True,
+            "backend": "cb",
         }
 
-        for name in dir(metrics):
-            if name.startswith("_") or name in metrics_dict:
-                continue
+        if self.model is not None:
             try:
-                value = getattr(metrics, name)
+                pm = self.model.get_metrics()
+                metrics_dict["cb_pipeline"] = {
+                    "requests": pm.requests,
+                    "scheduled_requests": pm.scheduled_requests,
+                    "cache_usage": pm.cache_usage,
+                    "max_cache_usage": pm.max_cache_usage,
+                    "avg_cache_usage": pm.avg_cache_usage,
+                }
             except Exception:
-                continue
-            if callable(value):
-                continue
-            if isinstance(value, (str, int, float, bool, type(None))):
-                metrics_dict[name] = value
+                pass
 
         return metrics_dict
 
