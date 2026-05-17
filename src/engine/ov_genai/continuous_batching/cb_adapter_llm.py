@@ -31,8 +31,12 @@ class ArcCBLLM:
         logger.info("%s loading continuous batching pipeline...", loader.model_name)
         logger.info("%s on %s with %s", loader.model_type, loader.device, loader.runtime_config)
 
+        # runtime_config -> device properties (--runtime-config), passed
+        # through unchanged. cb_config -> SchedulerConfig (--cb_config), a
+        # separate object. They are distinct inputs that share one load
+        # entrypoint; do not mix them.
         runtime_config = dict(loader.runtime_config or {})
-        scheduler = self._build_scheduler_config(runtime_config)
+        scheduler = self._build_scheduler_config(dict(loader.cb_config or {}))
 
         self.model = genai.ContinuousBatchingPipeline(
             loader.model_path,
@@ -86,13 +90,54 @@ class ArcCBLLM:
         return ov.Tensor(prompt_token_ids)
 
     def add_request(self, request_id: int, gen_config: OVGenAI_GenConfig):
-        """Add one LLM request through the input_ids ContinuousBatchingPipeline overload."""
+        """
+        Add one LLM request through the input_ids ContinuousBatchingPipeline overload.
+
+        Returns:
+            (handle, n_input_tokens) so the daemon can do per-request token accounting.
+        """
         if self.model is None:
             raise RuntimeError("Continuous batching pipeline is not loaded")
 
         request_input = self.prepare_inputs(gen_config.messages, gen_config.tools)
-        generation_config = self.create_generation_config(gen_config)
-        return self.model.add_request(request_id, request_input, generation_config)
+        n_input_tokens = int(request_input.shape[-1])
+        generation_config = self._cb_generation_config(gen_config)
+        handle = self.model.add_request(request_id, request_input, generation_config)
+        return handle, n_input_tokens
+
+    @staticmethod
+    def _cb_generation_config(gen_config: OVGenAI_GenConfig) -> genai.GenerationConfig:
+        """
+        Build a fresh GenerationConfig exactly as every CB example does
+        (add_request_example.py:39, cb_vs_llmpipe.py, batch_metrics_streaming.py):
+        a new genai.GenerationConfig() with only max_new_tokens and do_sample.
+        Samplers are out of scope for the CB prototype; greedy decode.
+        """
+        cfg = genai.GenerationConfig()
+        cfg.max_new_tokens = gen_config.max_tokens
+        cfg.do_sample = False
+        return cfg
+
+    def step(self) -> None:
+        """Advance the continuous batching scheduler by one step."""
+        if self.model is None:
+            raise RuntimeError("Continuous batching pipeline is not loaded")
+        self.model.step()
+
+    def has_non_finished_requests(self) -> bool:
+        if self.model is None:
+            return False
+        return self.model.has_non_finished_requests()
+
+    def decode(self, token_ids: List[int]) -> str:
+        """
+        Decode ids with the pipeline's own tokenizer. The CB examples
+        (add_request_example.py:122) decode a flat list[int] and use the
+        result directly as a str (`.strip()`), so we return it as-is.
+        """
+        if self.model is None:
+            raise RuntimeError("Continuous batching pipeline is not loaded")
+        return self.model.get_tokenizer().decode(token_ids)
 
     def create_generation_config(self, config: OVGenAI_GenConfig) -> genai.GenerationConfig:
         generation_config = self.model.get_config() if self.model else genai.GenerationConfig()
@@ -110,46 +155,40 @@ class ArcCBLLM:
             generation_config.presence_penalty = config.presence_penalty
         return generation_config
 
-    def collect_metrics(self) -> Dict[str, Any]:
-        """Collect all public ContinuousBatchingPipeline metrics."""
-        if self.model is None:
-            raise RuntimeError("Continuous batching pipeline is not loaded")
+    def collect_metrics(self, input_token: int, new_token: int) -> Dict[str, Any]:
+        """
+        Per-request token accounting for one streamed CB request.
 
-        metrics = self.model.get_metrics()
+        The route (/v1/chat/completions) reads `input_token`, `new_token`,
+        `total_token` to populate OpenAI `usage`. PipelineMetrics is
+        process-level (not per-request) so it is only attached as extra
+        informational fields and never substitutes the per-request counts.
+        """
         metrics_dict: Dict[str, Any] = {
-            "requests": metrics.requests,
-            "scheduled_requests": metrics.scheduled_requests,
-            "cache_usage": metrics.cache_usage,
-            "max_cache_usage": metrics.max_cache_usage,
-            "avg_cache_usage": metrics.avg_cache_usage,
-            "kv_cache_size_in_bytes": metrics.kv_cache_size_in_bytes,
+            "input_token": int(input_token),
+            "new_token": int(new_token),
+            "total_token": int(input_token) + int(new_token),
+            "stream": True,
+            "backend": "cb",
         }
 
-        for name in dir(metrics):
-            if name.startswith("_") or name in metrics_dict:
-                continue
+        if self.model is not None:
             try:
-                value = getattr(metrics, name)
+                pm = self.model.get_metrics()
+                metrics_dict["cb_pipeline"] = {
+                    "requests": pm.requests,
+                    "scheduled_requests": pm.scheduled_requests,
+                    "cache_usage": pm.cache_usage,
+                    "max_cache_usage": pm.max_cache_usage,
+                    "avg_cache_usage": pm.avg_cache_usage,
+                }
             except Exception:
-                continue
-            if callable(value):
-                continue
-            if isinstance(value, (str, int, float, bool, type(None))):
-                metrics_dict[name] = value
+                pass
 
         return metrics_dict
 
-    def _build_scheduler_config(self, runtime_config: dict[str, Any]) -> genai.SchedulerConfig:
-        scheduler_values = {
-            **{
-                key: runtime_config[key]
-                for key in ContinuousBatchConfig.model_fields
-                if key in runtime_config
-            },
-            **runtime_config.get("scheduler_config", {}),
-            **runtime_config.get("scheduler", {}),
-        }
-        cb_config = ContinuousBatchConfig(**scheduler_values)
+    def _build_scheduler_config(self, cb_config_values: dict[str, Any]) -> genai.SchedulerConfig:
+        cb_config = ContinuousBatchConfig(**cb_config_values)
 
         scheduler = genai.SchedulerConfig()
         scheduler.max_num_batched_tokens = cb_config.max_num_batched_tokens

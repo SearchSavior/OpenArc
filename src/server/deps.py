@@ -4,6 +4,7 @@ import os
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from src.server.cb_daemons import CBRouter
 from src.server.model_registry import ModelRegistry
 from src.server.worker_registry import WorkerRegistry
 
@@ -11,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 _registry = ModelRegistry()
 _workers = WorkerRegistry(_registry)
+_cb_router = CBRouter(_registry)
 
 API_KEY = os.getenv("OPENARC_API_KEY")
 AUTH_REQUIRED = os.getenv("OPENARC_API_KEY_REQUIRED", "false").lower() == "true"

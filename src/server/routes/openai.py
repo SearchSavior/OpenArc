@@ -10,7 +10,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from src.server.deps import _registry, _workers, verify_api_key
+from src.server.deps import _cb_router, _registry, _workers, verify_api_key
 from src.server.models.openvino import KokoroLanguage, KokoroVoice
 from src.server.models.optimum import PreTrainedTokenizerConfig, RerankerConfig
 from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
@@ -150,7 +150,25 @@ async def openai_chat_completions(
         created_ts = int(time.time())
         request_id = f"ov-{uuid.uuid4().hex[:24]}"
 
+        selected_model_type = None
+        async with _registry._lock:
+            for record in _registry._models.values():
+                if record.model_name == model_name:
+                    selected_model_type = record.model_type
+                    break
+
+        is_cb = (
+            selected_model_type is not None
+            and ModelType(selected_model_type) == ModelType.CB_LLM
+        )
+
         if generation_config.stream:
+
+            stream_source = (
+                _cb_router.stream_generate(model_name, generation_config)
+                if is_cb
+                else _workers.stream_generate(model_name, generation_config)
+            )
 
             async def event_stream() -> AsyncIterator[bytes]:
                 accumulated_text = ""
@@ -160,9 +178,7 @@ async def openai_chat_completions(
                 cancel_request_id = None
 
                 try:
-                    async for item in _workers.stream_generate(
-                        model_name, generation_config
-                    ):
+                    async for item in stream_source:
                         if cancel_request_id is None and generation_config.request_id:
                             cancel_request_id = generation_config.request_id
 

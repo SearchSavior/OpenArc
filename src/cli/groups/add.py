@@ -22,18 +22,21 @@ from ..utils import validate_model_path
     help='Engine used to load the model (ovgenai, openvino, optimum)')
 @click.option('--model-type', '--mt',
     type=click.Choice([
-        'llm', 'vlm', 'whisper', 'qwen3_asr', 'kokoro',
+        'llm', 'vlm', 'cb_llm', 'cb_vlm', 'whisper', 'qwen3_asr', 'kokoro',
         'qwen3_tts_custom_voice', 'qwen3_tts_voice_design', 'qwen3_tts_voice_clone',
         'emb', 'rerank',
     ]),
     required=True,
-    help='Model type (llm, vlm, whisper, qwen3_asr, kokoro, qwen3_tts_custom_voice, qwen3_tts_voice_design, qwen3_tts_voice_clone, emb, rerank)')
+    help='Model type (llm, vlm, cb_llm, cb_vlm, whisper, qwen3_asr, kokoro, qwen3_tts_custom_voice, qwen3_tts_voice_design, qwen3_tts_voice_clone, emb, rerank)')
 @click.option('--device', '--d',
     required=True,
     help='Device(s) to load the model on.')
 @click.option("--runtime-config", "--rtc",
     default=None,
-    help='OpenVINO runtime configuration as JSON string (e.g., \'{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}\').')
+    help='OpenVINO device properties as JSON string (e.g., \'{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}\').')
+@click.option("--cb-config", "--cbc",
+    default=None,
+    help='Continuous batching SchedulerConfig as JSON string (cb_llm/cb_vlm), e.g. \'{"cache_size": 4, "max_num_seqs": 16}\'.')
 @click.option('--vlm-type', '--vt',
     type=click.Choice(['internvl2', 'llava15', 'llavanext', 'minicpmv26', 'phi3vision', 'phi4mm', 'qwen2vl', 'qwen25vl', 'qwen3vl', 'gemma3', 'gemma4']),
     required=False,
@@ -58,7 +61,7 @@ from ..utils import validate_model_path
     type=float,
     help='Confidence threshold for accepting draft tokens.')
 @click.pass_context
-def add(ctx, model_path, model_name, engine, model_type, device, runtime_config, vlm_type, draft_model_path, draft_device, num_assistant_tokens, assistant_confidence_threshold):
+def add(ctx, model_path, model_name, engine, model_type, device, runtime_config, cb_config, vlm_type, draft_model_path, draft_device, num_assistant_tokens, assistant_confidence_threshold):
     """- Add a model configuration to the config file."""
     
     # Validate model path
@@ -80,14 +83,29 @@ def add(ctx, model_path, model_name, engine, model_type, device, runtime_config,
             console.print('[yellow]Example format: \'{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}\'[/yellow]')
             ctx.exit(1)
     
+    # Parse cb_config if provided (continuous batching SchedulerConfig)
+    parsed_cb_config = {}
+    if cb_config:
+        try:
+            parsed_cb_config = json.loads(cb_config)
+            if not isinstance(parsed_cb_config, dict):
+                console.print(f"[red]Error: cb_config must be a JSON object (dictionary), got {type(parsed_cb_config).__name__}[/red]")
+                console.print('[yellow]Example format: \'{"cache_size": 4, "max_num_seqs": 16}\'[/yellow]')
+                ctx.exit(1)
+        except json.JSONDecodeError as e:
+            console.print(f"[red]Error parsing cb_config JSON:[/red] {e}")
+            console.print('[yellow]Example format: \'{"cache_size": 4, "max_num_seqs": 16}\'[/yellow]')
+            ctx.exit(1)
+
     # Build and save configuration
     load_config = {
         "model_name": model_name,
-        "model_path": model_path,  
-        "model_type": model_type,  
-        "engine": engine,    
+        "model_path": model_path,
+        "model_type": model_type,
+        "engine": engine,
         "device": device,
         "runtime_config": parsed_runtime_config,
+        "cb_config": parsed_cb_config,
         "vlm_type": vlm_type if vlm_type else None
     }
     
