@@ -97,9 +97,22 @@ class ArcCBLLM:
 
         request_input = self.prepare_inputs(gen_config.messages, gen_config.tools)
         n_input_tokens = int(request_input.shape[-1])
-        generation_config = self.create_generation_config(gen_config)
+        generation_config = self._cb_generation_config(gen_config)
         handle = self.model.add_request(request_id, request_input, generation_config)
         return handle, n_input_tokens
+
+    @staticmethod
+    def _cb_generation_config(gen_config: OVGenAI_GenConfig) -> genai.GenerationConfig:
+        """
+        Build a fresh GenerationConfig exactly as every CB example does
+        (add_request_example.py:39, cb_vs_llmpipe.py, batch_metrics_streaming.py):
+        a new genai.GenerationConfig() with only max_new_tokens and do_sample.
+        Samplers are out of scope for the CB prototype; greedy decode.
+        """
+        cfg = genai.GenerationConfig()
+        cfg.max_new_tokens = gen_config.max_tokens
+        cfg.do_sample = False
+        return cfg
 
     def step(self) -> None:
         """Advance the continuous batching scheduler by one step."""
@@ -113,13 +126,14 @@ class ArcCBLLM:
         return self.model.has_non_finished_requests()
 
     def decode(self, token_ids: List[int]) -> str:
-        """Decode token ids with the pipeline's own tokenizer (required for CB streaming)."""
+        """
+        Decode ids with the pipeline's own tokenizer. The CB examples
+        (add_request_example.py:122) decode a flat list[int] and use the
+        result directly as a str (`.strip()`), so we return it as-is.
+        """
         if self.model is None:
             raise RuntimeError("Continuous batching pipeline is not loaded")
-        decoded = self.model.get_tokenizer().decode(token_ids)
-        if isinstance(decoded, list):
-            return decoded[0] if decoded else ""
-        return decoded
+        return self.model.get_tokenizer().decode(token_ids)
 
     def create_generation_config(self, config: OVGenAI_GenConfig) -> genai.GenerationConfig:
         generation_config = self.model.get_config() if self.model else genai.GenerationConfig()
