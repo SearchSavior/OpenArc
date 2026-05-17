@@ -30,6 +30,12 @@ class FakeArc:
         # Each id 0..25 -> 'a'..'z'; deterministic and prefix-stable.
         return "".join(chr(ord("a") + (i % 26)) for i in ids)
 
+    def step(self):
+        pass
+
+    def has_non_finished_requests(self):
+        return False
+
     def collect_metrics(self, input_token, new_token):
         self.metrics_calls.append((input_token, new_token))
         return {
