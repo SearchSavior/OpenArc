@@ -31,25 +31,18 @@ class ArcCBLLM:
         logger.info("%s loading continuous batching pipeline...", loader.model_name)
         logger.info("%s on %s with %s", loader.model_type, loader.device, loader.runtime_config)
 
+        # runtime_config -> device properties (--runtime-config), passed
+        # through unchanged. cb_config -> SchedulerConfig (--cb_config), a
+        # separate object. They are distinct inputs that share one load
+        # entrypoint; do not mix them.
         runtime_config = dict(loader.runtime_config or {})
-        scheduler = self._build_scheduler_config(runtime_config)
-
-        # Scheduler params belong on SchedulerConfig only; the CB examples never
-        # pass them as device properties. Strip them so the CPU/GPU plugin does
-        # not reject keys like `cache_size` as unsupported properties.
-        scheduler_keys = set(ContinuousBatchConfig.model_fields) | {
-            "scheduler",
-            "scheduler_config",
-        }
-        device_properties = {
-            k: v for k, v in runtime_config.items() if k not in scheduler_keys
-        }
+        scheduler = self._build_scheduler_config(dict(loader.cb_config or {}))
 
         self.model = genai.ContinuousBatchingPipeline(
             loader.model_path,
             scheduler_config=scheduler,
             device=loader.device,
-            properties=device_properties,
+            properties=runtime_config,
             tokenizer_properties={},
             vision_encoder_properties={},
         )
@@ -194,17 +187,8 @@ class ArcCBLLM:
 
         return metrics_dict
 
-    def _build_scheduler_config(self, runtime_config: dict[str, Any]) -> genai.SchedulerConfig:
-        scheduler_values = {
-            **{
-                key: runtime_config[key]
-                for key in ContinuousBatchConfig.model_fields
-                if key in runtime_config
-            },
-            **runtime_config.get("scheduler_config", {}),
-            **runtime_config.get("scheduler", {}),
-        }
-        cb_config = ContinuousBatchConfig(**scheduler_values)
+    def _build_scheduler_config(self, cb_config_values: dict[str, Any]) -> genai.SchedulerConfig:
+        cb_config = ContinuousBatchConfig(**cb_config_values)
 
         scheduler = genai.SchedulerConfig()
         scheduler.max_num_batched_tokens = cb_config.max_num_batched_tokens

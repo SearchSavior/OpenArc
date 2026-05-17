@@ -90,7 +90,10 @@ class ModelLoadConfig(BaseModel):
     )
     runtime_config: Dict[str, Any] = Field(
         default_factory=dict,
-        description="Optional OpenVINO runtime properties.")
+        description="Optional OpenVINO runtime properties (device properties).")
+    cb_config: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Continuous batching SchedulerConfig options (cb_llm/cb_vlm). Separate from runtime_config.")
 
     draft_model_path: Optional[str] = Field(
         default=None,

@@ -32,7 +32,8 @@ class CBEndToEnd(unittest.TestCase):
             model_type=ModelType.CB_LLM,
             engine=EngineType.OV_GENAI,
             device="CPU",
-            runtime_config={
+            runtime_config={},
+            cb_config={
                 "cache_size": 1,
                 "max_num_seqs": 4,
                 "max_num_batched_tokens": 512,
