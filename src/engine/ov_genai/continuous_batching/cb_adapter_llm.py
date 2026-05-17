@@ -34,11 +34,22 @@ class ArcCBLLM:
         runtime_config = dict(loader.runtime_config or {})
         scheduler = self._build_scheduler_config(runtime_config)
 
+        # Scheduler params belong on SchedulerConfig only; the CB examples never
+        # pass them as device properties. Strip them so the CPU/GPU plugin does
+        # not reject keys like `cache_size` as unsupported properties.
+        scheduler_keys = set(ContinuousBatchConfig.model_fields) | {
+            "scheduler",
+            "scheduler_config",
+        }
+        device_properties = {
+            k: v for k, v in runtime_config.items() if k not in scheduler_keys
+        }
+
         self.model = genai.ContinuousBatchingPipeline(
             loader.model_path,
             scheduler_config=scheduler,
             device=loader.device,
-            properties=runtime_config,
+            properties=device_properties,
             tokenizer_properties={},
             vision_encoder_properties={},
         )

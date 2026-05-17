@@ -10,7 +10,7 @@ import importlib.util
 import os
 import unittest
 
-MODEL_DIR = os.environ.get("CB_TEST_MODEL", "/tmp/lfm25")
+MODEL_DIR = os.environ.get("CB_TEST_MODEL", "/tmp/qwen3-06b")
 HAS_GENAI = importlib.util.find_spec("openvino_genai") is not None
 RUNNABLE = HAS_GENAI and os.path.isdir(MODEL_DIR)
 
@@ -39,15 +39,7 @@ class CBEndToEnd(unittest.TestCase):
             },
         )
         cls.arc = ArcCBLLM(cls.loader)
-        try:
-            cls.arc.load_model(cls.loader)
-        except RuntimeError as exc:
-            if "undeclared parameters" in str(exc):
-                raise unittest.SkipTest(
-                    "model IR / openvino runtime mismatch: "
-                    f"{str(exc).splitlines()[-1]}"
-                )
-            raise
+        cls.arc.load_model(cls.loader)
 
     def _gen_cfg(self, **kw):
         from src.server.models.ov_genai import OVGenAI_GenConfig
