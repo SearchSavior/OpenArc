@@ -143,6 +143,24 @@ class AdmitErrorIsolation(unittest.TestCase):
         asyncio.run(run())
 
 
+class IgnoredFinalize(unittest.TestCase):
+    def test_ignored_request_closes_with_none_no_metrics(self):
+        async def run():
+            arc = FakeArc()
+            d = CBInferDaemon("m", arc)
+            st, req = _state(arc, _GenCfg(stream_chunk_tokens=1))
+            st.generated_ids.extend([0, 1])
+            st.ignored = True
+
+            await d._finalize(st)
+
+            items = await _drain(req.stream_queue)
+            self.assertEqual(items, [None])             # no text, no metrics
+            self.assertEqual(arc.metrics_calls, [])     # collect_metrics not called
+
+        asyncio.run(run())
+
+
 @unittest.skipUnless(HAS_GENAI, "openvino_genai not installed")
 class FullLoopIntegration(unittest.TestCase):
     def test_single_request_full_sequence(self):
@@ -156,11 +174,18 @@ class FullLoopIntegration(unittest.TestCase):
                     return self._i < len(self._reads)
 
                 def read(self):
+                    import openvino_genai as genai
+
                     class O:
                         pass
                     o = O()
                     o.generated_ids = self._reads[self._i]
                     self._i += 1
+                    o.finish_reason = (
+                        genai.GenerationFinishReason.STOP
+                        if self._i >= len(self._reads)
+                        else genai.GenerationFinishReason.NONE
+                    )
                     return {0: o}
 
                 def get_status(self):

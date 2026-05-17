@@ -36,6 +36,7 @@ class _ActiveState:
     generated_ids: List[int] = field(default_factory=list)
     last_print_len: int = 0          # length of decoded text already emitted
     emitted_tokens: int = 0          # number of generated ids already emitted
+    ignored: bool = False            # request was OOM-dropped (GenerationStatus.IGNORED)
 
 
 class CBInferDaemon:
@@ -85,7 +86,16 @@ class CBInferDaemon:
     async def _run(self) -> None:
         import openvino_genai as genai
 
-        running_status = genai.GenerationStatus.RUNNING
+        # Terminal handling mirrors rotating_requests_example.py: a per-output
+        # finish_reason != NONE marks completion, and these statuses are terminal.
+        finished_reason_none = genai.GenerationFinishReason.NONE
+        terminal_statuses = (
+            genai.GenerationStatus.FINISHED,
+            genai.GenerationStatus.IGNORED,
+            genai.GenerationStatus.CANCEL,
+            genai.GenerationStatus.STOP,
+        )
+        ignored_status = genai.GenerationStatus.IGNORED
         loop = asyncio.get_running_loop()
         logger.info(f"[CBInferDaemon: {self.model_name}] started")
         try:
@@ -115,18 +125,25 @@ class CBInferDaemon:
                         can_read = await loop.run_in_executor(
                             self._executor, st.handle.can_read
                         )
+                        reached_terminal = False
                         if can_read:
                             outputs = await loop.run_in_executor(
                                 self._executor, st.handle.read
                             )
                             for out in outputs.values():
                                 st.generated_ids.extend(out.generated_ids)
+                                if out.finish_reason != finished_reason_none:
+                                    reached_terminal = True
                             await self._emit(st, final=False)
 
                         status = await loop.run_in_executor(
                             self._executor, st.handle.get_status
                         )
-                        if status != running_status:
+                        if status in terminal_statuses:
+                            reached_terminal = True
+                            if status == ignored_status:
+                                st.ignored = True
+                        if reached_terminal:
                             finished.append(int_id)
                     except Exception:
                         logger.error(
@@ -163,10 +180,17 @@ class CBInferDaemon:
 
     async def _emit(self, st: _ActiveState, final: bool) -> None:
         """
-        Accumulate-then-delta decode. `generated_ids` is the cumulative buffer
+        Full-buffer decode + delta diff.
+
+        The CB examples (add_request_example.py, rotating_requests_example.py)
+        only ever decode the *entire* accumulated id list once, at the end
+        (`tokenizer.decode(generated_ids)`); none of them stream text. That
+        full-buffer decode is the example-grounded primitive used here via
+        ArcCBLLM.decode(). The per-emit delta slice (last_print_len) and the
+        stream_chunk_tokens gating are NOT from any CB example -- they are an
+        owned streaming layer on top of that primitive, required because we
+        must emit before the request finishes. `generated_ids` is cumulative
         (each handle.read() yields only NEW ids, extended in the step loop).
-        We decode the whole buffer and emit only the text past last_print_len.
-        Non-final emits are gated on stream_chunk_tokens; final always flushes.
         """
         total_tokens = len(st.generated_ids)
         if total_tokens == 0:
@@ -185,6 +209,17 @@ class CBInferDaemon:
         st.emitted_tokens = total_tokens
 
     async def _finalize(self, st: _ActiveState) -> None:
+        # IGNORED = OOM-dropped by the scheduler (rotating_requests_example.py):
+        # no valid completion, so close the stream like a per-request failure
+        # rather than emitting a normal metrics payload.
+        if st.ignored:
+            logger.error(
+                f"[CBInferDaemon: {self.model_name}] request {st.request.int_id} "
+                f"dropped (GenerationStatus.IGNORED, out of memory)"
+            )
+            await self._safe_put(st.request, None)
+            return
+
         # Final flush of any remaining decoded text.
         await self._emit(st, final=True)
         metrics = self.arc.collect_metrics(
