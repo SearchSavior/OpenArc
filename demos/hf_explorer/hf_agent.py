@@ -107,9 +107,11 @@ def chat_loop():
             tool_choice="auto"
         )
         
+        if not response.choices or response.choices[0].message is None:
+            raise ValueError("LLM returned empty or filtered response")
         response_message = response.choices[0].message
         messages.append(response_message)
-        
+
         # Check if the model wants to call a function
         if response_message.tool_calls:
             # Execute all tool calls
@@ -132,6 +134,8 @@ def chat_loop():
                 tool_choice="auto"
             )
             
+            if not final_response.choices or final_response.choices[0].message is None:
+                raise ValueError("LLM returned empty or filtered response")
             final_message = final_response.choices[0].message
             messages.append(final_message)
             print(f"\nAssistant: {final_message.content}\n")
