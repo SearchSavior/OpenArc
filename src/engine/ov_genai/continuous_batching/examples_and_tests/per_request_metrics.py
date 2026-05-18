@@ -19,7 +19,7 @@ from openvino_genai.py_openvino_genai import GenerationHandle
 # --------------------------------------------------------------------------- #
 
 MODEL_PATH = (
-"/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen3.5/Qwen3.5-9B-int4_asym-ov/"
+"/mnt/Ironwolf-4TB/Models/OpenVINO/Mistral/Rocinante-12B-v1.1-int4_sym-awq-se-ov/"
 )
 DEVICE = "GPU.0"
 

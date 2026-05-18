@@ -26,6 +26,8 @@ class ModelType(str, Enum):
     Options:
     - llm: Text-to-text LLM models
     - vlm: Image-to-text VLM models
+    - cb_llm: Continuous batching text-to-text LLM models
+    - cb_vlm: Continuous batching image-to-text VLM models
     - whisper: Whisper ASR models
     - qwen3_asr: Qwen3 ASR models
     - kokoro: Kokoro TTS models
@@ -37,6 +39,8 @@ class ModelType(str, Enum):
     
     LLM = "llm"
     VLM = "vlm"
+    CB_LLM = "cb_llm"
+    CB_VLM = "cb_vlm"
     WHISPER = "whisper"
     QWEN3_ASR = "qwen3_asr"
     KOKORO = "kokoro"
@@ -118,4 +122,3 @@ class ModelLoadConfig(BaseModel):
 
 class ModelUnloadConfig(BaseModel):
     model_name: str = Field(..., description="Name of the model to unload")
-

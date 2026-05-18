@@ -19,7 +19,6 @@ class IncomingRequest:
     target_input_tokens: int
     actual_input_tokens: int
 
-
 @dataclass
 class ActiveRequest:
     """Tracks an in-flight generation request and the tokens produced so far."""
