@@ -1,4 +1,4 @@
-OpenArc uses bleeding edge libraries and APIs you may not be familair with. When working through a task, use  the command line to investigate python surfaces. Prefer the command line to obtain ground truth from installed packages, or provided context.
+OpenArc uses bleeding edge libraries and APIs you may not be familair with. When working through a task, use  the command line to investigate python surfaces. Prefer the command line to obtain ground truth from installed packages, OR follow the users instructions which take precedent.
 
 
 
