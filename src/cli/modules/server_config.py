@@ -5,7 +5,7 @@ This module handles all configuration file operations without any CLI/presentati
 """
 import json
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, cast
 
 
 class ServerConfig:
@@ -113,21 +113,35 @@ class ServerConfig:
             model_name: Name of the model.
             
         Returns:
-            Model configuration dict, or None if not found.
+            Model configuration dict, or None if not found. Relative paths are resolved
+            against the config file's directory, allowing for configs to be packaged with models.
         """
         config = self.load_config()
-        models = config.get("models", {})
-        return models.get(model_name)
+        models = cast(Dict[str, Dict[str, Any]], config.get("models", {}))
+        model = models.get(model_name)
+        return self._resolve_model_paths(model) if model else None
     
     def get_all_models(self) -> Dict[str, Dict[str, Any]]:
         """
         Get all model configurations.
         
         Returns:
-            Dictionary mapping model names to their configurations.
+            Dictionary mapping model names to their configurations. Relative paths are resolved
+            against the config file's directory, allowing for configs to be packaged with models.
         """
         config = self.load_config()
-        return config.get("models", {})
+        models = cast(Dict[str, Dict[str, Any]], config.get("models", {}))
+        return {name: self._resolve_model_paths(cfg) for name, cfg in models.items()}
+
+    def _resolve_model_paths(self, model_config: Dict[str, Any]) -> Dict[str, Any]:
+        """Return a copy of model_config with a relative model_path made
+        absolute by joining it onto the config file's directory."""
+        resolved = dict(model_config)
+        path = resolved.get("model_path")
+        if path and not Path(path).is_absolute():
+            resolved["model_path"] = str((self.config_file.parent / path).resolve())
+
+        return resolved
     
     def remove_model_config(self, model_name: str) -> bool:
         """
