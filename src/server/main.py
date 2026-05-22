@@ -54,7 +54,8 @@ async def lifespan(app: FastAPI):
     if models:
         from pathlib import Path
 
-        config_file = Path(__file__).parent.parent.parent / "openarc_config.json"
+        env_config = os.environ.get("OPENARC_CONFIG_FILE")
+        config_file = Path(env_config) if env_config else Path(__file__).parent.parent.parent / "openarc_config.json"
         if config_file.exists():
             with open(config_file) as f:
                 config = json.load(f)
