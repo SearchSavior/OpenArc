@@ -133,17 +133,19 @@ echo "================================================"
 openarc serve start --host 0.0.0.0 --port 8000 &
 SERVER_PID=$!
 
+
 # Auto-load model if specified
 if [ -n "$OPENARC_AUTOLOAD_MODEL" ]; then
   echo "Waiting for server to start..."
-  for i in {1..30}; do
+  for i in {1..24}; do
     if curl -s -f -H "Authorization: Bearer ${OPENARC_API_KEY}" http://localhost:8000/v1/models >/dev/null 2>&1; then
-      echo "Server ready after $i seconds"
+      echo "Server ready after $(( (i - 1) * 5)) seconds"
       echo "Auto-loading model: $OPENARC_AUTOLOAD_MODEL"
       openarc load "$OPENARC_AUTOLOAD_MODEL" || echo "Failed to auto-load model"
+      openarc status || true
       break
     fi
-    sleep 1
+    sleep 5
   done
 fi
 
