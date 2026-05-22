@@ -510,11 +510,12 @@ async def openai_audio_transcriptions(
         normalized_model_type = ModelType(selected_model_type)
 
         if normalized_model_type == ModelType.QWEN3_ASR:
-            if not openarc_asr:
-                raise ValueError("openarc_asr required for Qwen3 ASR models")
-            cfg = OpenArcASRConfig.model_validate(json.loads(openarc_asr))
-            if not cfg.qwen3_asr:
-                raise ValueError("openarc_asr.qwen3_asr required for Qwen3 ASR models")
+            payload = json.loads(openarc_asr) if openarc_asr else {}
+            if not payload.get("qwen3_asr"):
+                # Fall back to defaults if qwen3_asr config is not provided
+                payload["qwen3_asr"] = {}
+            
+            cfg = OpenArcASRConfig.model_validate(payload)
             gen_config = cfg.qwen3_asr.model_copy(update={"audio_base64": audio_base64})
             result = await _workers.transcribe_qwen3_asr(model, gen_config)
         else:
