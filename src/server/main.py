@@ -66,6 +66,11 @@ async def lifespan(app: FastAPI):
                 if not model_config:
                     logger.warning(f"Startup: model '{name}' not in config, skipping")
                     continue
+                
+                model_path = model_config.get("model_path")
+                if model_path and not Path(model_path).is_absolute():
+                    model_config["model_path"] = str((config_file.parent / model_path).resolve())
+                
                 try:
                     await _registry.register_load(ModelLoadConfig(**model_config))
                     logger.info(f"Startup: loaded '{name}'")
