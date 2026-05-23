@@ -43,6 +43,7 @@ class ArcCBLLM:
         logger.info("%s loading continuous batching pipeline...", loader.model_name)
         logger.info("%s on %s with %s", loader.model_type, loader.device, loader.runtime_config)
 
+        # scheduler_config only works in a setattr loop we need to convert from pydantic
         scheduler = self._build_scheduler_config(loader.cb_config)
 
         self.model = ContinuousBatchingPipeline(
