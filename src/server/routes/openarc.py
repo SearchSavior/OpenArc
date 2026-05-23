@@ -14,7 +14,7 @@ from pydantic import BaseModel
 import shutil
 
 from src.server.deps import _registry, _workers, verify_api_key
-from src.server.downloader import _FORBIDDEN_PATHS, global_downloader
+from src.server.downloader import _FORBIDDEN_PATHS, get_default_models_dir, global_downloader
 from src.server.models.ov_genai import OVGenAI_GenConfig
 from src.server.models.registration import ModelLoadConfig, ModelUnloadConfig
 from src.server.models.requests_internal import OpenArcBenchRequest
@@ -247,7 +247,7 @@ async def get_local_models(path: Optional[str] = None):
     if path:
         target_path = Path(path)
     else:
-        target_path = Path.home() / ".cache" / "openarc" / "models"
+        target_path = get_default_models_dir()
 
     models = []
     if target_path.exists() and target_path.is_dir():

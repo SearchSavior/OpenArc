@@ -15,12 +15,17 @@ _FORBIDDEN_PATHS = frozenset({
     "/proc", "/run", "/sbin", "/sys", "/usr", "/var",
 })
 
-_DEFAULT_MODELS_DIR = Path.home() / ".cache" / "openarc" / "models"
+
+def get_default_models_dir() -> Path:
+    env = os.environ.get("OPENARC_MODELS_DIR", "").strip()
+    if env:
+        return Path(env).expanduser()
+    return Path.home() / ".cache" / "openarc" / "models"
 
 
 def default_download_path(model_name: str) -> str:
     """default target dir for a hf repo id, matching what GET /openarc/models scans"""
-    return str(_DEFAULT_MODELS_DIR / model_name.replace("/", "__"))
+    return str(get_default_models_dir() / model_name.replace("/", "__"))
 
 
 def validate_download_path(path: str) -> str:
