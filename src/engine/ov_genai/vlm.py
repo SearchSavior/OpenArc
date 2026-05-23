@@ -15,8 +15,9 @@ from openvino_genai import (
 from PIL import Image
 from transformers import AutoTokenizer
 
-from src.server.models.ov_genai import OVGenAI_GenConfig, VLM_VISION_TOKENS
+from src.server.models.ov_genai import OVGenAI_GenConfig
 from src.server.utils.chat import flatten_message_content
+from src.server.utils.resolve_vlm_type import resolve_vlm_vision_token
 from src.server.model_registry import ModelRegistry
 from src.server.models.registration import ModelLoadConfig
 from src.engine.ov_genai.streamers import ChunkStreamer
@@ -278,15 +279,13 @@ class OVGenAI_VLM:
             
             self.tokenizer = AutoTokenizer.from_pretrained(loader.model_path)
     
-            # Get vision token from the mapping using vlm_type as key
-            self.vision_token = VLM_VISION_TOKENS.get(loader.vlm_type)
-            if self.vision_token is None:
-                raise ValueError(f"Unknown VLM type: {loader.vlm_type}. Supported: {list(VLM_VISION_TOKENS.keys())}")
+            self.vision_token = resolve_vlm_vision_token(loader.model_path)
 
             logger.info(f"{loader.model_name} loaded successfully")
 
         except Exception as e:
             logger.error(f"[{loader.model_name}] Failed to initialize VLMPipeline: {e}", exc_info=True)
+            raise
 
     async def unload_model(self, registry: ModelRegistry, model_name: str) -> bool:
         """

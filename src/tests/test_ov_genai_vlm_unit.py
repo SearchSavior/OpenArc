@@ -1,3 +1,5 @@
+import asyncio
+import json
 from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
@@ -53,7 +55,6 @@ def load_config() -> ModelLoadConfig:
         engine=EngineType.OV_GENAI,
         device="CPU",
         runtime_config={"config": "value"},
-        vlm_type="internvl2",
     )
 
 
@@ -153,7 +154,12 @@ def test_collect_metrics_prefill_throughput(load_config: ModelLoadConfig) -> Non
     assert metrics["stream_chunk_tokens"] == 2
 
 
-def test_load_model_sets_pipeline_and_vision_token(monkeypatch: pytest.MonkeyPatch, load_config: ModelLoadConfig) -> None:
+def test_load_model_sets_pipeline_and_vision_token(monkeypatch: pytest.MonkeyPatch, tmp_path, load_config: ModelLoadConfig) -> None:
+    (tmp_path / "config.json").write_text(
+        json.dumps({"architectures": ["Qwen2_5_VLForConditionalGeneration"]}),
+        encoding="utf-8",
+    )
+    load_config.model_path = str(tmp_path)
     vlm = OVGenAI_VLM(load_config)
     pipeline_instance = MagicMock()
     pipeline_factory = MagicMock(return_value=pipeline_instance)
@@ -176,11 +182,10 @@ def test_load_model_sets_pipeline_and_vision_token(monkeypatch: pytest.MonkeyPat
     vlm_module.AutoTokenizer.from_pretrained.assert_called_once_with(load_config.model_path)
     assert vlm.model_path is pipeline_instance
     assert vlm.tokenizer is tokenizer_instance
-    assert vlm.vision_token == vlm_module.VLM_VISION_TOKENS[load_config.vlm_type]
+    assert vlm.vision_token == "<|vision_start|><|image_pad|><|vision_end|>"
 
 
-@pytest.mark.asyncio
-async def test_unload_model_resets_state(monkeypatch: pytest.MonkeyPatch, load_config: ModelLoadConfig) -> None:
+def test_unload_model_resets_state(monkeypatch: pytest.MonkeyPatch, load_config: ModelLoadConfig) -> None:
     vlm = OVGenAI_VLM(load_config)
     vlm.model_path = object()
     vlm.tokenizer = object()
@@ -192,7 +197,10 @@ async def test_unload_model_resets_state(monkeypatch: pytest.MonkeyPatch, load_c
     gc_mock = MagicMock()
     monkeypatch.setattr(vlm_module.gc, "collect", gc_mock)
 
-    result = await vlm.unload_model(registry, "model-name")
+    async def _run():
+        return await vlm.unload_model(registry, "model-name")
+
+    result = asyncio.run(_run())
 
     assert result is True
     assert vlm.model_path is None
@@ -200,4 +208,3 @@ async def test_unload_model_resets_state(monkeypatch: pytest.MonkeyPatch, load_c
     assert vlm.vision_token is None
     registry.register_unload.assert_called_once_with("model-name")
     gc_mock.assert_called_once()
-
