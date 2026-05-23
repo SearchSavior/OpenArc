@@ -54,7 +54,8 @@ async def lifespan(app: FastAPI):
     if models:
         from pathlib import Path
 
-        config_file = Path(__file__).parent.parent.parent / "openarc_config.json"
+        env_config = os.environ.get("OPENARC_CONFIG_FILE")
+        config_file = Path(env_config) if env_config else Path(__file__).parent.parent.parent / "openarc_config.json"
         if config_file.exists():
             with open(config_file) as f:
                 config = json.load(f)
@@ -65,6 +66,11 @@ async def lifespan(app: FastAPI):
                 if not model_config:
                     logger.warning(f"Startup: model '{name}' not in config, skipping")
                     continue
+                
+                model_path = model_config.get("model_path")
+                if model_path and not Path(model_path).is_absolute():
+                    model_config["model_path"] = str((config_file.parent / model_path).resolve())
+                
                 try:
                     await _registry.register_load(ModelLoadConfig(**model_config))
                     logger.info(f"Startup: loaded '{name}'")
