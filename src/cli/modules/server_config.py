@@ -4,6 +4,7 @@ ServerConfig - Centralized configuration management for OpenArc.
 This module handles all configuration file operations without any CLI/presentation logic.
 """
 import json
+import os
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 
@@ -16,11 +17,16 @@ class ServerConfig:
         Initialize ServerConfig with a config file path.
         
         Args:
-            config_file: Path to the config file. If None, defaults to openarc_config.json in project root.
+            config_file: Path to the config file. If None, OPENARC_CONFIG_FILE env var when set,
+            otherwise defaults to openarc_config.json in project root.
         """
         if config_file is None:
-            project_root = Path(__file__).parent.parent.parent.parent
-            config_file = project_root / "openarc_config.json"
+            env_path = os.environ.get("OPENARC_CONFIG_FILE")
+            if env_path:
+                config_file = Path(env_path)
+            else:
+                project_root = Path(__file__).parent.parent.parent.parent
+                config_file = project_root / "openarc_config.json"
         
         self.config_file = Path(config_file)
     
