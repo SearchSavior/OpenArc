@@ -80,6 +80,13 @@ RUN uv sync && \
 # Add venv to PATH so openarc command works
 ENV PATH="/app/.venv/bin:$PATH"
 
+
+# ============================================================================
+# Precompile Python bytecode to avoid slow first-start imports.
+# ============================================================================
+RUN python -m compileall -q /app/src /app/.venv/lib/python3.12/site-packages
+
+
 # ============================================================================
 # Runtime Configuration
 # ============================================================================
