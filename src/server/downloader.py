@@ -78,11 +78,9 @@ class Downloader:
         self.tasks: Dict[str, DownloadTask] = {}
         self._lock = asyncio.Lock()
 
-    async def start(self, model_name: str, path: Optional[str] = None) -> bool:
+    async def start(self, model_name: str) -> bool:
         """Start a new download. Returns False if one is already active."""
-        if not path:
-            path = default_download_path(model_name)
-        path = validate_download_path(path)
+        path = validate_download_path(default_download_path(model_name))
 
         async with self._lock:
             self._cleanup_stale()
@@ -165,7 +163,7 @@ class Downloader:
         try:
             await self._download_files(task)
             if not task._cancel.is_set():
-                self._write_hf_metadata(task)
+                await asyncio.to_thread(self._write_hf_metadata, task)
                 task.status = "completed"
                 task.progress = 100.0
                 task.completed_at = time.time()

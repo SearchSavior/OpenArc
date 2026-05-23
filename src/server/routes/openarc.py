@@ -14,7 +14,7 @@ from pydantic import BaseModel
 import shutil
 
 from src.server.deps import _registry, _workers, verify_api_key
-from src.server.downloader import _FORBIDDEN_PATHS, get_default_models_dir, global_downloader
+from src.server.downloader import get_default_models_dir, global_downloader
 from src.server.models.ov_genai import OVGenAI_GenConfig
 from src.server.models.registration import ModelLoadConfig, ModelUnloadConfig
 from src.server.models.requests_internal import OpenArcBenchRequest
@@ -227,10 +227,18 @@ class DeleteModelRequest(BaseModel):
 
 @router.delete("/models", dependencies=[Depends(verify_api_key)])
 async def delete_local_model(req: DeleteModelRequest):
+    models_root = get_default_models_dir().resolve()
     target = Path(req.model_path).resolve()
 
-    if target.parent == target or str(target) in _FORBIDDEN_PATHS:
-        raise HTTPException(status_code=400, detail=f"Refusing to delete protected path: {target}")
+    try:
+        rel = target.relative_to(models_root)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Refusing: {target} is outside the models dir {models_root}",
+        )
+    if rel == Path("."):
+        raise HTTPException(status_code=400, detail="Refusing to delete the models root itself")
 
     if not target.exists() or not target.is_dir():
         raise HTTPException(status_code=404, detail=f"Model directory not found: {target}")
@@ -341,7 +349,7 @@ async def get_metrics():
 @router.post("/downloader", dependencies=[Depends(verify_api_key)])
 async def start_download(request: DownloaderRequest):
     try:
-        success = await global_downloader.start(request.model_name, request.path)
+        success = await global_downloader.start(request.model_name)
     except ValueError as e:
         return JSONResponse(
             status_code=400,
