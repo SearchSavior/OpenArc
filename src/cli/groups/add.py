@@ -93,6 +93,9 @@ def add(ctx, model_path, model_name, engine, model_type, device, runtime_config,
     
     # Add speculative decoding options if provided
     if draft_model_path:
+        if not validate_model_path(draft_model_path):
+            console.print(f"[red]Model file check failed! {draft_model_path} does not contain openvino model files OR your chosen path is malformed. Verify chosen path is correct and acquired model files match source on the hub, or the destination of converted model.[/red]")
+            ctx.exit(1)
         load_config["draft_model_path"] = draft_model_path
     if draft_device:
         load_config["draft_device"] = draft_device
