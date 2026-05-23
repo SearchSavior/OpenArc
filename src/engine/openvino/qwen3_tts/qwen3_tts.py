@@ -112,7 +112,8 @@ class OVQwen3TTS:
         p = Path(load_config.model_path)
         device = load_config.device
         core = ov.Core()
-        core.set_property({"CACHE_DIR": str(p / ".ov_cache")})
+        if load_config.cache_dir:
+            core.set_property({"CACHE_DIR": load_config.cache_dir})
 
         self.tokenizer = AutoTokenizer.from_pretrained(str(p), trust_remote_code=True)
 

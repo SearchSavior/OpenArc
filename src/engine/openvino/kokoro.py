@@ -51,6 +51,8 @@ class OV_Kokoro(KModel):
         self.context_length = model_config["plbert"]["max_position_embeddings"]
 
         core = ov.Core()
+        if load_config.cache_dir:
+            core.set_property({"CACHE_DIR": load_config.cache_dir})
         self.model = core.compile_model(self.model_path / "openvino_model.xml", self._device)
         return self.model
 

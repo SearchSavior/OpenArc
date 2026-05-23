@@ -85,6 +85,15 @@ class ModelLoadConfig(BaseModel):
     runtime_config: Dict[str, Any] = Field(
         default_factory=dict,
         description="Optional OpenVINO runtime properties.")
+    cache_dir: Optional[str] = Field(
+        default=None,
+        description="""
+        Optional directory for the OpenVINO model cache (CACHE_DIR property).
+
+        When set, compiled model blobs are cached here so subsequent loads of
+        this model skip recompilation. Relative paths are resolved against the
+        config file's directory when the model is loaded, the same as
+        model_path.""")
 
     draft_model_path: Optional[str] = Field(
         default=None,

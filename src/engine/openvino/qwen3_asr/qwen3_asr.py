@@ -220,9 +220,8 @@ class OVQwen3ASR:
         self._mel_filters_t = torch.from_numpy(self.mel_filters).float()
         self._hann_window = torch.hann_window(WINDOW_SIZE)
         self.core = ov.Core()
-        cache_dir = os.environ.get("OPENARC_OV_CACHE_DIR")
-        if cache_dir:
-            self.core.set_property({"CACHE_DIR": cache_dir})
+        if load_config.cache_dir:
+            self.core.set_property({"CACHE_DIR": load_config.cache_dir})
         self.t_model_load = 0.0
         self.enc_model = None
         self.emb_model = None

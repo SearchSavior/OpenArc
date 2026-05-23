@@ -145,8 +145,8 @@ class ServerConfig:
         return {name: self._resolve_model_paths(cfg) for name, cfg in models.items()}
 
     def _resolve_model_paths(self, model_config: Dict[str, Any]) -> Dict[str, Any]:
-        """Return a copy of model_config with a relative model_path made
-        absolute by joining it onto the config file's directory."""
+        """Return a copy of model_config with relative model_path, draft_model_path,
+        and cache_dir made absolute by joining them onto the config file's directory."""
         resolved = dict(model_config)
 
         path = resolved.get("model_path")
@@ -156,6 +156,10 @@ class ServerConfig:
         draft_model_path = resolved.get("draft_model_path")
         if draft_model_path and not Path(draft_model_path).is_absolute():
             resolved["draft_model_path"] = str((self.config_file.parent / draft_model_path).resolve())
+
+        cache_dir = resolved.get("cache_dir")
+        if cache_dir and not Path(cache_dir).is_absolute():
+            resolved["cache_dir"] = str((self.config_file.parent / cache_dir).resolve())
 
         return resolved
     

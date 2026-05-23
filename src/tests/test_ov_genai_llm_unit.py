@@ -172,6 +172,35 @@ def test_load_model_sets_pipeline_and_tokenizer(monkeypatch: pytest.MonkeyPatch,
     assert llm.encoder_tokenizer is tokenizer_instance
 
 
+def test_load_model_forwards_cache_dir(monkeypatch: pytest.MonkeyPatch) -> None:
+    pipeline_factory = MagicMock(return_value=MagicMock())
+    monkeypatch.setattr(llm_module, "LLMPipeline", pipeline_factory)
+    monkeypatch.setattr(
+        llm_module.AutoTokenizer,
+        "from_pretrained",
+        MagicMock(return_value=MagicMock()),
+    )
+
+    loader = ModelLoadConfig(
+        model_path=MODEL_PATH,
+        model_name="loader-model",
+        model_type=ModelType.LLM,
+        engine=EngineType.OV_GENAI,
+        device="CPU",
+        runtime_config={"hint": "value"},
+        cache_dir="/tmp/ov_cache",
+    )
+
+    OVGenAI_LLM(loader).load_model(loader)
+
+    pipeline_factory.assert_called_once_with(
+        loader.model_path,
+        loader.device,
+        hint="value",
+        CACHE_DIR="/tmp/ov_cache",
+    )
+
+
 @pytest.mark.asyncio
 async def test_unload_model_resets_state(monkeypatch: pytest.MonkeyPatch, load_config: ModelLoadConfig) -> None:
     llm = OVGenAI_LLM(load_config)

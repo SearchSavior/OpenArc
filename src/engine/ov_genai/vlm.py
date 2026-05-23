@@ -271,10 +271,14 @@ class OVGenAI_VLM:
         try:
             logger.info(f"{loader.model_type} on {loader.device} with {loader.runtime_config}")
             
+            pipeline_kwargs = {**(loader.runtime_config or {})}
+            if loader.cache_dir:
+                pipeline_kwargs['CACHE_DIR'] = loader.cache_dir
+
             self.model_path = VLMPipeline(
                 loader.model_path,
                 loader.device,
-                **(loader.runtime_config or {})
+                **pipeline_kwargs
             )
             
             self.tokenizer = AutoTokenizer.from_pretrained(loader.model_path)

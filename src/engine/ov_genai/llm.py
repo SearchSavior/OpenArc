@@ -263,6 +263,8 @@ class OVGenAI_LLM:
             self.model_assistant_confidence_threshold = None
         
         pipeline_kwargs = {**(loader.runtime_config or {})}
+        if loader.cache_dir:
+            pipeline_kwargs['CACHE_DIR'] = loader.cache_dir
         if draft_model is not None:
             pipeline_kwargs['draft_model'] = draft_model
         

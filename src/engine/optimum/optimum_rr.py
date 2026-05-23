@@ -72,10 +72,12 @@ class Optimum_RR:
             loader: ModelLoadConfig containing model_path, device, engine, and runtime_config.
         """
 
-        self.model = OVModelForCausalLM.from_pretrained(loader.model_path, 
-            device=loader.device, 
-            export=False,
-            use_cache=False)
+        from_pretrained_kwargs = {"device": loader.device, "export": False, "use_cache": False}
+        if loader.cache_dir:
+            from_pretrained_kwargs["ov_config"] = {"CACHE_DIR": loader.cache_dir}
+
+        self.model = OVModelForCausalLM.from_pretrained(loader.model_path,
+            **from_pretrained_kwargs)
 
         self.tokenizer = AutoTokenizer.from_pretrained(loader.model_path)
         self.token_false_id = self.tokenizer.convert_tokens_to_ids("no")

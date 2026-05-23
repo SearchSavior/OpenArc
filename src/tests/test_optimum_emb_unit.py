@@ -112,6 +112,34 @@ def test_load_model_initializes_pipeline(monkeypatch: pytest.MonkeyPatch, load_c
     assert emb.tokenizer is tokenizer_instance
 
 
+def test_load_model_forwards_cache_dir(monkeypatch: pytest.MonkeyPatch) -> None:
+    loader = ModelLoadConfig(
+        model_path="/models/mock",
+        model_name="cache-model",
+        model_type=ModelType.EMB,
+        engine=EngineType.OV_OPTIMUM,
+        device="CPU",
+        runtime_config={},
+        cache_dir="/tmp/ov_cache",
+    )
+    emb = Optimum_EMB(loader)
+    monkeypatch.setattr(
+        emb_module.OVModelForFeatureExtraction,
+        "from_pretrained",
+        MagicMock(return_value=MagicMock()),
+    )
+    monkeypatch.setattr(emb_module.AutoTokenizer, "from_pretrained", MagicMock(return_value=MagicMock()))
+
+    emb.load_model(loader)
+
+    emb_module.OVModelForFeatureExtraction.from_pretrained.assert_called_once_with(
+        loader.model_path,
+        device=loader.device,
+        export=False,
+        ov_config={"CACHE_DIR": "/tmp/ov_cache"},
+    )
+
+
 def test_unload_model_resets_state(monkeypatch: pytest.MonkeyPatch, load_config: ModelLoadConfig) -> None:
     emb = Optimum_EMB(load_config)
     emb.model = object()
