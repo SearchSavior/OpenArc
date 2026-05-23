@@ -371,6 +371,18 @@ This page contains example commands to help you choose models and configure Open
               --assistant-confidence-threshold 0.5
             ```
 
+        === "Model caching"
+
+            ```
+            openarc add \
+              --model-name <model-name> \
+              --model-path <path/to/model> \
+              --engine ovgenai \
+              --model-type llm \
+              --device GPU \
+              --cache-dir <path/to/model/cache>
+            ```
+
 === "list"
 
     Reads added configurations from `openarc_config.json`.
