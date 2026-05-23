@@ -11,8 +11,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+import shutil
+
 from src.server.deps import _registry, _workers, verify_api_key
-from src.server.downloader import global_downloader
+from src.server.downloader import _FORBIDDEN_PATHS, global_downloader
 from src.server.models.ov_genai import OVGenAI_GenConfig
 from src.server.models.registration import ModelLoadConfig, ModelUnloadConfig
 from src.server.models.requests_internal import OpenArcBenchRequest
@@ -219,6 +221,27 @@ async def update_local_model_config(req: UpdateModelConfigRequest):
         raise HTTPException(status_code=500, detail=f"Failed to save config: {str(e)}")
 
 
+class DeleteModelRequest(BaseModel):
+    model_path: str
+
+
+@router.delete("/models", dependencies=[Depends(verify_api_key)])
+async def delete_local_model(req: DeleteModelRequest):
+    target = Path(req.model_path).resolve()
+
+    if target.parent == target or str(target) in _FORBIDDEN_PATHS:
+        raise HTTPException(status_code=400, detail=f"Refusing to delete protected path: {target}")
+
+    if not target.exists() or not target.is_dir():
+        raise HTTPException(status_code=404, detail=f"Model directory not found: {target}")
+
+    try:
+        await asyncio.to_thread(shutil.rmtree, target)
+        return {"status": "success", "model_path": str(target)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete: {e}")
+
+
 @router.get("/models", dependencies=[Depends(verify_api_key)])
 async def get_local_models(path: Optional[str] = None):
     if path:
@@ -234,7 +257,6 @@ async def get_local_models(path: Optional[str] = None):
                 config_path = entry / "openarc.json"
                 has_config = config_path.exists()
 
-                model_name = folder_name
                 model_type = None
                 config_data = {}
 
@@ -242,10 +264,15 @@ async def get_local_models(path: Optional[str] = None):
                     try:
                         with open(config_path, "r", encoding="utf-8") as f:
                             config_data = json.load(f)
-                            model_name = config_data.get("model_name", model_name)
                             model_type = config_data.get("model_type")
                     except Exception:
                         pass
+
+                model_name = (
+                    config_data.get("model_name")
+                    or config_data.get("hf_repo")
+                    or folder_name
+                )
 
                 models.append(
                     {
@@ -262,6 +289,8 @@ async def get_local_models(path: Optional[str] = None):
                             "assistant_confidence_threshold"
                         ),
                         "runtime_config": config_data.get("runtime_config", {}),
+                        "hf_author": config_data.get("hf_author"),
+                        "hf_repo": config_data.get("hf_repo"),
                         "has_config": has_config,
                     }
                 )
