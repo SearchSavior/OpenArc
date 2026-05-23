@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
-from src.server.models.ov_genai import VLM_VISION_TOKENS
+from src.server.models.ov_genai import ContinuousBatchSchedulerConfig, VLM_VISION_TOKENS
 
 
 class ModelStatus(str, Enum):
@@ -91,6 +91,9 @@ class ModelLoadConfig(BaseModel):
     runtime_config: Dict[str, Any] = Field(
         default_factory=dict,
         description="Optional OpenVINO runtime properties.")
+    cb_config: ContinuousBatchSchedulerConfig = Field(
+        default_factory=ContinuousBatchSchedulerConfig,
+        description="Optional OpenVINO GenAI continuous batching scheduler properties.")
 
     draft_model_path: Optional[str] = Field(
         default=None,

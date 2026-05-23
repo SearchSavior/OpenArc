@@ -18,7 +18,7 @@ from openvino_genai import (
 )
 from transformers import AutoTokenizer, BatchEncoding
 
-from src.engine.ov_genai.continuous_batching.cb_models import (
+from src.server.models.ov_genai import (
     ContinuousBatchSchedulerConfig,
 )
 from src.server.model_registry import ModelRegistry
