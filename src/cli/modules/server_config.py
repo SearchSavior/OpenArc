@@ -43,11 +43,23 @@ class ServerConfig:
     
     def save_config(self, config: Dict[str, Any]) -> None:
         """
-        Save configuration to JSON config file.
+        Save configuration to JSON config file. Does nothing if an on-disk
+        config file exists and its contents are identical to the provided
+        config, allowing the config to live on a read-only filesystem.
         
         Args:
             config: Configuration dictionary to save.
         """
+        
+        if self.config_file.exists():
+            try:
+                with open(self.config_file, "r") as f:
+                    existing_config = json.load(f)
+                    if existing_config == config:
+                        return  # No changes, skip writing
+            except:
+                pass # Overwrite if the existing file is invalid or missing
+        
         with open(self.config_file, "w") as f:
             json.dump(config, f, indent=2)
     
