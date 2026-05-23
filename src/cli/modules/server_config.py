@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 from typing import Optional, Dict, Any, List, cast
+from ..utils import get_config_file_path
 
 
 class ServerConfig:
@@ -20,15 +21,7 @@ class ServerConfig:
             config_file: Path to the config file. If None, OPENARC_CONFIG_FILE env var when set,
             otherwise defaults to openarc_config.json in project root.
         """
-        if config_file is None:
-            env_path = os.environ.get("OPENARC_CONFIG_FILE")
-            if env_path:
-                config_file = Path(env_path)
-            else:
-                project_root = Path(__file__).parent.parent.parent.parent
-                config_file = project_root / "openarc_config.json"
-        
-        self.config_file = Path(config_file)
+        self.config_file = get_config_file_path() if config_file is None else config_file
     
     def load_config(self) -> Dict[str, Any]:
         """
@@ -155,9 +148,14 @@ class ServerConfig:
         """Return a copy of model_config with a relative model_path made
         absolute by joining it onto the config file's directory."""
         resolved = dict(model_config)
+
         path = resolved.get("model_path")
         if path and not Path(path).is_absolute():
             resolved["model_path"] = str((self.config_file.parent / path).resolve())
+
+        draft_model_path = resolved.get("draft_model_path")
+        if draft_model_path and not Path(draft_model_path).is_absolute():
+            resolved["draft_model_path"] = str((self.config_file.parent / draft_model_path).resolve())
 
         return resolved
     

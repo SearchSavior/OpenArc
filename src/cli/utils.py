@@ -1,6 +1,7 @@
 """
 Utility functions for OpenArc CLI.
 """
+import os
 from pathlib import Path
 
 
@@ -21,6 +22,11 @@ def validate_model_path(model_path):
         search_dir = path.parent
     else:
         search_dir = path
+        
+    if not search_dir.is_absolute():
+        # Search relative to the config file directory
+        config_file =  get_config_file_path()
+        search_dir = (config_file.parent / search_dir).resolve()
     
     # Check for required files
     has_bin = False
@@ -40,3 +46,15 @@ def validate_model_path(model_path):
         return False
     
     return False
+
+def get_config_file_path():
+    """
+    Get the path to the config file, checking the OPENARC_CONFIG_FILE environment variable first,
+    then defaulting to openarc_config.json in the project root.
+    """
+    env_path = os.environ.get("OPENARC_CONFIG_FILE")
+    if env_path:
+        return Path(env_path)
+    else:
+        project_root = Path(__file__).parent.parent.parent
+        return project_root / "openarc_config.json"

@@ -12,6 +12,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from src.cli.utils import get_config_file_path
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.server.deps import _registry
@@ -54,8 +55,7 @@ async def lifespan(app: FastAPI):
     if models:
         from pathlib import Path
 
-        env_config = os.environ.get("OPENARC_CONFIG_FILE")
-        config_file = Path(env_config) if env_config else Path(__file__).parent.parent.parent / "openarc_config.json"
+        config_file = get_config_file_path()
         if config_file.exists():
             with open(config_file) as f:
                 config = json.load(f)
