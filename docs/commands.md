@@ -279,8 +279,7 @@ This page contains example commands to help you choose models and configure Open
           --device CPU
         ```
 
-        Use the `/v1/audio/transcriptions` endpoint with `openarc_asr` in the request body:
-        I have not tested our implementation with any community tooling yet; however, all tests using the openai python library are passing, and usually that's enough. 
+        Chunking can be configured on a per-request basis via the `openarc_asr` in the request body for the `/v1/audio/transcriptions`. If not set, the below defaults will be used. Defaults values cannot currently be configured.
 
         For the options in `extra_body`, they will likely not have support in any third party tool you don't build from scratch. I'm working on improving how these can be configured. Currently, the behavior is modified per request, so you can tinker with performance on CPU and GPU. At this time NPU device is unsupported.
 
@@ -300,6 +299,7 @@ This page contains example commands to help you choose models and configure Open
                 model="<model-name>",
                 file=f,
                 response_format="verbose_json",
+                # Optional. The below values will be used as defaults if `openarc_asr` is not provided.
                 extra_body={
                     "openarc_asr": json.dumps({
                         "qwen3_asr": {
