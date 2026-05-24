@@ -137,5 +137,5 @@ def test_create_model_instance_rejects_unknown_combination() -> None:
 
 def test_model_class_registry_includes_qwen3_asr() -> None:
     key = (EngineType.OPENVINO, ModelType.QWEN3_ASR)
-    assert registry_module.MODEL_CLASS_REGISTRY[key] == "src.engine.openvino.qwen3_asr.infer.OVQwen3ASR"
+    assert registry_module.MODEL_CLASS_REGISTRY[key] == "src.engine.openvino.qwen3_asr.qwen3_asr.OVQwen3ASR"
 

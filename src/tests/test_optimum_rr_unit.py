@@ -79,8 +79,8 @@ def test_generate_rerankings_orders_documents(monkeypatch: pytest.MonkeyPatch, l
     rr.tokenizer = DummyTokenizer()
 
     logits = torch.tensor([
-        [[0.0, 0.0, 0.0], [2.0, -1.0, 0.5]],
-        [[0.0, 0.0, 0.0], [0.5, 1.5, -0.2]],
+        [[0.0, 0.0, 0.0], [0.5, 2.0, -0.2]],   # Paris: true high
+        [[0.0, 0.0, 0.0], [2.0, -1.0, 0.5]],   # Berlin: false high
     ])
 
     class DummyModel:
