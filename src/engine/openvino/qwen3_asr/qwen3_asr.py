@@ -265,7 +265,7 @@ class OVQwen3ASR:
             "encoder_tokens": encoder_tokens,
         }
 
-    async def audio_chunks(self, chunk_audio: np.ndarray, max_tokens: int):
+    def audio_chunks(self, chunk_audio: np.ndarray, max_tokens: int):
         t_feature_start = time.perf_counter()
         mel = Qwen3ASRHelpers.compute_mel_spectrogram(chunk_audio, self.mel_filters)
         t_feature = time.perf_counter() - t_feature_start
@@ -387,7 +387,9 @@ class OVQwen3ASR:
                 f"[{self.load_config.model_name}] Chunk {idx + 1}/{len(chunk_items)} "
                 f"offset={chunk_offset_sec:.2f}s duration={chunk_sec:.2f}s"
             )
-            raw, chunk_metrics = await self.audio_chunks(chunk_wav, gen_config.max_tokens)
+            raw, chunk_metrics = await asyncio.to_thread(
+                self.audio_chunks, chunk_wav, gen_config.max_tokens
+            )
             lang, text = parse_asr_output(raw, language=language)
             langs.append(lang)
             if text:
