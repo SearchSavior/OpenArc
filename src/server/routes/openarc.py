@@ -251,11 +251,8 @@ async def delete_local_model(req: DeleteModelRequest):
 
 
 @router.get("/models", dependencies=[Depends(verify_api_key)])
-async def get_local_models(path: Optional[str] = None):
-    if path:
-        target_path = Path(path)
-    else:
-        target_path = get_default_models_dir()
+async def get_local_models():
+    target_path = get_default_models_dir()
 
     models = []
     if target_path.exists() and target_path.is_dir():

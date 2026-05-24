@@ -19,8 +19,8 @@ _FORBIDDEN_PATHS = frozenset({
 def get_default_models_dir() -> Path:
     env = os.environ.get("OPENARC_MODELS_DIR", "").strip()
     if env:
-        return Path(env).expanduser()
-    return Path.home() / ".cache" / "openarc" / "models"
+        return Path(env).expanduser().resolve()
+    return (Path.home() / ".cache" / "openarc" / "models").resolve()
 
 
 def default_download_path(model_name: str) -> str:
