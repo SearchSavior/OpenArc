@@ -1,4 +1,5 @@
 import asyncio
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -9,8 +10,9 @@ from src.engine.optimum.optimum_rr import Optimum_RR
 from src.server.models.registration import EngineType, ModelLoadConfig, ModelType
 from src.server.models.optimum import RerankerConfig
 
+TEST_MODEL_PATH = os.getenv("TEST_MODEL_PATH", r"/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/")
 
-MODEL_PATH = Path("/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Qwen3-Reranker-0.6B-fp16-ov")
+MODEL_PATH = Path(TEST_MODEL_PATH) / "Qwen3-Reranker-0.6B-fp16-ov"
 UNIT_TEST_PATH = Path(__file__).with_name("test_optimum_rr_unit.py")
 
 _UNIT_TESTS_PASSED: bool | None = None
