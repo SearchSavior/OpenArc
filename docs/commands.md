@@ -13,7 +13,7 @@ This page contains example commands to help you choose models and configure Open
 
     Add a model to `openarc_config.json` for easy loading with `openarc load`.
 
-    === "Single device"
+    === "Required"
 
         ```
         openarc add \
@@ -26,6 +26,18 @@ This page contains example commands to help you choose models and configure Open
 
         To see what options you have for `--device`, use `openarc tool device-detect`.
 
+
+    === "LLM"
+
+        ```
+        openarc add \
+          --model-name <model-name> \
+          --model-path <path/to/model> \
+          --engine <engine> \
+          --model-type llm \
+          --device <target-device>
+        ```
+    
     === "VLM"
 
         ```
@@ -33,30 +45,10 @@ This page contains example commands to help you choose models and configure Open
           --model-name <model-name> \
           --model-path <path/to/model> \
           --engine <engine> \
-          --model-type <model-type> \
-          --device <target-device> \
-          --vlm-type <vlm-type>
+          --model-type vlm \
+          --device <target-device>
         ```
-
-        Getting VLM to work the way I wanted required using VLMPipeline in ways that are not well documented. You can look at the [code](src/engine/ov_genai/vlm.py#L33) to see how OpenArc's VLM backend passes images. Basically, it involves slicing the input sequence by scanning for when there's in image and injecting appropriate tokens. Honestly I have no ideas why they built VLMPipeline this way, but to support all the architectures my approach was easier in the end.
-
-        `vlm-type` maps a vision token for a given architecture. Use `openarc add --help` to see the available options. The server will complain if you get anything wrong, so it should be easy to figure out.
-
-
-        NOTE: you don't have to pass `Vision Token`; these are mapped to the `vlm-type` `openarc add` argument so use that instead. 
-
-        | `--vlm-type`   | Vision token                                        |
-        |----------------|-----------------------------------------------------|
-        | `internvl2`    | `<image>`                                           |
-        | `llava15`      | `<image>`                                           |
-        | `llavanext`    | `<image>`                                           |
-        | `minicpmv26`   | `(<image>./</image>)`                               |
-        | `phi3vision`   | `<\|image_{i}\|>`                                   |
-        | `phi4mm`       | `<\|image_{i}\|>`                                   |
-        | `qwen2vl`      | `<\|vision_start\|><\|image_pad\|><\|vision_end\|>` |
-        | `qwen25vl`     | `<\|vision_start\|><\|image_pad\|><\|vision_end\|>` |
-        | `gemma3`       | `<start_of_image>`                                  |
-
+    
     === "Whisper"
 
         ```

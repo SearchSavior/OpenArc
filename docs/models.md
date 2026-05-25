@@ -106,7 +106,7 @@ If you need help converting a particular model join Discord and we can help you!
 
 Qwen3.5 models has unofficial support. However, they do require you to build `openvino` and `openvino.genai` from source. You will also need to install the latest version of `optimum-intel`. 
 
-To add a model, run the command `openarc add --model-name MODEL_NAME --model-path /path/to/model --model-type vlm --device GPU|CPU --runtime-config '{"ATTENTION_BACKEND": "SDPA"}' --vlm-type qwen35`. Intel is currently working on adding support for Qwen3.5 to utilize the PA attention backend but it has not been merged yet. This currently appears to be much more performant. If you have built `openvino.genai` with the support included, you may change the runtime config parameter to use PA instead.
+To add a model, run the command `openarc add --model-name MODEL_NAME --model-path /path/to/model --model-type vlm --device GPU|CPU --runtime-config '{"ATTENTION_BACKEND": "SDPA"}'`. OpenArc resolves the VLM vision token from the model's `config.json`. Intel is currently working on adding support for Qwen3.5 to utilize the PA attention backend but it has not been merged yet. This currently appears to be much more performant. If you have built `openvino.genai` with the support included, you may change the runtime config parameter to use PA instead.
 
 **How do I control thinking?**
 
