@@ -50,7 +50,7 @@ from fastapi import FastAPI
 # --------------------------------------------------------------------------- #
 
 MODEL_PATH = "/mnt/Ironwolf-4TB/Models/OpenVINO/Anubis-Mini-8B-v1-int4_asym-ov/"
-DEVICE = "GPU.0"
+DEVICE = "CPU"
 HOST = "127.0.0.1"
 PORT_INPROC = 8142
 PORT_ZMQ = 8143
