@@ -92,10 +92,11 @@ ENV NEOReadDebugKeys=1 \
     OverrideGpuAddressSpace=48 \
     EnableImplicitScaling=1 \
     OPENARC_API_KEY=key \
-    OPENARC_AUTOLOAD_MODEL=""
+    OPENARC_AUTOLOAD_MODEL="" \
+    OPENARC_MODELS_DIR=/models
 
 # Create persistent config directory and symlink
-RUN mkdir -p /persist && \
+RUN mkdir -p /persist /models && \
     ln -sf /persist/openarc_config.json /app/openarc_config.json
 
 # ============================================================================

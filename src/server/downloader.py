@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 import time
@@ -13,6 +14,18 @@ _FORBIDDEN_PATHS = frozenset({
     "/bin", "/boot", "/dev", "/etc", "/lib", "/lib64",
     "/proc", "/run", "/sbin", "/sys", "/usr", "/var",
 })
+
+
+def get_default_models_dir() -> Path:
+    env = os.environ.get("OPENARC_MODELS_DIR", "").strip()
+    if env:
+        return Path(env).expanduser().resolve()
+    return (Path.home() / ".cache" / "openarc" / "models").resolve()
+
+
+def default_download_path(model_name: str) -> str:
+    """default target dir for a hf repo id, matching what GET /openarc/models scans"""
+    return str(get_default_models_dir() / model_name.replace("/", "__"))
 
 
 def validate_download_path(path: str) -> str:
@@ -65,10 +78,9 @@ class Downloader:
         self.tasks: Dict[str, DownloadTask] = {}
         self._lock = asyncio.Lock()
 
-    async def start(self, model_name: str, path: Optional[str] = None) -> bool:
+    async def start(self, model_name: str) -> bool:
         """Start a new download. Returns False if one is already active."""
-        if path:
-            path = validate_download_path(path)
+        path = validate_download_path(default_download_path(model_name))
 
         async with self._lock:
             self._cleanup_stale()
@@ -151,6 +163,7 @@ class Downloader:
         try:
             await self._download_files(task)
             if not task._cancel.is_set():
+                await asyncio.to_thread(self._write_hf_metadata, task)
                 task.status = "completed"
                 task.progress = 100.0
                 task.completed_at = time.time()
@@ -163,6 +176,30 @@ class Downloader:
             task.error_msg = str(e)
             task.completed_at = time.time()
             logger.error(f"Download failed for {task.model_name}: {e}")
+
+    @staticmethod
+    def _write_hf_metadata(task: DownloadTask):
+        """stamp openarc.json with the source hf author/repo so the listing can show provenance"""
+        if not task.path:
+            return
+        author, _, repo = task.model_name.partition("/")
+        if not repo:
+            author, repo = "", author
+        config_path = Path(task.path) / "openarc.json"
+        config: Dict = {}
+        if config_path.exists():
+            try:
+                with open(config_path, "r", encoding="utf-8") as f:
+                    config = json.load(f) or {}
+            except Exception:
+                config = {}
+        config["hf_author"] = author
+        config["hf_repo"] = repo
+        try:
+            with open(config_path, "w", encoding="utf-8") as f:
+                json.dump(config, f, indent=4)
+        except Exception as e:
+            logger.warning(f"failed to write openarc.json for {task.model_name}: {e}")
 
     async def _download_files(self, task: DownloadTask):
         """Async download loop. Each file is fetched in a thread so the event loop stays free,

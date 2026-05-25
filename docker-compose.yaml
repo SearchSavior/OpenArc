@@ -23,6 +23,7 @@ services:
     environment:
       - OPENARC_API_KEY=${OPENARC_API_KEY:-openarc-default-key}
       - OPENARC_AUTOLOAD_MODEL=${OPENARC_AUTOLOAD_MODEL:-}
+      - OPENARC_MODELS_DIR=${OPENARC_MODELS_DIR:-/models}
       # Intel GPU tuning variables
       - NEOReadDebugKeys=1
       - OverrideGpuAddressSpace=48

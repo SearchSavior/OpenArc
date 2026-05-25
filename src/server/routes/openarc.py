@@ -11,8 +11,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+import shutil
+
 from src.server.deps import _registry, _workers, verify_api_key
-from src.server.downloader import global_downloader
+from src.server.downloader import get_default_models_dir, global_downloader
 from src.server.models.ov_genai import OVGenAI_GenConfig
 from src.server.models.registration import ModelLoadConfig, ModelUnloadConfig
 from src.server.models.requests_internal import OpenArcBenchRequest
@@ -219,12 +221,38 @@ async def update_local_model_config(req: UpdateModelConfigRequest):
         raise HTTPException(status_code=500, detail=f"Failed to save config: {str(e)}")
 
 
+class DeleteModelRequest(BaseModel):
+    model_path: str
+
+
+@router.delete("/models", dependencies=[Depends(verify_api_key)])
+async def delete_local_model(req: DeleteModelRequest):
+    models_root = get_default_models_dir().resolve()
+    target = Path(req.model_path).resolve()
+
+    try:
+        rel = target.relative_to(models_root)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Refusing: {target} is outside the models dir {models_root}",
+        )
+    if rel == Path("."):
+        raise HTTPException(status_code=400, detail="Refusing to delete the models root itself")
+
+    if not target.exists() or not target.is_dir():
+        raise HTTPException(status_code=404, detail=f"Model directory not found: {target}")
+
+    try:
+        await asyncio.to_thread(shutil.rmtree, target)
+        return {"status": "success", "model_path": str(target)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete: {e}")
+
+
 @router.get("/models", dependencies=[Depends(verify_api_key)])
-async def get_local_models(path: Optional[str] = None):
-    if path:
-        target_path = Path(path)
-    else:
-        target_path = Path.home() / ".cache" / "openarc" / "models"
+async def get_local_models():
+    target_path = get_default_models_dir()
 
     models = []
     if target_path.exists() and target_path.is_dir():
@@ -234,7 +262,6 @@ async def get_local_models(path: Optional[str] = None):
                 config_path = entry / "openarc.json"
                 has_config = config_path.exists()
 
-                model_name = folder_name
                 model_type = None
                 config_data = {}
 
@@ -242,10 +269,15 @@ async def get_local_models(path: Optional[str] = None):
                     try:
                         with open(config_path, "r", encoding="utf-8") as f:
                             config_data = json.load(f)
-                            model_name = config_data.get("model_name", model_name)
                             model_type = config_data.get("model_type")
                     except Exception:
                         pass
+
+                model_name = (
+                    config_data.get("model_name")
+                    or config_data.get("hf_repo")
+                    or folder_name
+                )
 
                 models.append(
                     {
@@ -262,6 +294,8 @@ async def get_local_models(path: Optional[str] = None):
                             "assistant_confidence_threshold"
                         ),
                         "runtime_config": config_data.get("runtime_config", {}),
+                        "hf_author": config_data.get("hf_author"),
+                        "hf_repo": config_data.get("hf_repo"),
                         "has_config": has_config,
                     }
                 )
@@ -312,7 +346,7 @@ async def get_metrics():
 @router.post("/downloader", dependencies=[Depends(verify_api_key)])
 async def start_download(request: DownloaderRequest):
     try:
-        success = await global_downloader.start(request.model_name, request.path)
+        success = await global_downloader.start(request.model_name)
     except ValueError as e:
         return JSONResponse(
             status_code=400,
