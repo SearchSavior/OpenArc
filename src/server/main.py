@@ -73,9 +73,13 @@ async def lifespan(app: FastAPI):
 
                 cache_dir = model_config.get("cache_dir")
                 if cache_dir and not Path(cache_dir).is_absolute():
-                    model_config["cache_dir"] = str((config_file.parent / cache_dir).resolve())
+                    cache_dir = str((config_file.parent / cache_dir).resolve())
+                    model_config["cache_dir"] = cache_dir
 
                 try:
+                    if cache_dir:
+                        # Create the cache directory at startup if it doesn't exist.
+                        Path(cache_dir).mkdir(parents=True, exist_ok=True)
                     await _registry.register_load(ModelLoadConfig(**model_config))
                     logger.info(f"Startup: loaded '{name}'")
                 except Exception as e:
