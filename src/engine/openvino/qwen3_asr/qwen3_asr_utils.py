@@ -66,6 +66,42 @@ SUPPORTED_LANGUAGES: List[str] = [
     "Hungarian",
     "Macedonian"
 ]
+# ISO-639-1 codes (with a few ISO-639-2/3 codes for languages that lack a
+# 639-1 code) mapped to the canonical full names Qwen3-ASR expects. Used to
+# accept Whisper-style language codes (e.g. "en") in addition to full names.
+LANGUAGE_CODE_TO_NAME: dict = {
+    "zh": "Chinese",
+    "en": "English",
+    "yue": "Cantonese",   # no ISO-639-1 code exists for Cantonese
+    "ar": "Arabic",
+    "de": "German",
+    "fr": "French",
+    "es": "Spanish",
+    "pt": "Portuguese",
+    "id": "Indonesian",
+    "it": "Italian",
+    "ko": "Korean",
+    "ru": "Russian",
+    "th": "Thai",
+    "vi": "Vietnamese",
+    "ja": "Japanese",
+    "tr": "Turkish",
+    "hi": "Hindi",
+    "ms": "Malay",
+    "nl": "Dutch",
+    "sv": "Swedish",
+    "da": "Danish",
+    "fi": "Finnish",
+    "pl": "Polish",
+    "cs": "Czech",
+    "tl": "Filipino",     # Tagalog; Filipino has no distinct ISO-639-1 code
+    "fil": "Filipino",
+    "fa": "Persian",
+    "el": "Greek",
+    "ro": "Romanian",
+    "hu": "Hungarian",
+    "mk": "Macedonian",
+}
 _ASR_TEXT_TAG = "<asr_text>"
 _LANG_PREFIX = "language "
 
@@ -90,6 +126,35 @@ def normalize_language_name(language: str) -> str:
     if not s:
         raise ValueError("language is empty")
     return s[:1].upper() + s[1:].lower()
+
+
+def resolve_language_name(language: str) -> str:
+    """
+    Resolve a user-provided language to the canonical full name used by
+    Qwen3-ASR, accepting either an ISO-639-1 code (e.g. 'en', 'zh') or a full
+    name (e.g. 'English', 'Chinese').
+
+    Codes are matched case-insensitively against LANGUAGE_CODE_TO_NAME; anything
+    else falls back to normalize_language_name.
+
+    Args:
+        language (str): ISO-639-1 code or language name.
+
+    Returns:
+        str: Canonical language name.
+
+    Raises:
+        ValueError: If language is empty.
+    """
+    if language is None:
+        raise ValueError("language is None")
+    s = str(language).strip()
+    if not s:
+        raise ValueError("language is empty")
+    mapped = LANGUAGE_CODE_TO_NAME.get(s.lower())
+    if mapped is not None:
+        return mapped
+    return normalize_language_name(s)
 
 
 def validate_language(language: str) -> None:

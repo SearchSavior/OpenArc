@@ -30,8 +30,8 @@ from src.engine.openvino.qwen3_asr.qwen3_asr_utils import (
     MAX_ASR_INPUT_SECONDS,
     merge_languages,
     normalize_audios,
-    normalize_language_name,
     parse_asr_output,
+    resolve_language_name,
     split_audio_into_chunks,
     validate_language,
 )
@@ -377,7 +377,7 @@ class OVQwen3ASR:
         audio_array = (await asyncio.to_thread(normalize_audios, audio_input))[0]
         language: Optional[str] = None
         if gen_config.language:
-            language = normalize_language_name(gen_config.language)
+            language = resolve_language_name(gen_config.language)
             validate_language(language)
 
         audio_seconds = len(audio_array) / SAMPLE_RATE

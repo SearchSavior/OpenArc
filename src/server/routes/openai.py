@@ -487,6 +487,14 @@ async def openai_completions(request: OpenAICompletionRequest, raw_request: Requ
 async def openai_audio_transcriptions(
     file: UploadFile = File(..., description="The audio file to transcribe"),
     model: str = Form(..., description="ID of the model to use"),
+    language: Optional[str] = Form(
+        None,
+        description=(
+            "Language of the input audio as an ISO-639-1 code (e.g. 'en') or "
+            "full name (e.g. 'English'). When set, overrides "
+            "openarc_asr.qwen3_asr.language; when unset, that value is used."
+        ),
+    ),
     response_format: Optional[str] = Form("json", description="Format of output"),
     openarc_asr: Optional[str] = Form(
         None, description="JSON: OpenArcASRConfig with qwen3_asr params"
@@ -516,7 +524,12 @@ async def openai_audio_transcriptions(
                 payload["qwen3_asr"] = {}
             
             cfg = OpenArcASRConfig.model_validate(payload)
-            gen_config = cfg.qwen3_asr.model_copy(update={"audio_base64": audio_base64})
+            update = {"audio_base64": audio_base64}
+            if language:
+                # Whisper-style top-level `language` takes precedence; otherwise
+                # fall back to openarc_asr.qwen3_asr.language (current behavior).
+                update["language"] = language
+            gen_config = cfg.qwen3_asr.model_copy(update=update)
             result = await _workers.transcribe_qwen3_asr(model, gen_config)
         else:
             gen_config = OVGenAI_WhisperGenConfig(audio_base64=audio_base64)
