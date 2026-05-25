@@ -53,6 +53,8 @@ class OV_Kokoro(KModel):
         core = ov.Core()
         if load_config.cache_dir:
             core.set_property({"CACHE_DIR": load_config.cache_dir})
+        if load_config.runtime_config:
+            core.set_property(load_config.runtime_config)
         self.model = core.compile_model(self.model_path / "openvino_model.xml", self._device)
         return self.model
 

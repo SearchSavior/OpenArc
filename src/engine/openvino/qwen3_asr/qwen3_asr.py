@@ -222,6 +222,8 @@ class OVQwen3ASR:
         self.core = ov.Core()
         if load_config.cache_dir:
             self.core.set_property({"CACHE_DIR": load_config.cache_dir})
+        if load_config.runtime_config:
+            self.core.set_property(load_config.runtime_config)
         self.t_model_load = 0.0
         self.enc_model = None
         self.emb_model = None

@@ -106,6 +106,7 @@ def test_load_model_initializes_pipeline(monkeypatch: pytest.MonkeyPatch, load_c
         load_config.model_path,
         device=load_config.device,
         export=False,
+        ov_config=load_config.runtime_config,
     )
     emb_module.AutoTokenizer.from_pretrained.assert_called_once_with(load_config.model_path)
     assert emb.model is model_instance

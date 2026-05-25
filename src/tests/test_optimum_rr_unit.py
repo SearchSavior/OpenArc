@@ -132,6 +132,7 @@ def test_load_model_initializes_pipeline(monkeypatch: pytest.MonkeyPatch, load_c
         device=load_config.device,
         export=False,
         use_cache=False,
+        ov_config=load_config.runtime_config,
     )
     rr_module.AutoTokenizer.from_pretrained.assert_called_once_with(load_config.model_path)
     assert rr.model is model_instance

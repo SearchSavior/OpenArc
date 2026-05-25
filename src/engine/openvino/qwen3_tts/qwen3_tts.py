@@ -124,7 +124,9 @@ class OVQwen3TTS:
             CP_MAX_POS, CP_HEAD_DIM, CP_ROPE_THETA,
         )
 
-        _hint = {"PERFORMANCE_HINT": "LATENCY"}
+        # runtime_config is merged in (and can override the default hint) so it
+        # reaches every compiled sub-model.
+        _hint = {"PERFORMANCE_HINT": "LATENCY", **(load_config.runtime_config or {})}
         self._text_model_c = core.compile_model(str(p / "text_model.xml"), device, _hint)
         self._codec_emb_c = core.compile_model(str(p / "codec_embedding.xml"), device, _hint)
         # Code predictor: many tiny inferences per frame; CPU avoids GPU launch/transfer overhead.
