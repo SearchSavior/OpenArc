@@ -29,3 +29,5 @@ scratchpad.md
 site/
 .cache/
 scratchpad.md
+build/
+dist/
