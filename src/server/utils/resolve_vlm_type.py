@@ -7,6 +7,7 @@ ARCHITECTURE_VISION_TOKENS = {
     "Gemma4ForConditionalGeneration": "<|image><|image|><image|>",
     "Gemma3ForConditionalGeneration": "<start_of_image>",
     "Qwen3_5ForConditionalGeneration": "<|vision_start|><|image_pad|><|vision_end|>",
+    "Qwen3_5MoeForConditionalGeneration": "<|vision_start|><|image_pad|><|vision_end|>",
     "Qwen3VLForConditionalGeneration": "<|vision_start|><|image_pad|><|vision_end|>",
     "Qwen2_5_VLForConditionalGeneration": "<|vision_start|><|image_pad|><|vision_end|>",
     "Qwen2VLForConditionalGeneration": "<|vision_start|><|image_pad|><|vision_end|>",
