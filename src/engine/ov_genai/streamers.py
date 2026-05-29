@@ -44,6 +44,9 @@ class ChunkStreamer(StreamerBase):
             # Emit only the newly materialized portion
             if len(text) > self.last_print_len:
                 chunk = text[self.last_print_len:]
+                if chr(65533) in chunk:
+                    self.since_last_emit -= 1
+                    return openvino_genai.StreamingStatus.RUNNING
                 if chunk:
                     self.text_queue.put_nowait(chunk)
                 self.last_print_len = len(text)
