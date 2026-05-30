@@ -90,7 +90,7 @@ COPY pyproject.toml ./
 COPY uv.lock* ./
 COPY README* ./
 
-RUN uv sync && \
+RUN uv sync --no-install-project && \
     uv pip install "optimum-intel[openvino] @ git+https://github.com/huggingface/optimum-intel" && \
     uv pip install --pre -U openvino-genai openvino-tokenizers \
       --extra-index-url https://storage.openvinotoolkit.org/simple/wheels/nightly
