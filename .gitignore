@@ -31,3 +31,4 @@ site/
 scratchpad.md
 build/
 dist/
+/models/**/*
