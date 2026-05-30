@@ -1,6 +1,4 @@
-# Git / editor / local tooling
-.git
-.git/**
+# github / editor / local tooling
 .github
 .cursor
 .vscode

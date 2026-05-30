@@ -83,7 +83,7 @@ RUN uv sync && \
       --extra-index-url https://storage.openvinotoolkit.org/simple/wheels/nightly
 
 # Copy the local checked-out repository into the image.
-COPY . /app
+COPY --exclude=.git/ . /app
 
 # Add venv to PATH so openarc command works
 ENV PATH="/app/.venv/bin:$PATH"
@@ -163,6 +163,8 @@ RUN chmod +x /usr/local/bin/start-openarc.sh
 # Build Standard Version
 # ============================================================================
 FROM common-base AS standard
+ARG OPENARC_VARIANT=standard
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     intel-opencl-icd \
     intel-level-zero-gpu \
@@ -175,6 +177,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ============================================================================
 RUN printf '%s\n' \
     '=== Build Information ===' \
+    "Docker Image Variant: ${OPENARC_VARIANT}" \
     "Build Date: ${BUILD_DATE}" \
     "OpenARC Version: ${VCS_DESCRIBE}" \
     "Git Ref: ${VCS_REF}" \
@@ -195,6 +198,8 @@ CMD ["/usr/local/bin/start-openarc.sh"]
 # Build Battlemage Version
 # ============================================================================
 FROM common-base AS battlemage
+ARG OPENARC_VARIANT=battlemage
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     software-properties-common \
     && add-apt-repository ppa:kobuk-team/intel-graphics \
@@ -208,6 +213,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ============================================================================
 RUN printf '%s\n' \
     '=== Build Information ===' \
+    "Docker Image Variant: ${OPENARC_VARIANT}" \
     "Build Date: ${BUILD_DATE}" \
     "OpenARC Version: ${VCS_DESCRIBE}" \
     "Git Ref: ${VCS_REF}" \
