@@ -10,19 +10,35 @@
 #   docker build --target battlemage -t {imagename}-battlemage:dev .
 # ============================================================================
 
+# ============================================================================
+# Get tags / metadata info from git for use in both targets
+# ============================================================================
+FROM ubuntu:24.04 AS metadata
+WORKDIR /src
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY .git .git
+
+RUN BUILD_DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" && \
+    VCS_REF="$(git rev-parse HEAD 2>/dev/null || echo unknown)" && \
+    VCS_DESCRIBE="$(git describe --tags --always --dirty 2>/dev/null || git rev-parse --short HEAD 2>/dev/null || echo unknown)" && \
+    OPENARC_SOURCE="$(git remote get-url origin 2>/dev/null || echo local-working-tree)" && \
+    printf '%s\n' "$BUILD_DATE" > /build-date && \
+    printf '%s\n' "$VCS_REF" > /git-vcs-ref && \
+    printf '%s\n' "$VCS_DESCRIBE" > /git-vcs-describe && \
+    printf '%s\n' "$OPENARC_SOURCE" > /git-openarc-source
+
+
+# ============================================================================
+# Build Common image including common dependencies
+# ============================================================================
 FROM ubuntu:24.04 AS common-base
 
 ENV DEBIAN_FRONTEND=noninteractive
-
-ARG BUILD_DATE=unknown
-ARG VCS_REF=unknown
-ARG VCS_DESCRIBE=unknown
-ARG OPENARC_SOURCE=local-working-tree
-
-# ============================================================================
-# Common System Dependencies
-# ============================================================================
-
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
@@ -85,6 +101,9 @@ RUN uv sync && \
 # Copy the local checked-out repository into the image.
 COPY --exclude=.git/ . /app
 
+# Install OpenARC
+RUN uv pip install --no-deps -e .
+
 # Add venv to PATH so openarc command works
 ENV PATH="/app/.venv/bin:$PATH"
 
@@ -114,7 +133,7 @@ RUN mkdir -p /persist /models && \
 # Startup Script
 # ============================================================================
 RUN cat > /usr/local/bin/start-openarc.sh <<'SCRIPT'
-#!/usr/bin/env bash
+#!/bin/bash
 set -e
 
 echo "================================================"
@@ -157,7 +176,9 @@ fi
 wait $SERVER_PID
 SCRIPT
 
-RUN chmod +x /usr/local/bin/start-openarc.sh
+# Fix ^M / CRLF characters if building on windows
+RUN sed -i 's/\r$//' /usr/local/bin/start-openarc.sh && \
+    chmod +x /usr/local/bin/start-openarc.sh
 
 # ============================================================================
 # Build Standard Version
@@ -175,19 +196,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ============================================================================
 # Standard Version Build Info Logging
 # ============================================================================
-RUN printf '%s\n' \
-    '=== Build Information ===' \
-    "Docker Image Variant: ${OPENARC_VARIANT}" \
-    "Build Date: ${BUILD_DATE}" \
-    "OpenARC Version: ${VCS_DESCRIBE}" \
-    "Git Ref: ${VCS_REF}" \
-    "Source: ${OPENARC_SOURCE}" \
-    '' \
-    '=== Intel Package Versions ===' \
-    > /app/BUILD_INFO.txt && \
-    (uv pip list | grep -E '(openvino|optimum|torch)' >> /app/BUILD_INFO.txt || true) && \
-    printf '\n=== System Package Versions ===\n' >> /app/BUILD_INFO.txt && \
-    (dpkg -l | grep -E 'intel-opencl|level-zero|libze' | awk '{print $2 " " $3}' >> /app/BUILD_INFO.txt || true)
+
+# copy git/build metadata forward from the metadata stage.
+COPY --from=metadata /build-date /tmp/build-date
+COPY --from=metadata /git-vcs-ref /tmp/git-vcs-ref
+COPY --from=metadata /git-vcs-describe /tmp/git-vcs-describe
+COPY --from=metadata /git-openarc-source /tmp/git-openarc-source
+
+RUN BUILD_DATE="$(cat /tmp/build-date)" && \
+    VCS_REF="$(cat /tmp/git-vcs-ref)" && \
+    VCS_DESCRIBE="$(cat /tmp/git-vcs-describe)" && \
+    OPENARC_SOURCE="$(cat /tmp/git-openarc-source)" && \
+    echo "=== Build Information ===" > /app/BUILD_INFO.txt && \
+    echo "Docker Image Variant: ${OPENARC_VARIANT}" >> /app/BUILD_INFO.txt && \
+    echo "Build Date: ${BUILD_DATE}" >> /app/BUILD_INFO.txt && \
+    echo "OpenARC Version: ${VCS_DESCRIBE}" >> /app/BUILD_INFO.txt && \
+    echo "Git Ref: ${VCS_REF}" >> /app/BUILD_INFO.txt && \
+    echo "Source: ${OPENARC_SOURCE}" >> /app/BUILD_INFO.txt && \
+    echo "" >> /app/BUILD_INFO.txt && \
+    echo "=== Intel Package Versions ===" >> /app/BUILD_INFO.txt && \
+    uv pip list | grep -E "(openvino|optimum|torch)" >> /app/BUILD_INFO.txt || true && \
+    echo "" >> /app/BUILD_INFO.txt && \
+    echo "=== System Package Versions ===" >> /app/BUILD_INFO.txt && \
+    dpkg -l | grep -E "intel-opencl|level-zero|libze" | awk '{print $2 " " $3}' >> /app/BUILD_INFO.txt || true
 
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
@@ -208,22 +239,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     intel-opencl-icd \
     && rm -rf /var/lib/apt/lists/*
 
+# Bring git/build metadata forward from the git-metadata stage.
+COPY --from=git-metadata /build-date /tmp/build-date
+COPY --from=git-metadata /git-vcs-ref /tmp/git-vcs-ref
+COPY --from=git-metadata /git-vcs-describe /tmp/git-vcs-describe
+COPY --from=git-metadata /git-openarc-source /tmp/git-openarc-source
+
 # ============================================================================
 # Battlemage Version Build Info Logging
 # ============================================================================
-RUN printf '%s\n' \
-    '=== Build Information ===' \
-    "Docker Image Variant: ${OPENARC_VARIANT}" \
-    "Build Date: ${BUILD_DATE}" \
-    "OpenARC Version: ${VCS_DESCRIBE}" \
-    "Git Ref: ${VCS_REF}" \
-    "Source: ${OPENARC_SOURCE}" \
-    '' \
-    '=== Intel Package Versions ===' \
-    > /app/BUILD_INFO.txt && \
-    (uv pip list | grep -E '(openvino|optimum|torch)' >> /app/BUILD_INFO.txt || true) && \
-    printf '\n=== System Package Versions ===\n' >> /app/BUILD_INFO.txt && \
-    (dpkg -l | grep -E 'intel-opencl|level-zero|libze' | awk '{print $2 " " $3}' >> /app/BUILD_INFO.txt || true)
+RUN BUILD_DATE="$(cat /tmp/build-date)" && \
+    VCS_REF="$(cat /tmp/git-vcs-ref)" && \
+    VCS_DESCRIBE="$(cat /tmp/git-vcs-describe)" && \
+    OPENARC_SOURCE="$(cat /tmp/git-openarc-source)" && \
+    echo "=== Build Information ===" > /app/BUILD_INFO.txt && \
+    echo "Docker Image Variant: ${OPENARC_VARIANT}" >> /app/BUILD_INFO.txt && \
+    echo "Build Date: ${BUILD_DATE}" >> /app/BUILD_INFO.txt && \
+    echo "OpenARC Version: ${VCS_DESCRIBE}" >> /app/BUILD_INFO.txt && \
+    echo "Git Ref: ${VCS_REF}" >> /app/BUILD_INFO.txt && \
+    echo "Source: ${OPENARC_SOURCE}" >> /app/BUILD_INFO.txt && \
+    echo "" >> /app/BUILD_INFO.txt && \
+    echo "=== Intel Package Versions ===" >> /app/BUILD_INFO.txt && \
+    uv pip list | grep -E "(openvino|optimum|torch)" >> /app/BUILD_INFO.txt || true && \
+    echo "" >> /app/BUILD_INFO.txt && \
+    echo "=== System Package Versions ===" >> /app/BUILD_INFO.txt && \
+    dpkg -l | grep -E "intel-opencl|level-zero|libze" | awk '{print $2 " " $3}' >> /app/BUILD_INFO.txt || true
 
 EXPOSE 8000
 
