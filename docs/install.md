@@ -94,6 +94,11 @@ Visit [OpenVINO System Requirments](https://docs.openvino.ai/2025/about-openvino
     ```bash
     docker-compose up --build -d
     ```
+    _The above builds and runs the default image; to build and run the battlemage image, set an environment variable before building:_
+    ```bash
+    BUILD_TARGET=battlemage
+    docker-compose up --build -d
+    ```
 
     **Run the container:**
     ```bash
