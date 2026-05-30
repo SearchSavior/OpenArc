@@ -13,15 +13,12 @@
 # ============================================================================
 # Get tags / metadata info from git for use in both targets
 # ============================================================================
-FROM ubuntu:24.04 AS metadata
+FROM alpine:latest AS metadata
 WORKDIR /src
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    git \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache git ca-certificates
 
-COPY .git .git
+COPY . .
 
 RUN BUILD_DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" && \
     VCS_REF="$(git rev-parse HEAD 2>/dev/null || echo unknown)" && \
