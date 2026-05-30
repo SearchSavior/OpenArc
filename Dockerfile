@@ -98,22 +98,26 @@ RUN uv sync && \
     uv pip install --pre -U openvino-genai openvino-tokenizers \
       --extra-index-url https://storage.openvinotoolkit.org/simple/wheels/nightly
 
+# Add venv to PATH so openarc command works
+ENV PATH="/app/.venv/bin:$PATH"
+
+# ============================================================================
+# Precompile Python bytecode from dependencies to avoid slow first-start imports.
+# ============================================================================
+RUN python -m compileall -q /app/.venv/lib/python3.12/site-packages
+
 # Copy the local checked-out repository into the image.
 COPY --exclude=.git/ . /app
 
 # Install OpenARC
 RUN uv pip install --no-deps -e .
 
-# Add venv to PATH so openarc command works
-ENV PATH="/app/.venv/bin:$PATH"
-
 # ============================================================================
-# Precompile Python bytecode to avoid slow first-start imports.
-# NB: If ever code path / dependencies change between standard and battlemage,
-#       this should move down into the image-specific sections.
-#       For now, compiled output does not differ between images.
+# Precompile Python bytecode for OpenARC to speed up server start
+# This is done in a second step so we don't have to recompile EVERYTHING
+#   if only local code changes (docker build cache keeps the previous compilation)
 # ============================================================================
-RUN python -m compileall -q /app/src /app/.venv/lib/python3.12/site-packages
+RUN python -m compileall -q /app/src
 
 # ============================================================================
 # Runtime Configuration
@@ -240,10 +244,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Bring git/build metadata forward from the git-metadata stage.
-COPY --from=git-metadata /build-date /tmp/build-date
-COPY --from=git-metadata /git-vcs-ref /tmp/git-vcs-ref
-COPY --from=git-metadata /git-vcs-describe /tmp/git-vcs-describe
-COPY --from=git-metadata /git-openarc-source /tmp/git-openarc-source
+COPY --from=metadata /build-date /tmp/build-date
+COPY --from=metadata /git-vcs-ref /tmp/git-vcs-ref
+COPY --from=metadata /git-vcs-describe /tmp/git-vcs-describe
+COPY --from=metadata /git-openarc-source /tmp/git-openarc-source
 
 # ============================================================================
 # Battlemage Version Build Info Logging
