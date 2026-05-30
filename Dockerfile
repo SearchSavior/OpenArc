@@ -1,17 +1,30 @@
 # ============================================================================
-# OpenARC From Scratch - Ubuntu Base + Manual Intel Setup
-# NOTE: 
-#       Newer GPUs require using the `libze` packages instead of `level-zero`.
-#       For Battlemage or newer, you should use `Battlemage.Dockerfile` instead.
+# OpenARC multi-target image build
+#
+# Targets:
+#   - standard   : Intel GPU path (level-zero packages)
+#   - battlemage : Battlemage Intel GPU path
+#
+# Build examples:
+#   docker build --target standard   -t {imagename}:dev .
+#   docker build --target battlemage -t {imagename}-battlemage:dev .
 # ============================================================================
-FROM ubuntu:24.04
+
+FROM ubuntu:24.04 AS common-base
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+ARG BUILD_DATE=unknown
+ARG VCS_REF=unknown
+ARG VCS_DESCRIBE=unknown
+ARG OPENARC_SOURCE=local-working-tree
+
 # ============================================================================
-# System Dependencies
+# Common System Dependencies
 # ============================================================================
-RUN apt-get update && apt-get install -y \
+
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     git \
@@ -21,40 +34,30 @@ RUN apt-get update && apt-get install -y \
     python3 \
     python3-venv \
     python3-dev \
-    python3-pip && \
-    update-alternatives --install /usr/bin/python python /usr/bin/python3 1 && \
-    rm -rf /var/lib/apt/lists/*
+    python3-pip \
+    cmake \
+    build-essential \
+    libudev-dev \
+    && update-alternatives --install /usr/bin/python python /usr/bin/python3 1 \
+    && rm -rf /var/lib/apt/lists/*
 
 # ============================================================================
 # Intel GPU Drivers
 # ============================================================================
 RUN wget -qO - https://repositories.intel.com/gpu/intel-graphics.key | \
     gpg --dearmor --output /usr/share/keyrings/intel-graphics.gpg && \
-    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://repositories.intel.com/gpu/ubuntu noble client" | \
-    tee /etc/apt/sources.list.d/intel-gpu-noble.list && \
-    apt-get update && apt-get install -y \
-    intel-opencl-icd \
-    intel-level-zero-gpu \
-    level-zero \
-    level-zero-dev && \
-    rm -rf /var/lib/apt/lists/*
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://repositories.intel.com/gpu/ubuntu noble client" > \
+      /etc/apt/sources.list.d/intel-gpu-noble.list
 
-# ============================================================================
-# Intel NPU Driver
-# ============================================================================
-RUN apt-get update && apt-get install -y \
-    cmake \
-    build-essential \
-    libudev-dev && \
-    git clone https://github.com/intel/linux-npu-driver.git /tmp/npu-driver && \
+RUN git clone https://github.com/intel/linux-npu-driver.git /tmp/npu-driver && \
     cd /tmp/npu-driver && \
     git submodule update --init --recursive && \
     mkdir build && cd build && \
     cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local .. && \
-    make -j$(nproc) && \
+    make -j"$(nproc)" && \
     make install && \
     ldconfig && \
-    cd / && rm -rf /tmp/npu-driver /var/lib/apt/lists/*
+    cd / && rm -rf /tmp/npu-driver
 
 # ============================================================================
 # Install uv package manager
@@ -63,25 +66,33 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:$PATH"
 
 # ============================================================================
-# Clone and setup OpenArc
+# Setup OpenArc; Assume we're running from am local repo, versus cloning.
+#   (This allows local image generation from the local code repository)
 # ============================================================================
 WORKDIR /app
-RUN git clone https://github.com/SearchSavior/OpenArc.git . && \
-    echo "OpenARC version: $(git describe --tags --always)"
 
-# ============================================================================
-# Install Python dependencies with uv
-# ============================================================================
+# Copy dependency metadata first so app code changes do not always invalidate
+# the Python dependency layers.
+COPY pyproject.toml ./
+COPY uv.lock* ./
+COPY README* ./
+
 RUN uv sync && \
     uv pip install "optimum-intel[openvino] @ git+https://github.com/huggingface/optimum-intel" && \
     uv pip install --pre -U openvino-genai openvino-tokenizers \
-        --extra-index-url https://storage.openvinotoolkit.org/simple/wheels/nightly
+      --extra-index-url https://storage.openvinotoolkit.org/simple/wheels/nightly
+
+# Copy the local checked-out repository into the image.
+COPY . /app
 
 # Add venv to PATH so openarc command works
 ENV PATH="/app/.venv/bin:$PATH"
 
 # ============================================================================
 # Precompile Python bytecode to avoid slow first-start imports.
+# NB: If ever code path / dependencies change between standard and battlemage,
+#       this should move down into the image-specific sections.
+#       For now, compiled output does not differ between images.
 # ============================================================================
 RUN python -m compileall -q /app/src /app/.venv/lib/python3.12/site-packages
 
@@ -100,23 +111,10 @@ RUN mkdir -p /persist /models && \
     ln -sf /persist/openarc_config.json /app/openarc_config.json
 
 # ============================================================================
-# Build Info Logging
-# ============================================================================
-RUN echo "=== Build Information ===" > /app/BUILD_INFO.txt && \
-    echo "Build Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> /app/BUILD_INFO.txt && \
-    echo "OpenARC Version: $(git describe --tags --always)" >> /app/BUILD_INFO.txt && \
-    echo "" >> /app/BUILD_INFO.txt && \
-    echo "=== Intel Package Versions ===" >> /app/BUILD_INFO.txt && \
-    uv pip list | grep -E "(openvino|optimum|torch)" >> /app/BUILD_INFO.txt || true && \
-    echo "" >> /app/BUILD_INFO.txt && \
-    echo "=== System Package Versions ===" >> /app/BUILD_INFO.txt && \
-    dpkg -l | grep -E "intel-opencl|level-zero" | awk '{print $2 " " $3}' >> /app/BUILD_INFO.txt || true
-
-# ============================================================================
 # Startup Script
 # ============================================================================
 RUN cat > /usr/local/bin/start-openarc.sh <<'SCRIPT'
-#!/bin/bash
+#!/usr/bin/env bash
 set -e
 
 echo "================================================"
@@ -160,6 +158,66 @@ wait $SERVER_PID
 SCRIPT
 
 RUN chmod +x /usr/local/bin/start-openarc.sh
+
+# ============================================================================
+# Build Standard Version
+# ============================================================================
+FROM common-base AS standard
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    intel-opencl-icd \
+    intel-level-zero-gpu \
+    level-zero \
+    level-zero-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# ============================================================================
+# Standard Version Build Info Logging
+# ============================================================================
+RUN printf '%s\n' \
+    '=== Build Information ===' \
+    "Build Date: ${BUILD_DATE}" \
+    "OpenARC Version: ${VCS_DESCRIBE}" \
+    "Git Ref: ${VCS_REF}" \
+    "Source: ${OPENARC_SOURCE}" \
+    '' \
+    '=== Intel Package Versions ===' \
+    > /app/BUILD_INFO.txt && \
+    (uv pip list | grep -E '(openvino|optimum|torch)' >> /app/BUILD_INFO.txt || true) && \
+    printf '\n=== System Package Versions ===\n' >> /app/BUILD_INFO.txt && \
+    (dpkg -l | grep -E 'intel-opencl|level-zero|libze' | awk '{print $2 " " $3}' >> /app/BUILD_INFO.txt || true)
+
+EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+  CMD curl -f -H "Authorization: Bearer ${OPENARC_API_KEY}" http://localhost:8000/v1/models || exit 1
+CMD ["/usr/local/bin/start-openarc.sh"]
+
+# ============================================================================
+# Build Battlemage Version
+# ============================================================================
+FROM common-base AS battlemage
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    software-properties-common \
+    && add-apt-repository ppa:kobuk-team/intel-graphics \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    libze-intel-gpu1 \
+    intel-opencl-icd \
+    && rm -rf /var/lib/apt/lists/*
+
+# ============================================================================
+# Battlemage Version Build Info Logging
+# ============================================================================
+RUN printf '%s\n' \
+    '=== Build Information ===' \
+    "Build Date: ${BUILD_DATE}" \
+    "OpenARC Version: ${VCS_DESCRIBE}" \
+    "Git Ref: ${VCS_REF}" \
+    "Source: ${OPENARC_SOURCE}" \
+    '' \
+    '=== Intel Package Versions ===' \
+    > /app/BUILD_INFO.txt && \
+    (uv pip list | grep -E '(openvino|optimum|torch)' >> /app/BUILD_INFO.txt || true) && \
+    printf '\n=== System Package Versions ===\n' >> /app/BUILD_INFO.txt && \
+    (dpkg -l | grep -E 'intel-opencl|level-zero|libze' | awk '{print $2 " " $3}' >> /app/BUILD_INFO.txt || true)
 
 EXPOSE 8000
 
