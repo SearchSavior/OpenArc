@@ -58,6 +58,7 @@ jobs:
         with:
           builder: ${{ steps.buildx.outputs.name }}
           context: .
+          target: standard
           push: true
           tags: ${{ steps.meta-standard.outputs.tags }}
           labels: ${{ steps.meta-standard.outputs.labels }}
@@ -84,8 +85,11 @@ jobs:
         with:
           builder: ${{ steps.buildx.outputs.name }}
           context: .
+          target: battlemage
           push: true
           tags: ${{ steps.meta-battlemage.outputs.tags }}
           labels: ${{ steps.meta-battlemage.outputs.labels }}
-          cache-from: type=gha,scope=battlemage
+          cache-from: |
+            type=gha,scope=standard
+            type=gha,scope=battlemage
           cache-to: type=gha,scope=battlemage,mode=max
