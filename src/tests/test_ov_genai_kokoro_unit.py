@@ -74,6 +74,33 @@ def test_load_model_sets_model_and_metadata(tmp_path: Path, monkeypatch: pytest.
     assert kokoro.context_length == 256
 
 
+def test_load_model_forwards_runtime_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    model_dir = tmp_path / "kokoro"
+    model_dir.mkdir()
+    (model_dir / "config.json").write_text(
+        json.dumps({"vocab": ["a"], "plbert": {"max_position_embeddings": 256}}),
+        encoding="utf-8",
+    )
+    (model_dir / "openvino_model.xml").write_text("<xml />", encoding="utf-8")
+
+    core_instance = MagicMock()
+    core_instance.compile_model.return_value = "compiled-model"
+    monkeypatch.setattr(kokoro_module.ov, "Core", MagicMock(return_value=core_instance))
+
+    load_config = ModelLoadConfig(
+        model_path=str(model_dir),
+        model_name="rtc-kokoro",
+        model_type=ModelType.KOKORO,
+        engine=EngineType.OPENVINO,
+        device="CPU",
+        runtime_config={"NUM_STREAMS": "2"},
+    )
+
+    OV_Kokoro(load_config).load_model(load_config)
+
+    core_instance.set_property.assert_called_once_with({"NUM_STREAMS": "2"})
+
+
 def test_chunk_forward_pass_yields_chunks(monkeypatch: pytest.MonkeyPatch, load_config: ModelLoadConfig) -> None:
     kokoro = OV_Kokoro(load_config)
     kokoro.model = object()

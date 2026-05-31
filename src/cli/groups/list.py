@@ -120,6 +120,8 @@ def list(ctx, model_name, verbose, remove):
         config_table.add_row("model_type", f"[magenta]{model_config.get('model_type')}[/magenta]")
 
         # Display optional fields when available
+        if model_config.get('cache_dir'):
+            config_table.add_row("cache_dir", f"[yellow]{model_config.get('cache_dir')}[/yellow]")
         if model_config.get('draft_model_path'):
             config_table.add_row("draft_model_path", f"[red]{model_config.get('draft_model_path')}[/red]")
         if model_config.get('draft_device'):

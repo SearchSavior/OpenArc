@@ -81,9 +81,16 @@ class Optimum_EMB:
             loader: ModelLoadConfig containing model_path, device, engine, and runtime_config.
         """
 
-        self.model = OVModelForFeatureExtraction.from_pretrained(loader.model_path, 
-            device=loader.device, 
-            export=False)
+        ov_config = {**(loader.runtime_config or {})}
+        if loader.cache_dir:
+            ov_config["CACHE_DIR"] = loader.cache_dir
+
+        from_pretrained_kwargs = {"device": loader.device, "export": False}
+        if ov_config:
+            from_pretrained_kwargs["ov_config"] = ov_config
+
+        self.model = OVModelForFeatureExtraction.from_pretrained(loader.model_path,
+            **from_pretrained_kwargs)
 
         self.tokenizer = AutoTokenizer.from_pretrained(loader.model_path)
         logging.info(f"Model loaded successfully: {loader.model_name}")

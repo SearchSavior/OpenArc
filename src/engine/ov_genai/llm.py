@@ -232,9 +232,15 @@ class OVGenAI_LLM:
         draft_model = None
         if loader.draft_model_path:
             try:
+                # Cache the draft model alongside the main model. OpenVINO keys
+                # cache blobs by model content, so sharing one CACHE_DIR is safe.
+                draft_model_properties = {}
+                if loader.cache_dir:
+                    draft_model_properties['CACHE_DIR'] = loader.cache_dir
                 draft_model = openvino_genai.draft_model(
                     loader.draft_model_path,
-                    loader.draft_device
+                    loader.draft_device,
+                    **draft_model_properties
                 )
                 logger.info(f"Loaded draft model from {loader.draft_model_path} on {loader.draft_device}")
                 self.draft_model_loaded = True
@@ -263,6 +269,8 @@ class OVGenAI_LLM:
             self.model_assistant_confidence_threshold = None
         
         pipeline_kwargs = {**(loader.runtime_config or {})}
+        if loader.cache_dir:
+            pipeline_kwargs['CACHE_DIR'] = loader.cache_dir
         if draft_model is not None:
             pipeline_kwargs['draft_model'] = draft_model
         

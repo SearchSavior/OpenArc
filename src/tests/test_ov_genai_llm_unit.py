@@ -172,6 +172,83 @@ def test_load_model_sets_pipeline_and_tokenizer(monkeypatch: pytest.MonkeyPatch,
     assert llm.encoder_tokenizer is tokenizer_instance
 
 
+def test_load_model_forwards_cache_dir(monkeypatch: pytest.MonkeyPatch) -> None:
+    pipeline_factory = MagicMock(return_value=MagicMock())
+    monkeypatch.setattr(llm_module, "LLMPipeline", pipeline_factory)
+    monkeypatch.setattr(
+        llm_module.AutoTokenizer,
+        "from_pretrained",
+        MagicMock(return_value=MagicMock()),
+    )
+
+    loader = ModelLoadConfig(
+        model_path=MODEL_PATH,
+        model_name="loader-model",
+        model_type=ModelType.LLM,
+        engine=EngineType.OV_GENAI,
+        device="CPU",
+        runtime_config={"hint": "value"},
+        cache_dir="/tmp/ov_cache",
+    )
+
+    OVGenAI_LLM(loader).load_model(loader)
+
+    pipeline_factory.assert_called_once_with(
+        loader.model_path,
+        loader.device,
+        hint="value",
+        CACHE_DIR="/tmp/ov_cache",
+    )
+
+
+def _draft_loader(cache_dir):
+    return ModelLoadConfig(
+        model_path=MODEL_PATH,
+        model_name="loader-model",
+        model_type=ModelType.LLM,
+        engine=EngineType.OV_GENAI,
+        device="CPU",
+        runtime_config={},
+        cache_dir=cache_dir,
+        draft_model_path="/models/draft",
+        draft_device="CPU",
+    )
+
+
+def _patch_llm_load(monkeypatch):
+    monkeypatch.setattr(llm_module, "LLMPipeline", MagicMock(return_value=MagicMock()))
+    monkeypatch.setattr(
+        llm_module.AutoTokenizer,
+        "from_pretrained",
+        MagicMock(return_value=MagicMock()),
+    )
+    draft_factory = MagicMock(return_value=object())
+    monkeypatch.setattr(llm_module.openvino_genai, "draft_model", draft_factory)
+    return draft_factory
+
+
+def test_load_model_forwards_cache_dir_to_draft_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    draft_factory = _patch_llm_load(monkeypatch)
+    loader = _draft_loader("/tmp/ov_cache")
+
+    OVGenAI_LLM(loader).load_model(loader)
+
+    draft_factory.assert_called_once_with(
+        "/models/draft",
+        "CPU",
+        CACHE_DIR="/tmp/ov_cache",
+    )
+
+
+def test_load_model_draft_model_without_cache_dir(monkeypatch: pytest.MonkeyPatch) -> None:
+    draft_factory = _patch_llm_load(monkeypatch)
+    loader = _draft_loader(None)
+
+    OVGenAI_LLM(loader).load_model(loader)
+
+    draft_factory.assert_called_once_with("/models/draft", "CPU")
+
+
 @pytest.mark.asyncio
 async def test_unload_model_resets_state(monkeypatch: pytest.MonkeyPatch, load_config: ModelLoadConfig) -> None:
     llm = OVGenAI_LLM(load_config)

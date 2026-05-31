@@ -75,10 +75,14 @@ class OVGenAI_Whisper:
         """
         Load (or reload) a Whisper model into a pipeline for the given device.
         """
+        pipeline_kwargs = {**(loader.runtime_config or {})}
+        if loader.cache_dir:
+            pipeline_kwargs['CACHE_DIR'] = loader.cache_dir
+
         self.whisper_model = WhisperPipeline(
             loader.model_path,
             loader.device,
-            **(loader.runtime_config or {})
+            **pipeline_kwargs
         )
 
     async def unload_model(self, registry: ModelRegistry, model_name: str) -> bool:

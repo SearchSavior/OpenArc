@@ -371,6 +371,34 @@ This page contains example commands to help you choose models and configure Open
               --assistant-confidence-threshold 0.5
             ```
 
+        === "Model caching"
+
+            The `--cache-dir` parameter can be specified to cache compiled models upon first start. This can greatly reduce startup memory cost and time for subsequent process starts.
+            On some setups this can reduce peak memory utilization on subsequent restarts by 3x or more, and start time by 7x. For additional details, see
+            [here](https://docs.openvino.ai/2026/model-server/ovms_docs_model_cache.html).
+
+            The cache can be shared by multiple processes (and on shared network filesystems such as NFS or CephFS) provided that only one process updates it at a time.
+
+            The cache will be fully or partially invalidated when doing any of the below:
+            * Changing the utilized device(s) (swapping GPU models, adding or removing a GPU, adding or removing a CPU, etc.)
+            * Changing `runtime_config` that impacts the model itself (e.g. `PERFORMANCE_HINT: THROUGHPUT` to `PERFORMANCE_HINT: LATENCY` but not `NUM_STREAMS: 1 to `NUM_STREAMS: 2`)
+            * Changing any part of the software stack from the firmware up - GPU firmware, OS kernel, kernel modules/drivers, dependency libraries, OpenARC, model versions.
+
+            > [!WARNING]
+            > Due to OpenVINO limitations, unused cache files are never cleaned up and will persist until an operator removes them. The cache can grow large over time. It is recommended
+            > that operators monitor the cache size and manually clean it up as needed to reduce disk usage.
+
+
+            ```
+            openarc add \
+              --model-name <model-name> \
+              --model-path <path/to/model> \
+              --engine ovgenai \
+              --model-type llm \
+              --device GPU \
+              --cache-dir <path/to/model/cache>
+            ```
+
 === "list"
 
     Reads added configurations from `openarc_config.json`.
