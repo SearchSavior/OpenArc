@@ -10,7 +10,7 @@ from src.server.models.optimum import PreTrainedTokenizerConfig, RerankerConfig
 from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
 
 
-def _make_worker(response_value, metrics_value, supports_stream: bool = False):
+def _make_worker(response_value, metrics_value, supports_stream: bool = False, segments_value=None):
     async def _worker(model_name, model_queue, model_instance, registry):
         while True:
             packet = await model_queue.get()
@@ -23,6 +23,7 @@ def _make_worker(response_value, metrics_value, supports_stream: bool = False):
                 await packet.stream_queue.put(None)
             packet.response = response_value
             packet.metrics = metrics_value
+            packet.segments = segments_value
             if packet.result_future is not None and not packet.result_future.done():
                 packet.result_future.set_result(packet)
             model_queue.task_done()
@@ -217,6 +218,92 @@ def test_qwen3_asr_transcribe(worker_registry: worker_module.WorkerRegistry) -> 
 
     result = asyncio.run(_run())
     assert result == {"text": "qwen3-text", "metrics": {"chunks": 1}}
+
+
+def test_qwen3_asr_transcribe_includes_segments(
+    worker_registry: worker_module.WorkerRegistry, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    segments = [
+        {"id": 0, "start": 0.0, "end": 1.5, "text": "hello"},
+        {"id": 1, "start": 1.5, "end": 3.0, "text": "world"},
+    ]
+    monkeypatch.setattr(
+        worker_module.QueueWorker,
+        "queue_worker_qwen3_asr",
+        _make_worker("hello world", {"chunks": 2}, segments_value=segments),
+    )
+    record = _make_record(ModelType.QWEN3_ASR, "qwen3-asr-segments")
+    config = OV_Qwen3ASRGenConfig(audio_base64="AAA")
+
+    async def _run():
+        return await _load_and_call(worker_registry, record, worker_registry.transcribe_qwen3_asr("qwen3-asr-segments", config))
+
+    result = asyncio.run(_run())
+    assert result == {
+        "text": "hello world",
+        "metrics": {"chunks": 2},
+        "segments": segments,
+    }
+
+
+def test_qwen3_asr_transcribe_omits_empty_metrics_and_segments(
+    worker_registry: worker_module.WorkerRegistry, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Falsy metrics/segments must not appear as keys in the response.
+    monkeypatch.setattr(
+        worker_module.QueueWorker,
+        "queue_worker_qwen3_asr",
+        _make_worker("text only", {}, segments_value=[]),
+    )
+    record = _make_record(ModelType.QWEN3_ASR, "qwen3-asr-empty")
+    config = OV_Qwen3ASRGenConfig(audio_base64="AAA")
+
+    async def _run():
+        return await _load_and_call(worker_registry, record, worker_registry.transcribe_qwen3_asr("qwen3-asr-empty", config))
+
+    result = asyncio.run(_run())
+    assert result == {"text": "text only"}
+
+
+def test_infer_qwen3_asr_unpacks_tuple() -> None:
+    segments = [{"id": 0, "start": 0.0, "end": 1.0, "text": "hi"}]
+
+    class FakeASR:
+        async def transcribe(self, gen_config):
+            return "hi", {"chunks": 1}, segments
+
+    packet = worker_module.WorkerPacket(
+        request_id="r1",
+        id_model="qwen3-asr",
+        gen_config=OV_Qwen3ASRGenConfig(audio_base64="AAA"),
+    )
+
+    result = asyncio.run(worker_module.InferWorker.infer_qwen3_asr(packet, FakeASR()))
+
+    assert result is packet
+    assert packet.response == "hi"
+    assert packet.metrics == {"chunks": 1}
+    assert packet.segments == segments
+
+
+def test_infer_qwen3_asr_handles_error() -> None:
+    class FailingASR:
+        async def transcribe(self, gen_config):
+            raise RuntimeError("boom")
+
+    packet = worker_module.WorkerPacket(
+        request_id="r2",
+        id_model="qwen3-asr",
+        gen_config=OV_Qwen3ASRGenConfig(audio_base64="AAA"),
+    )
+
+    result = asyncio.run(worker_module.InferWorker.infer_qwen3_asr(packet, FailingASR()))
+
+    assert result is packet
+    assert packet.response.startswith("Error:")
+    assert "boom" in packet.response
+    assert packet.metrics is None
+    assert packet.segments is None
 
 
 def test_embed(worker_registry: worker_module.WorkerRegistry) -> None:

@@ -21,7 +21,7 @@ import base64
 from pathlib import Path
 import logging
 import gc
-from typing import Any, AsyncIterator, Dict, Optional, Union
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import openvino as ov
@@ -372,7 +372,7 @@ class OVQwen3ASR:
         )
         return raw, metrics
 
-    async def transcribe(self, gen_config: OV_Qwen3ASRGenConfig) -> AsyncIterator[Union[Dict[str, Any], str]]:
+    async def transcribe(self, gen_config: OV_Qwen3ASRGenConfig) -> Tuple[str, Dict[str, Any], List[Dict[str, Any]]]:
         t_transcribe_start = time.perf_counter()
         audio_input = gen_config.audio_base64
         assert audio_input, "audio_base64 is required"
@@ -386,9 +386,7 @@ class OVQwen3ASR:
 
         audio_seconds = len(audio_array) / SAMPLE_RATE
         if audio_seconds <= 0:
-            yield {}
-            yield ""
-            return
+            return "", {}, []
 
         max_chunk_sec = min(float(gen_config.max_chunk_sec), float(MAX_ASR_INPUT_SECONDS))
         chunk_items = await asyncio.to_thread(
@@ -403,6 +401,7 @@ class OVQwen3ASR:
 
         langs = []
         texts = []
+        segments = []
         agg = {
             "feature_sec": 0.0,
             "encoder_sec": 0.0,
@@ -426,6 +425,12 @@ class OVQwen3ASR:
             langs.append(lang)
             if text:
                 texts.append(text)
+                segments.append({
+                    "id": idx,
+                    "start": float(chunk_offset_sec),
+                    "end": float(chunk_offset_sec) + float(chunk_sec),
+                    "text": text,
+                })
             agg["feature_sec"] += chunk_metrics["feature_sec"]
             agg["encoder_sec"] += chunk_metrics["encoder_sec"]
             agg["prefill_sec"] += chunk_metrics["prefill_sec"]
@@ -457,8 +462,7 @@ class OVQwen3ASR:
         if merged_language:
             metrics["language"] = merged_language
 
-        yield metrics
-        yield text
+        return text, metrics, segments
 
     async def unload_model(self, registry: ModelRegistry, model_name: str) -> bool:
         removed = await registry.register_unload(model_name)

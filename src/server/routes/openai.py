@@ -535,7 +535,7 @@ async def openai_audio_transcriptions(
             gen_config = OVGenAI_WhisperGenConfig(audio_base64=audio_base64)
             result = await _workers.transcribe_whisper(model, gen_config)
 
-        metrics = result.get("metrics", {})
+        metrics: Dict[str, Any] = result.get("metrics", {})
         logger.info(f"[audio/transcriptions] model={model} metrics={metrics}")
 
         if response_format == "json":
@@ -544,8 +544,16 @@ async def openai_audio_transcriptions(
             return {
                 "text": result.get("text", ""),
                 "language": metrics.get("language"),
-                "duration": metrics.get("duration"),
+                "duration": metrics.get("duration") or metrics.get("audio_duration_sec"),
+                "segments": result.get("segments", []),
                 "metrics": metrics,
+            }
+        elif response_format == "diarized_json":
+            return {
+                "duration": metrics.get("duration") or metrics.get("audio_duration_sec"),
+                "segments": result.get("segments", []),
+                "task": "transcribe",
+                "text": result.get("text", ""),
             }
         else:
             return result.get("text", "")

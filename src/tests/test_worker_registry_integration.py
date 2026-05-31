@@ -11,7 +11,7 @@ from src.server.models.optimum import PreTrainedTokenizerConfig, RerankerConfig
 from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
 
 
-def _make_worker(response_value, metrics_value, supports_stream: bool = False):
+def _make_worker(response_value, metrics_value, supports_stream: bool = False, segments_value=None):
     async def _worker(model_name, model_queue, model_instance, registry):
         while True:
             packet = await model_queue.get()
@@ -24,6 +24,7 @@ def _make_worker(response_value, metrics_value, supports_stream: bool = False):
                 await packet.stream_queue.put(None)
             packet.response = response_value
             packet.metrics = metrics_value
+            packet.segments = segments_value
             if packet.result_future is not None and not packet.result_future.done():
                 packet.result_future.set_result(packet)
             model_queue.task_done()
@@ -249,6 +250,43 @@ def test_worker_registry_qwen3_asr_flow(worker_system) -> None:
 
     result = asyncio.run(_run())
     assert result == {"text": "qwen3-text", "metrics": {"chunks": 1}}
+
+
+def test_worker_registry_qwen3_asr_flow_with_segments(worker_system, monkeypatch: pytest.MonkeyPatch) -> None:
+    model_registry, worker_registry = worker_system
+
+    segments = [{"id": 0, "start": 0.0, "end": 2.0, "text": "hello world"}]
+    monkeypatch.setattr(
+        worker_module.QueueWorker,
+        "queue_worker_qwen3_asr",
+        _make_worker("hello world", {"chunks": 1}, segments_value=segments),
+    )
+
+    load_config = ModelLoadConfig(
+        model_path="/models/mock",
+        model_name="integration-qwen3-asr-segments",
+        model_type=ModelType.QWEN3_ASR,
+        engine=EngineType.OPENVINO,
+        device="CPU",
+        runtime_config={},
+    )
+
+    config = OV_Qwen3ASRGenConfig(audio_base64="AAA")
+
+    async def _run():
+        return await _load_do_unload(
+            model_registry,
+            worker_registry,
+            load_config,
+            worker_registry.transcribe_qwen3_asr("integration-qwen3-asr-segments", config),
+        )
+
+    result = asyncio.run(_run())
+    assert result == {
+        "text": "hello world",
+        "metrics": {"chunks": 1},
+        "segments": segments,
+    }
 
 
 def test_worker_registry_embed_flow(worker_system) -> None:

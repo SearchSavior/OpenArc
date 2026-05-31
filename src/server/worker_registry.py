@@ -7,7 +7,7 @@ import numpy as np
 import torch
 import soundfile as sf
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Dict, Optional, Union
+from typing import Any, AsyncIterator, Dict, List, Optional, Union
 
 from src.engine.ov_genai.llm import OVGenAI_LLM
 from src.engine.ov_genai.vlm import OVGenAI_VLM
@@ -66,6 +66,7 @@ class WorkerPacket:
     ]
     response: Optional[str] = None
     metrics: Optional[Dict[str, Any]] = None
+    segments: Optional[List[Dict[str, Any]]] = None
     # Orchestration plumbing
     result_future: Optional[asyncio.Future] = None
     stream_queue: Optional[asyncio.Queue] = None
@@ -191,21 +192,13 @@ class InferWorker:
     async def infer_qwen3_asr(packet: WorkerPacket, asr_model: OVQwen3ASR) -> WorkerPacket:
         """Transcribe audio for a single packet using the OVQwen3ASR pipeline."""
         metrics = None
-        final_text = ""
 
         try:
-            async for item in asr_model.transcribe(packet.gen_config):
-                if isinstance(item, dict):
-                    metrics = item
-                else:
-                    final_text = item
-
-            packet.response = final_text
-            packet.metrics = metrics
+            assert isinstance(packet.gen_config, OV_Qwen3ASRGenConfig), "Expected OV_Qwen3ASRGenConfig for Qwen3 ASR inference"
+            packet.response, packet.metrics, packet.segments = await asr_model.transcribe(packet.gen_config)
         except Exception as e:
             logger.error("Qwen3 ASR inference failed!", exc_info=True)
-            packet.response = f"Error: {str(e)}"
-            packet.metrics = None
+            packet.response, packet.metrics, packet.segments = f"Error: {str(e)}", None, None
 
         return packet
 
@@ -899,7 +892,7 @@ class WorkerRegistry:
     async def transcribe_qwen3_asr(self, model_name: str, gen_config: OV_Qwen3ASRGenConfig) -> Dict[str, Any]:
         """Transcribe audio using Qwen3 ASR model."""
         request_id = uuid.uuid4().hex
-        result_future: asyncio.Future = asyncio.get_running_loop().create_future()
+        result_future: asyncio.Future[WorkerPacket] = asyncio.get_running_loop().create_future()
         packet = WorkerPacket(
             request_id=request_id,
             id_model=model_name,
@@ -909,7 +902,14 @@ class WorkerRegistry:
         q = self._get_qwen3_asr_queue(model_name)
         await q.put(packet)
         completed = await result_future
-        return {"text": completed.response or "", "metrics": completed.metrics or {}}
+        
+        response: Dict[str, Any] = {"text": completed.response or ""}
+        if completed.metrics:
+            response["metrics"] = completed.metrics
+        if completed.segments:
+            response["segments"] = completed.segments
+        
+        return response
 
     async def generate_speech_qwen3_tts(self, model_name: str, gen_config: OV_Qwen3TTSGenConfig) -> Dict[str, Any]:
         """Generate speech using a loaded Qwen3 TTS model.
