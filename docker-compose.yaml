@@ -2,7 +2,11 @@ version: '3.8'
 
 services:
   openarc:
-    build: .
+    build:
+      context: .
+      target: ${BUILD_TARGET:-standard}
+      # Set env var "BUILD_TARGET" to "standard" or "battlemage" to build the standard or battlemage version.
+      # target: ${BUILD_TARGET:-battlemage}         # Switch to this to make battlemage version default
     image: openarc:latest
     container_name: openarc
     
