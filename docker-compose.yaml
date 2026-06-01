@@ -1,15 +1,10 @@
-version: '3.8'
-
 services:
+
   openarc:
-    build:
-      context: .
-      target: ${BUILD_TARGET:-standard}
-      # Set env var "BUILD_TARGET" to "standard" or "battlemage" to build the standard or battlemage version.
-      # target: ${BUILD_TARGET:-battlemage}         # Switch to this to make battlemage version default
-    image: openarc:latest
+    image: ghcr.io/searchsavior/openarc:latest
+    # image: ghcr.io/searchsavior/openarc-battlemage:latest   <-- use this image for the battlemage version
     container_name: openarc
-    
+
     # GPU access
     devices:
       - /dev/dri:/dev/dri
@@ -36,7 +31,7 @@ services:
     # Restart policy
     restart: unless-stopped
     
-    # Logging
+    # Logging (optional)
     logging:
       driver: "json-file"
       options:
