@@ -830,6 +830,16 @@ class WorkerRegistry:
             stream_queue=stream_queue,
             result_future=result_future,
         )
+        async def _generation_exception_handler(future: asyncio.Future):
+            logger.error("Got stream cancel.")
+            exc = future.exception()
+            if exc and not future.cancelled():
+                # Force break the below loop
+                logger.error("Canceling.")
+                await self.infer_cancel(request_id)
+                stream_queue.put_nowait(None)
+                raise exc
+        result_future.add_done_callback(_generation_exception_handler)
         
         # Register active request
         async with self._lock:

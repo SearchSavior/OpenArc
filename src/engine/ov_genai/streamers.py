@@ -56,6 +56,9 @@ class ChunkStreamer(StreamerBase):
 
     def cancel(self) -> None:
         """Signal cancellation of the streaming generation."""
+        # Signal completion to unblock any waiting consumer
+        # Write performs the same task. However, if there is nothing to be written yet, it may not be received by the consumer
+        self.text_queue.put_nowait(None)
         self._cancelled.set()
 
     def is_cancelled(self) -> bool:
