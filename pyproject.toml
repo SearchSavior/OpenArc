@@ -72,9 +72,4 @@ addopts = "-ra --strict-markers --strict-config"
 testpaths = [
     "tests/unit"
 ]
-markers = [
-    "unit: fast isolated tests",
-    "integration: tests that exercise multiple components together",
-    "slow: tests that are intentionally slow",
-    "requires_model: tests that require TEST_MODEL_PATH or local model artifacts",
-]
+
