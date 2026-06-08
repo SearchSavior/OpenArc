@@ -4,7 +4,7 @@ from typing import Any, AsyncIterator, Dict, List
 import pytest  # type: ignore[import]
 from fastapi.responses import StreamingResponse
 
-import src.server.main as server_main
+import src.server.routes.openai as openai_routes
 from src.server.models.requests_openai import OpenAIChatCompletionRequest
 
 
@@ -29,7 +29,7 @@ def test_parse_tool_calls_supports_hermes_tool_call_tags() -> None:
         "</tool_call>"
     )
 
-    tool_calls = server_main.parse_tool_calls(text)
+    tool_calls = openai_routes.parse_tool_calls(text)
 
     assert tool_calls is not None
     assert len(tool_calls) == 1
@@ -41,7 +41,7 @@ def test_parse_tool_calls_supports_hermes_tool_call_tags() -> None:
 def test_parse_tool_calls_supports_missing_closing_tag_until_eos() -> None:
     text = '<tool_call>{"name":"search","arguments":{"query":"vLLM"}}'
 
-    tool_calls = server_main.parse_tool_calls(text)
+    tool_calls = openai_routes.parse_tool_calls(text)
 
     assert tool_calls is not None
     assert len(tool_calls) == 1
@@ -52,7 +52,7 @@ def test_parse_tool_calls_supports_missing_closing_tag_until_eos() -> None:
 def test_parse_tool_calls_rejects_plain_json_without_tool_call_tags() -> None:
     text = '{"name":"search","arguments":{"query":"legacy"}}'
 
-    tool_calls = server_main.parse_tool_calls(text)
+    tool_calls = openai_routes.parse_tool_calls(text)
 
     assert tool_calls is None
 
@@ -70,7 +70,7 @@ async def test_openai_chat_completions_non_streaming_tool_calls(monkeypatch: pyt
                 "metrics": {"input_token": 4, "new_token": 6, "total_token": 10},
             }
 
-    monkeypatch.setattr(server_main, "_workers", _Workers())
+    monkeypatch.setattr(openai_routes, "_workers", _Workers())
 
     request = OpenAIChatCompletionRequest(
         model="demo-model",
@@ -78,7 +78,7 @@ async def test_openai_chat_completions_non_streaming_tool_calls(monkeypatch: pyt
         stream=False,
     )
 
-    response = await server_main.openai_chat_completions(request, _DummyRequest())
+    response = await openai_routes.openai_chat_completions(request, _DummyRequest())
 
     choice = response["choices"][0]
     assert choice["finish_reason"] == "tool_calls"
@@ -102,7 +102,7 @@ async def test_openai_chat_completions_streaming_hermes_tool_call(monkeypatch: p
         async def infer_cancel(self, request_id: str) -> None:
             return None
 
-    monkeypatch.setattr(server_main, "_workers", _Workers())
+    monkeypatch.setattr(openai_routes, "_workers", _Workers())
 
     request = OpenAIChatCompletionRequest(
         model="demo-model",
@@ -110,7 +110,7 @@ async def test_openai_chat_completions_streaming_hermes_tool_call(monkeypatch: p
         stream=True,
     )
 
-    response = await server_main.openai_chat_completions(request, _DummyRequest())
+    response = await openai_routes.openai_chat_completions(request, _DummyRequest())
     assert isinstance(response, StreamingResponse)
 
     chunks: List[bytes] = []

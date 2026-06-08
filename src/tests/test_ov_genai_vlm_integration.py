@@ -5,12 +5,13 @@ from pathlib import Path
 
 import pytest  # type: ignore[import]
 
+from test_model_path import model_path
 from src.engine.ov_genai.vlm import OVGenAI_VLM
 from src.server.models.registration import EngineType, ModelLoadConfig, ModelType
 from src.server.models.ov_genai import OVGenAI_GenConfig
 
 
-MODEL_PATH = Path("/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Qwen2.5-VL-3B-Instruct-int4_sym-ov")
+MODEL_PATH = model_path("Qwen2.5-VL-3B-Instruct-int4_sym-ov")
 UNIT_TEST_PATH = Path(__file__).with_name("test_ov_genai_vlm_unit.py")
 PIXEL_PNG_BASE64 = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII="

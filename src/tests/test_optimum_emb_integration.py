@@ -1,20 +1,16 @@
 import asyncio
-import os
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest  # type: ignore[import]
 
+from test_model_path import model_path
 from src.engine.optimum.optimum_emb import Optimum_EMB
 from src.server.models.registration import EngineType, ModelLoadConfig, ModelType
 from src.server.models.optimum import PreTrainedTokenizerConfig
 
-# Inject "TEST_MODEL_PATH" environment variable during tests to override the default model path.
-#  - on windows be sure to escape backslashes."
-TEST_MODEL_PATH = os.getenv("TEST_MODEL_PATH", r"/mnt/Ironwolf-4TB/Models/Pytorch/Qwen/")
-
-MODEL_PATH = Path(TEST_MODEL_PATH) / "Qwen3-Embedding-0.6B-int8_asym-ov"
+MODEL_PATH = model_path("Qwen3-Embedding-0.6B-int8_asym-ov")
 UNIT_TEST_PATH = Path(__file__).with_name("test_optimum_emb_unit.py")
 
 _UNIT_TESTS_PASSED: bool | None = None

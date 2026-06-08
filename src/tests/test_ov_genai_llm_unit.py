@@ -3,12 +3,13 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest  # type: ignore[import]
 
 import src.engine.ov_genai.llm as llm_module
+from test_model_path import model_path
 from src.engine.ov_genai.llm import OVGenAI_LLM
 from src.server.models.registration import EngineType, ModelLoadConfig, ModelType
 from src.server.models.ov_genai import OVGenAI_GenConfig
 
 
-MODEL_PATH = "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Qwen3-Reranker-0.6B-fp16-ov"
+MODEL_PATH = model_path("Qwen3-Reranker-0.6B-fp16-ov")
 
 
 class DummyMeanValue:
@@ -46,7 +47,7 @@ class DummyPerfMetrics:
 @pytest.fixture
 def load_config() -> ModelLoadConfig:
     return ModelLoadConfig(
-        model_path=MODEL_PATH,
+        model_path=str(MODEL_PATH),
         model_name="test-model",
         model_type=ModelType.LLM,
         engine=EngineType.OV_GENAI,
@@ -152,7 +153,7 @@ def test_load_model_sets_pipeline_and_tokenizer(monkeypatch: pytest.MonkeyPatch,
     )
 
     loader = ModelLoadConfig(
-        model_path=MODEL_PATH,
+        model_path=str(MODEL_PATH),
         model_name="loader-model",
         model_type=ModelType.LLM,
         engine=EngineType.OV_GENAI,
@@ -182,7 +183,7 @@ def test_load_model_forwards_cache_dir(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
     loader = ModelLoadConfig(
-        model_path=MODEL_PATH,
+        model_path=str(MODEL_PATH),
         model_name="loader-model",
         model_type=ModelType.LLM,
         engine=EngineType.OV_GENAI,
@@ -203,7 +204,7 @@ def test_load_model_forwards_cache_dir(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _draft_loader(cache_dir):
     return ModelLoadConfig(
-        model_path=MODEL_PATH,
+        model_path=str(MODEL_PATH),
         model_name="loader-model",
         model_type=ModelType.LLM,
         engine=EngineType.OV_GENAI,

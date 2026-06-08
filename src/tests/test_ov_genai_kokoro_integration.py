@@ -6,12 +6,12 @@ from pathlib import Path
 import pytest  # type: ignore[import]
 import torch
 
+from test_model_path import model_path
 from src.engine.openvino.kokoro import OV_Kokoro
 from src.server.models.registration import EngineType, ModelLoadConfig, ModelType
 from src.server.models.openvino import KokoroLanguage, KokoroVoice, OV_KokoroGenConfig
 
-
-MODEL_PATH = Path("/mnt/Ironwolf-4TB/Models/OpenVINO/Kokoro-82M-FP16-OpenVINO")
+MODEL_PATH = model_path("Kokoro-82M-FP16-OpenVINO")
 UNIT_TEST_PATH = Path(__file__).with_name("test_ov_genai_kokoro_unit.py")
 
 _UNIT_TESTS_PASSED: bool | None = None

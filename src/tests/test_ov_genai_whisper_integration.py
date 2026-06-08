@@ -9,12 +9,13 @@ from pathlib import Path
 import numpy as np
 import pytest  # type: ignore[import]
 
+from test_model_path import model_path
 from src.engine.ov_genai.whisper import OVGenAI_Whisper
 from src.server.models.registration import EngineType, ModelLoadConfig, ModelType
 from src.server.models.ov_genai import OVGenAI_WhisperGenConfig
 
 
-MODEL_PATH = Path("/mnt/Ironwolf-4TB/Models/OpenVINO/Whisper/distil-whisper-large-v3-int8-ov")
+MODEL_PATH = model_path("distil-whisper-large-v3-int8-ov")
 UNIT_TEST_PATH = Path(__file__).with_name("test_ov_genai_whisper_unit.py")
 
 _UNIT_TESTS_PASSED: bool | None = None
