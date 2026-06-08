@@ -11,7 +11,7 @@ from src.server.models.registration import EngineType, ModelLoadConfig, ModelTyp
 from src.server.models.ov_genai import OVGenAI_WhisperGenConfig
 
 
-MODEL_PATH = model_path("distil-whisper-large-v3-int8-ov")
+MODEL_PATH = model_path("whisper-tiny-int8-ov")
 
 
 def _generate_sine_wave_base64(duration_s: float = 0.5, sr: int = 16000) -> str:
