@@ -1,10 +1,6 @@
-import asyncio
 import base64
 import io
-import subprocess
-import sys
 import wave
-from pathlib import Path
 
 import numpy as np
 import pytest  # type: ignore[import]
@@ -16,28 +12,6 @@ from src.server.models.ov_genai import OVGenAI_WhisperGenConfig
 
 
 MODEL_PATH = model_path("distil-whisper-large-v3-int8-ov")
-UNIT_TEST_PATH = Path(__file__).with_name("test_ov_genai_whisper_unit.py")
-
-_UNIT_TESTS_PASSED: bool | None = None
-_UNIT_TEST_OUTPUT: str = ""
-
-
-def _ensure_unit_tests_pass() -> None:
-    global _UNIT_TESTS_PASSED, _UNIT_TEST_OUTPUT
-
-    if _UNIT_TESTS_PASSED is None:
-        result = subprocess.run(
-            [sys.executable, "-m", "pytest", str(UNIT_TEST_PATH), "-q"],
-            capture_output=True,
-            text=True,
-        )
-        _UNIT_TESTS_PASSED = result.returncode == 0
-        _UNIT_TEST_OUTPUT = (result.stdout or "") + (result.stderr or "")
-
-    if not _UNIT_TESTS_PASSED:
-        pytest.skip(
-            "Skipping Whisper integration test because unit tests failed:\n" + _UNIT_TEST_OUTPUT
-        )
 
 
 def _generate_sine_wave_base64(duration_s: float = 0.5, sr: int = 16000) -> str:
@@ -59,9 +33,8 @@ class _DummyRegistry:
     async def register_unload(self, model_name: str) -> bool:  # noqa: D401 - simple stub
         return True
 
-
-def test_whisper_transcribe_cpu_integration() -> None:
-    _ensure_unit_tests_pass()
+@pytest.mark.asyncio
+async def test_whisper_transcribe_cpu_integration() -> None:
     if not MODEL_PATH.exists():
         pytest.skip(f"Model path not found: {MODEL_PATH}")
 
@@ -81,13 +54,10 @@ def test_whisper_transcribe_cpu_integration() -> None:
         audio_base64 = _generate_sine_wave_base64()
         gen_config = OVGenAI_WhisperGenConfig(audio_base64=audio_base64)
 
-        async def _run_test():
-            outputs = []
-            async for item in whisper.transcribe(gen_config):
-                outputs.append(item)
-            return outputs
 
-        outputs = asyncio.run(_run_test())
+        outputs = []
+        async for item in whisper.transcribe(gen_config):
+            outputs.append(item)
 
         assert len(outputs) == 2
         metrics, text = outputs
@@ -96,5 +66,5 @@ def test_whisper_transcribe_cpu_integration() -> None:
         assert text.strip(), "Expected non-empty transcription"
 
     finally:
-        asyncio.run(whisper.unload_model(_DummyRegistry(), load_config.model_name))
+        await whisper.unload_model(_DummyRegistry(), load_config.model_name)
 

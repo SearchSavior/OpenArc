@@ -3,13 +3,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest  # type: ignore[import]
 
 import src.engine.ov_genai.llm as llm_module
-from test_model_path import model_path
 from src.engine.ov_genai.llm import OVGenAI_LLM
 from src.server.models.registration import EngineType, ModelLoadConfig, ModelType
 from src.server.models.ov_genai import OVGenAI_GenConfig
 
 
-MODEL_PATH = model_path("Qwen3-Reranker-0.6B-fp16-ov")
+MODEL_PATH ="some_fake_url/Qwen3-Reranker-0.6B-fp16-ov"
 
 
 class DummyMeanValue:

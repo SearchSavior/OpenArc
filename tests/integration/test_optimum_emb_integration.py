@@ -1,7 +1,4 @@
 import asyncio
-import subprocess
-import sys
-from pathlib import Path
 
 import pytest  # type: ignore[import]
 
@@ -11,29 +8,6 @@ from src.server.models.registration import EngineType, ModelLoadConfig, ModelTyp
 from src.server.models.optimum import PreTrainedTokenizerConfig
 
 MODEL_PATH = model_path("Qwen3-Embedding-0.6B-int8_asym-ov")
-UNIT_TEST_PATH = Path(__file__).with_name("test_optimum_emb_unit.py")
-
-_UNIT_TESTS_PASSED: bool | None = None
-_UNIT_TEST_OUTPUT: str = ""
-
-
-def _ensure_unit_tests_pass() -> None:
-    global _UNIT_TESTS_PASSED, _UNIT_TEST_OUTPUT
-
-    if _UNIT_TESTS_PASSED is None:
-        result = subprocess.run(
-            [sys.executable, "-m", "pytest", str(UNIT_TEST_PATH), "-q"],
-            capture_output=True,
-            text=True,
-        )
-        _UNIT_TESTS_PASSED = result.returncode == 0
-        _UNIT_TEST_OUTPUT = (result.stdout or "") + (result.stderr or "")
-
-    if not _UNIT_TESTS_PASSED:
-        pytest.skip(
-            "Skipping embedding integration test because unit tests failed:\n" + _UNIT_TEST_OUTPUT
-        )
-
 
 class _DummyRegistry:
     async def register_unload(self, model_name: str) -> bool:  # noqa: D401 - simple stub
@@ -41,7 +15,6 @@ class _DummyRegistry:
 
 
 def test_optimum_emb_generate_embeddings_cpu_integration() -> None:
-    _ensure_unit_tests_pass()
     if not MODEL_PATH.exists():
         pytest.skip(f"Model path not found: {MODEL_PATH}")
 

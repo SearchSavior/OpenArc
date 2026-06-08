@@ -15,8 +15,9 @@ def test_resolve_cache_dir_relative_to_config_dir(tmp_path: Path) -> None:
 
 def test_resolve_cache_dir_absolute_passthrough(tmp_path: Path) -> None:
     cfg = _config(tmp_path)
-    resolved = cfg._resolve_model_paths({"cache_dir": "/tmp/ov_cache"})
-    assert resolved["cache_dir"] == "/tmp/ov_cache"
+    cache_dir = (tmp_path / "ov_cache").resolve()
+    resolved = cfg._resolve_model_paths({"cache_dir": str(cache_dir)})
+    assert resolved["cache_dir"] == str(cache_dir)
 
 
 def test_resolve_cache_dir_absent(tmp_path: Path) -> None:

@@ -1,6 +1,4 @@
-import asyncio
-import subprocess
-import sys
+import base64
 from pathlib import Path
 
 import pytest  # type: ignore[import]
@@ -12,13 +10,11 @@ from src.server.models.ov_genai import OVGenAI_GenConfig
 
 
 MODEL_PATH = model_path("Qwen2.5-VL-3B-Instruct-int4_sym-ov")
-UNIT_TEST_PATH = Path(__file__).with_name("test_ov_genai_vlm_unit.py")
-PIXEL_PNG_BASE64 = (
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII="
-)
 
-_UNIT_TESTS_PASSED: bool | None = None
-_UNIT_TEST_OUTPUT: str = ""
+TEST_IMAGE_PATH = Path(__file__).parents[1] / "dedication.png"
+def _image_data_url(path: Path) -> str:
+    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:image/png;base64,{encoded}"
 
 
 def _make_messages(base64_image: str):
@@ -37,27 +33,8 @@ class _DummyRegistry:
     async def register_unload(self, model_name: str) -> bool:  # noqa: D401 - simple stub
         return True
 
-
-def _ensure_unit_tests_pass() -> None:
-    global _UNIT_TESTS_PASSED, _UNIT_TEST_OUTPUT
-
-    if _UNIT_TESTS_PASSED is None:
-        result = subprocess.run(
-            [sys.executable, "-m", "pytest", str(UNIT_TEST_PATH), "-q"],
-            capture_output=True,
-            text=True,
-        )
-        _UNIT_TESTS_PASSED = result.returncode == 0
-        _UNIT_TEST_OUTPUT = (result.stdout or "") + (result.stderr or "")
-
-    if not _UNIT_TESTS_PASSED:
-        pytest.skip(
-            "Skipping VLM integration test because unit tests failed:\n" + _UNIT_TEST_OUTPUT
-        )
-
-
-def test_vlm_generate_text_cpu_integration() -> None:
-    _ensure_unit_tests_pass()
+@pytest.mark.asyncio
+async def test_vlm_generate_text_cpu_integration() -> None:
     if not MODEL_PATH.exists():
         pytest.skip(f"Model path not found: {MODEL_PATH}")
 
@@ -75,7 +52,10 @@ def test_vlm_generate_text_cpu_integration() -> None:
     vlm.load_model(load_config)
 
     try:
-        base64_image = f"data:image/png;base64,{PIXEL_PNG_BASE64}"
+        if not TEST_IMAGE_PATH.exists():
+            pytest.skip(f"Test image not found: {TEST_IMAGE_PATH}")
+
+        base64_image = _image_data_url(TEST_IMAGE_PATH)
 
         gen_config = OVGenAI_GenConfig(
             messages=_make_messages(base64_image),
@@ -86,13 +66,9 @@ def test_vlm_generate_text_cpu_integration() -> None:
             stream=False,
         )
 
-        async def _run_test():
-            outputs = []
-            async for item in vlm.generate_text(gen_config):
-                outputs.append(item)
-            return outputs
-
-        outputs = asyncio.run(_run_test())
+        outputs = []
+        async for item in vlm.generate_text(gen_config):
+            outputs.append(item)
 
         assert len(outputs) == 2
         metrics, text = outputs
@@ -102,4 +78,4 @@ def test_vlm_generate_text_cpu_integration() -> None:
         assert text.strip(), "Expected non-empty model response"
 
     finally:
-        asyncio.run(vlm.unload_model(_DummyRegistry(), load_config.model_name))
+        await vlm.unload_model(_DummyRegistry(), load_config.model_name)
