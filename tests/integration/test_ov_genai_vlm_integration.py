@@ -1,5 +1,8 @@
+import asyncio
 import base64
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import pytest  # type: ignore[import]
 
@@ -10,8 +13,13 @@ from src.server.models.ov_genai import OVGenAI_GenConfig
 
 
 MODEL_PATH = model_path("Qwen2.5-VL-3B-Instruct-int4_sym-ov")
-
 TEST_IMAGE_PATH = Path(__file__).parents[1] / "dedication.png"
+
+@dataclass(frozen=True)
+class VLMResult:
+    text: str
+    metrics: dict[str, Any]
+
 def _image_data_url(path: Path) -> str:
     encoded = base64.b64encode(path.read_bytes()).decode("ascii")
     return f"data:image/png;base64,{encoded}"
@@ -33,10 +41,26 @@ class _DummyRegistry:
     async def register_unload(self, model_name: str) -> bool:  # noqa: D401 - simple stub
         return True
 
-@pytest.mark.asyncio
-async def test_vlm_generate_text_cpu_integration() -> None:
+
+async def _generate_vlm_result(vlm: OVGenAI_VLM, gen_config: OVGenAI_GenConfig) -> VLMResult:
+    outputs = []
+    async for item in vlm.generate_text(gen_config):
+        outputs.append(item)
+    assert len(outputs) == 2
+    metrics, text = outputs
+    return VLMResult(
+        text=text,
+        metrics=metrics,
+    )
+
+
+@pytest.fixture(scope="module")
+def vlm_generate_text_cpu_integration() -> VLMResult:
     if not MODEL_PATH.exists():
         pytest.skip(f"Model path not found: {MODEL_PATH}")
+
+    if not TEST_IMAGE_PATH.exists():
+        pytest.skip(f"Test image fixture not found: {TEST_IMAGE_PATH}")
 
     load_config = ModelLoadConfig(
         model_path=str(MODEL_PATH),
@@ -52,9 +76,6 @@ async def test_vlm_generate_text_cpu_integration() -> None:
     vlm.load_model(load_config)
 
     try:
-        if not TEST_IMAGE_PATH.exists():
-            pytest.skip(f"Test image not found: {TEST_IMAGE_PATH}")
-
         base64_image = _image_data_url(TEST_IMAGE_PATH)
 
         gen_config = OVGenAI_GenConfig(
@@ -66,16 +87,25 @@ async def test_vlm_generate_text_cpu_integration() -> None:
             stream=False,
         )
 
-        outputs = []
-        async for item in vlm.generate_text(gen_config):
-            outputs.append(item)
-
-        assert len(outputs) == 2
-        metrics, text = outputs
-        assert isinstance(metrics, dict)
-        assert metrics["stream"] is False
-        assert isinstance(text, str)
-        assert text.strip(), "Expected non-empty model response"
+        return asyncio.run(_generate_vlm_result(vlm, gen_config))
 
     finally:
-        await vlm.unload_model(_DummyRegistry(), load_config.model_name)
+        asyncio.run(vlm.unload_model(_DummyRegistry(), load_config.model_name))
+
+
+def test_generated_result_has_text_string(vlm_generate_text_cpu_integration: VLMResult) -> None:
+    assert isinstance(vlm_generate_text_cpu_integration.text, str)
+
+def test_generated_result_has_metrics_dict(vlm_generate_text_cpu_integration: VLMResult) -> None:
+    assert isinstance(vlm_generate_text_cpu_integration.metrics, dict)
+
+def test_generated_text_is_not_empty(vlm_generate_text_cpu_integration: VLMResult) -> None:
+    assert vlm_generate_text_cpu_integration.text.strip()
+
+def test_generated_text_describes_image_as_document(vlm_generate_text_cpu_integration: VLMResult) -> None:
+    assert "document" in vlm_generate_text_cpu_integration.text.lower()
+
+def test_generated_text_describes_image_as_a_dedication(vlm_generate_text_cpu_integration: VLMResult) -> None:
+    assert "dedication" in vlm_generate_text_cpu_integration.text.lower()
+
+
