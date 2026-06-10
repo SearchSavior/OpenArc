@@ -125,7 +125,7 @@ def test_chunk_forward_pass_yields_chunks(monkeypatch: pytest.MonkeyPatch, load_
             pipeline_calls.append(("call", text, voice, speed))
             yield DummyResult(text)
 
-    monkeypatch.setattr(kokoro_module, "KPipeline", DummyPipeline)
+    monkeypatch.setattr("kokoro.pipeline.KPipeline", DummyPipeline)
 
     config = OV_KokoroGenConfig(
         input="ignored",

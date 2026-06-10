@@ -1,0 +1,17 @@
+# Clone the below repositories to get models for running the automated tests
+
+<with git, from the models folder>
+git clone https://huggingface.co/OpenVINO/whisper-tiny-int8-ov
+git clone https://huggingface.co/Echo9Zulu/Kokoro-82M-FP16-OpenVINO
+git clone https://huggingface.co/Echo9Zulu/Qwen2.5-VL-3B-Instruct-int4_sym-ov
+git clone https://huggingface.co/Echo9Zulu/Qwen3-Embedding-0.6B-int8_asym-ov
+git clone https://huggingface.co/OpenVINO/Qwen3-Reranker-0.6B-fp16-ov
+git clone https://huggingface.co/OpenVINO/Qwen3-0.6B-int8-ov
+
+<with huggingface-cli, from the models folder>
+huggingface-cli download --local-dir ./whisper-tiny-int8-ov OpenVINO/whisper-tiny-int8-ov
+huggingface-cli download --local-dir ./Kokoro-82M-FP16-OpenVINO Echo9Zulu/Kokoro-82M-FP16-OpenVINO
+huggingface-cli download --local-dir ./Qwen2.5-VL-3B-Instruct-int4_sym-ov Echo9Zulu/Qwen2.5-VL-3B-Instruct-int4_sym-ov
+huggingface-cli download --local-dir ./Qwen3-Embedding-0.6B-int8_asym-ov Echo9Zulu/Qwen3-Embedding-0.6B-int8_asym-ov
+huggingface-cli download --local-dir ./Qwen3-Reranker-0.6B-fp16-ov OpenVINO/Qwen3-Reranker-0.6B-fp16-ov
+huggingface-cli download --local-dir ./Qwen3-0.6B-int8-ov OpenVINO/Qwen3-0.6B-int8-ov

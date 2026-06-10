@@ -27,7 +27,6 @@ dependencies = [
     "pybind11>=3.0.3",
     "pydantic>=2.11.7",
     "pynput>=1.8.1",
-    "pytest>=8.4.2",
     "pyyaml>=6.0.2",
     "rich-click>=1.8.9",
     "smolagents>=1.22.0",
@@ -37,6 +36,12 @@ dependencies = [
     "torchvision>=0.23.0",
     "uvicorn>=0.35.0",
     "zensical>=0.0.31",
+]
+
+[dependency-groups]
+test = [
+    "pytest>=8.4.2",
+    "pytest-asyncio>=1.4.0"
 ]
 
 [build-system]
@@ -50,7 +55,6 @@ include = ["src", "src.*"]
 openarc = "src.cli:cli"
 
 [tool.uv]
-dev-dependencies = []
 package = true
 
 [[tool.uv.index]]
@@ -62,4 +66,10 @@ explicit = true
 torch = { index = "pytorch-cpu" }
 torchvision = { index = "pytorch-cpu" }
 
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra --strict-markers --strict-config"
+testpaths = [
+    "tests/unit"
+]
 
