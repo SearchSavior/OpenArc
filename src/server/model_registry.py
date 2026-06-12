@@ -7,7 +7,7 @@ import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
 
 from src.server.models.registration import (
     EngineType,
@@ -59,6 +59,12 @@ class ModelRegistry:
     def __init__(self):
         self._models: Dict[str, ModelRecord] = {}
         self._lock = asyncio.Lock()
+        # Names of models that *should* be loaded for the server to be ready.
+        # A model joins this set once it has successfully loaded and leaves it
+        # only when an administrator explicitly unloads it. A model that drops
+        # out of self._models for any other reason (e.g. an error-triggered
+        # unload) stays here so readiness reports the server as not ready.
+        self._expected_models: Set[str] = set()
         # Event subscribers
         self._on_loaded: List[Callable[[ModelRecord], Awaitable[None]]] = []
         self._on_unloaded: List[Callable[[ModelRecord], Awaitable[None]]] = []
@@ -121,19 +127,35 @@ class ModelRegistry:
         
         return record.model_id
 
-    async def register_unload(self, model_name: str) -> bool:
-        """Unregister/unload a model by model_name. Returns True if found and unload task started."""
+    async def register_unload(self, model_name: str, administrative: bool = False) -> bool:
+        """Unregister/unload a model by model_name. Returns True if found and unload task started.
+
+        Args:
+            model_name: Name of the model to unload.
+            administrative: True when an operator explicitly requested the
+                unload (e.g. via the API), as opposed to an internal
+                error-triggered unload. An administrative unload removes the
+                model from the readiness expectation set so it is no longer
+                required for the server to be considered ready.
+        """
         async with self._lock:
+            # An explicit unload means the operator no longer wants this model
+            # loaded, so stop requiring it for readiness. Do this regardless of
+            # whether the model is still present, so an operator can clear a
+            # model that already dropped out due to an earlier error.
+            if administrative:
+                self._expected_models.discard(model_name)
+
             # Find model_id by model_name
             model_id = None
             for mid, record in self._models.items():
                 if record.model_name == model_name:
                     model_id = mid
                     break
-            
+
             if model_id is None:
                 return False
-            
+
             # Start background unload task
             asyncio.create_task(self._unload_task(model_id))
             return True
@@ -151,6 +173,9 @@ class ModelRegistry:
                     record.model_instance = model_instance
                     record.status = ModelStatus.LOADED
                     record.loading_task = None
+                    # The model is now serving, so it is expected to remain
+                    # loaded for readiness purposes.
+                    self._expected_models.add(record.model_name)
                 else:
                     return
 
@@ -218,6 +243,30 @@ class ModelRegistry:
                 "total_loaded_models": len(models_public),
                 "models": models_public,
                 "openai_model_names": [record.model_name for record in self._models.values()],
+            }
+
+    async def readiness(self) -> dict:
+        """Return readiness: ready only when every expected model is loaded.
+
+        A model is "expected" once it has successfully loaded and until it is
+        administratively unloaded. The server is ready when there is at least
+        one expected model and all expected models currently have a LOADED
+        record. Any expected model that is missing or not yet LOADED (e.g.
+        unloaded due to an error, or still loading) makes the server not ready,
+        as does having no models expected at all.
+        """
+        async with self._lock:
+            loaded = {
+                record.model_name
+                for record in self._models.values()
+                if record.status == ModelStatus.LOADED
+            }
+            expected = set(self._expected_models)
+            missing = sorted(expected - loaded)
+            return {
+                "ready": bool(expected) and not missing,
+                "expected_models": sorted(expected),
+                "missing_models": missing,
             }
 
 # Registry mapping (engine, model_type) to model class paths
