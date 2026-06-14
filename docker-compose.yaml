@@ -1,11 +1,10 @@
-version: '3.8'
-
 services:
+
   openarc:
-    build: .
-    image: openarc:latest
+    image: ghcr.io/searchsavior/openarc:latest
+    # image: ghcr.io/searchsavior/openarc-battlemage:latest   <-- use this image for the battlemage version
     container_name: openarc
-    
+
     # GPU access
     devices:
       - /dev/dri:/dev/dri
@@ -23,6 +22,7 @@ services:
     environment:
       - OPENARC_API_KEY=${OPENARC_API_KEY:-openarc-default-key}
       - OPENARC_AUTOLOAD_MODEL=${OPENARC_AUTOLOAD_MODEL:-}
+      - OPENARC_MODELS_DIR=${OPENARC_MODELS_DIR:-/models}
       # Intel GPU tuning variables
       - NEOReadDebugKeys=1
       - OverrideGpuAddressSpace=48
@@ -31,7 +31,7 @@ services:
     # Restart policy
     restart: unless-stopped
     
-    # Logging
+    # Logging (optional)
     logging:
       driver: "json-file"
       options:

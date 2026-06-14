@@ -21,7 +21,7 @@ import base64
 from pathlib import Path
 import logging
 import gc
-from typing import Any, AsyncIterator, Dict, Optional, Union
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import openvino as ov
@@ -30,8 +30,8 @@ from src.engine.openvino.qwen3_asr.qwen3_asr_utils import (
     MAX_ASR_INPUT_SECONDS,
     merge_languages,
     normalize_audios,
-    normalize_language_name,
     parse_asr_output,
+    resolve_language_name,
     split_audio_into_chunks,
     validate_language,
 )
@@ -127,13 +127,13 @@ class Qwen3ASRHelpers:
         return fb.astype(np.float32)
 
     @staticmethod
-    def compute_mel_spectrogram(audio_np, mel_filters_np):
+    def compute_mel_spectrogram(audio_np, mel_filters_t, hann_window_t):
+        """Compute log-mel spectrogram. Caller supplies pre-built torch hann window
+        and pre-converted mel_filters tensor so we don't rebuild them per chunk."""
         audio = torch.from_numpy(audio_np).float()
-        mel_filters = torch.from_numpy(mel_filters_np).float()
-        window = torch.hann_window(WINDOW_SIZE)
-        stft = torch.stft(audio, WINDOW_SIZE, HOP_LENGTH, window=window, return_complex=True)
+        stft = torch.stft(audio, WINDOW_SIZE, HOP_LENGTH, window=hann_window_t, return_complex=True)
         mag2 = stft[..., :-1].abs() ** 2
-        mel_spec = mel_filters.T @ mag2
+        mel_spec = mel_filters_t.T @ mag2
         log_spec = torch.clamp(mel_spec, min=1e-10).log10()
         log_spec = torch.maximum(log_spec, log_spec.max() - 8.0)
         log_spec = (log_spec + 4.0) / 4.0
@@ -165,13 +165,17 @@ class Qwen3ASRHelpers:
         return dict(zip(bs, [chr(c) for c in cs]))
 
     @staticmethod
-    def decode_tokens(token_ids, tokenizer_dir: str) -> str:
+    def load_tokenizer_state(tokenizer_dir: str) -> tuple[dict[Any, Any], set[int], dict[str, int]]:
+        """Load tokenizer state needed by detokenization. Returns (id_to_token,
+        special_token_ids, byte_decoder). Intended to be called once per model load
+        and cached on the inference instance — re-reading vocab.json (~3 MB) per
+        chunk is otherwise a substantial overhead on long-form audio."""
         vocab_path = os.path.join(tokenizer_dir, "vocab.json")
         with open(vocab_path, "r", encoding="utf-8") as f:
             vocab = json.load(f)
         id_to_token = {v: k for k, v in vocab.items()}
 
-        special_tokens = set()
+        special_tokens: set[int] = set()
         tc_path = os.path.join(tokenizer_dir, "tokenizer_config.json")
         if os.path.exists(tc_path):
             with open(tc_path) as f:
@@ -181,7 +185,15 @@ class Qwen3ASRHelpers:
 
         byte_enc = Qwen3ASRHelpers.bytes_to_unicode()
         byte_dec = {v: k for k, v in byte_enc.items()}
+        return id_to_token, special_tokens, byte_dec
 
+    @staticmethod
+    def decode_tokens_cached(
+        token_ids,
+        id_to_token: dict,
+        special_tokens: set,
+        byte_dec: dict,
+    ) -> str:
         pieces = []
         for tid in token_ids:
             if tid in special_tokens:
@@ -204,12 +216,23 @@ class OVQwen3ASR:
         self.runtime_cfg = Qwen3ASRHelpers.hf_config(self.ov_dir / "config.json")
         self.chunk_size = self.runtime_cfg["enc_n_window"] * 2
         self.mel_filters = Qwen3ASRHelpers.compute_mel_filters()
+        # Cache torch tensors used every chunk by the mel spectrogram path.
+        self._mel_filters_t = torch.from_numpy(self.mel_filters).float()
+        self._hann_window = torch.hann_window(WINDOW_SIZE)
         self.core = ov.Core()
+        if load_config.cache_dir:
+            self.core.set_property({"CACHE_DIR": load_config.cache_dir})
+        if load_config.runtime_config:
+            self.core.set_property(load_config.runtime_config)
         self.t_model_load = 0.0
         self.enc_model = None
         self.emb_model = None
         self.dec_model = None
         self.dec_request = None
+        # Cached tokenizer state, populated in load_model.
+        self._tok_id_to_token: dict[Any, Any] | None = None
+        self._tok_special: set[int] | None = None
+        self._tok_byte_dec: dict[str, int] | None = None
 
     def load_model(self, load_config: ModelLoadConfig) -> None:
         self.load_config = load_config
@@ -229,12 +252,18 @@ class OVQwen3ASR:
             load_config.device,
         )
         self.dec_request = self.dec_model.create_infer_request()
+        (
+            self._tok_id_to_token,
+            self._tok_special,
+            self._tok_byte_dec,
+        ) = Qwen3ASRHelpers.load_tokenizer_state(str(self.ov_dir))
         self.t_model_load = time.perf_counter() - t_load_start
 
     def _embed_tokens(self, token_ids):
         ids = np.asarray(token_ids, dtype=np.int64)
         if ids.ndim == 1:
             ids = ids[np.newaxis, :]
+        assert self.emb_model, "Model not loaded"
         out = self.emb_model([ids])
         return out[self.emb_model.output(0)]
 
@@ -265,9 +294,9 @@ class OVQwen3ASR:
             "encoder_tokens": encoder_tokens,
         }
 
-    async def audio_chunks(self, chunk_audio: np.ndarray, max_tokens: int):
+    def audio_chunks(self, chunk_audio: np.ndarray, max_tokens: int):
         t_feature_start = time.perf_counter()
-        mel = Qwen3ASRHelpers.compute_mel_spectrogram(chunk_audio, self.mel_filters)
+        mel = Qwen3ASRHelpers.compute_mel_spectrogram(chunk_audio, self._mel_filters_t, self._hann_window)
         t_feature = time.perf_counter() - t_feature_start
         total_frames = mel.shape[1]
         expected_tokens = Qwen3ASRHelpers.count_encoder_tokens(total_frames, self.chunk_size)
@@ -278,6 +307,7 @@ class OVQwen3ASR:
         mel_input = mel[np.newaxis, :, :].astype(np.float32)
 
         t_encoder_start = time.perf_counter()
+        assert self.enc_model, "Model not loaded"
         enc_out = self.enc_model([mel_input])
         t_encoder = time.perf_counter() - t_encoder_start
         audio_embeds = enc_out[self.enc_model.output(0)]
@@ -293,8 +323,8 @@ class OVQwen3ASR:
         prompt_len = len(input_ids)
         position_ids = np.arange(prompt_len, dtype=np.int64)[np.newaxis, :]
 
-
         t_prefill_start = time.perf_counter()
+        assert self.dec_request, "Model not loaded"
         self.dec_request.reset_state()
         self.dec_request.set_input_tensor(0, ov.Tensor(input_embeds))
         self.dec_request.set_input_tensor(1, ov.Tensor(position_ids))
@@ -326,7 +356,8 @@ class OVQwen3ASR:
             generated.pop()
 
         t_detok_start = time.perf_counter()
-        raw = Qwen3ASRHelpers.decode_tokens(generated, str(self.ov_dir))
+        assert self._tok_id_to_token and self._tok_special and self._tok_byte_dec, "Tokenizer state not loaded"
+        raw = Qwen3ASRHelpers.decode_tokens_cached(generated, self._tok_id_to_token, self._tok_special, self._tok_byte_dec)
         t_detok = time.perf_counter() - t_detok_start
 
         metrics = self.collect_metrics(
@@ -341,22 +372,21 @@ class OVQwen3ASR:
         )
         return raw, metrics
 
-    async def transcribe(self, gen_config: OV_Qwen3ASRGenConfig) -> AsyncIterator[Union[Dict[str, Any], str]]:
+    async def transcribe(self, gen_config: OV_Qwen3ASRGenConfig) -> Tuple[str, Dict[str, Any], List[Dict[str, Any]]]:
         t_transcribe_start = time.perf_counter()
         audio_input = gen_config.audio_base64
+        assert audio_input, "audio_base64 is required"
         if not audio_input.startswith("data:audio"):
             audio_input = f"data:audio/wav;base64,{audio_input}"
         audio_array = (await asyncio.to_thread(normalize_audios, audio_input))[0]
         language: Optional[str] = None
         if gen_config.language:
-            language = normalize_language_name(gen_config.language)
+            language = resolve_language_name(gen_config.language)
             validate_language(language)
 
         audio_seconds = len(audio_array) / SAMPLE_RATE
         if audio_seconds <= 0:
-            yield {}
-            yield ""
-            return
+            return "", {}, []
 
         max_chunk_sec = min(float(gen_config.max_chunk_sec), float(MAX_ASR_INPUT_SECONDS))
         chunk_items = await asyncio.to_thread(
@@ -371,6 +401,7 @@ class OVQwen3ASR:
 
         langs = []
         texts = []
+        segments = []
         agg = {
             "feature_sec": 0.0,
             "encoder_sec": 0.0,
@@ -387,11 +418,19 @@ class OVQwen3ASR:
                 f"[{self.load_config.model_name}] Chunk {idx + 1}/{len(chunk_items)} "
                 f"offset={chunk_offset_sec:.2f}s duration={chunk_sec:.2f}s"
             )
-            raw, chunk_metrics = await self.audio_chunks(chunk_wav, gen_config.max_tokens)
+            raw, chunk_metrics = await asyncio.to_thread(
+                self.audio_chunks, chunk_wav, gen_config.max_tokens
+            )
             lang, text = parse_asr_output(raw, language=language)
             langs.append(lang)
             if text:
                 texts.append(text)
+                segments.append({
+                    "id": idx,
+                    "start": float(chunk_offset_sec),
+                    "end": float(chunk_offset_sec) + float(chunk_sec),
+                    "text": text,
+                })
             agg["feature_sec"] += chunk_metrics["feature_sec"]
             agg["encoder_sec"] += chunk_metrics["encoder_sec"]
             agg["prefill_sec"] += chunk_metrics["prefill_sec"]
@@ -423,8 +462,7 @@ class OVQwen3ASR:
         if merged_language:
             metrics["language"] = merged_language
 
-        yield metrics
-        yield text
+        return text, metrics, segments
 
     async def unload_model(self, registry: ModelRegistry, model_name: str) -> bool:
         removed = await registry.register_unload(model_name)
@@ -432,6 +470,9 @@ class OVQwen3ASR:
         self.emb_model = None
         self.dec_model = None
         self.dec_request = None
+        self._tok_id_to_token = None
+        self._tok_special = None
+        self._tok_byte_dec = None
         gc.collect()
         logger.info(f"[{self.load_config.model_name}] unloaded and memory cleaned up")
         return removed

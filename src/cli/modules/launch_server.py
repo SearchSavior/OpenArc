@@ -1,9 +1,13 @@
+import os
+
 import uvicorn
 import logging
 from pathlib import Path
 
-# Configure logging
-log_file = Path(__file__).parent.parent.parent.parent / "openarc.log"
+# Configure logging. Default to openarc.log in project root, but can be overridden with OPENARC_LOG_FILE env var.
+# Setting this to /dev/null effectively disables file logging if desired.
+default_log_file = Path(__file__).parent.parent.parent.parent / "openarc.log"
+log_file = Path(os.getenv("OPENARC_LOG_FILE", default_log_file))
 
 def _level_from_verbose(verbose: int) -> str:
     if verbose >= 2:

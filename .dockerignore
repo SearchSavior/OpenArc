@@ -1,0 +1,40 @@
+# github / editor / local tooling
+.github
+.cursor
+.vscode
+.idea
+
+# Python cache / virtualenvs
+.venv
+.venv/**
+venv
+venv/**
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Local model artifacts
+models/**/*
+
+# The Dockerfile itself (annoying if actively working on the Dockerfile to break cache)
+Dockerfile
+
+# Local runtime / generated stuff
+persist
+persist/**
+logs
+logs/**
+tmp
+tmp/**
+temp
+temp/**
+*.log
+
+# OS junk
+.DS_Store
+Thumbs.db
+

@@ -35,6 +35,8 @@ class BenchmarkDB:
                 run_id TEXT NOT NULL,
                 timestamp TEXT NOT NULL,
                 model_name TEXT NOT NULL,
+                device TEXT NOT NULL DEFAULT '',
+                runtime_config TEXT NOT NULL DEFAULT '',
                 depth_tokens INTEGER NOT NULL DEFAULT 0,
                 input_tokens INTEGER NOT NULL,
                 max_tokens INTEGER NOT NULL,
@@ -53,6 +55,8 @@ class BenchmarkDB:
         conn.commit()
         conn.close()
         self._ensure_depth_column()
+        self._ensure_device_column()
+        self._ensure_runtime_config_column()
 
     def _ensure_depth_column(self) -> None:
         conn = sqlite3.connect(self.db_file)
@@ -66,7 +70,38 @@ class BenchmarkDB:
             conn.commit()
         conn.close()
 
-    def save_result(self, model_name: str, result: Dict[str, Any], run_id: str) -> None:
+    def _ensure_device_column(self) -> None:
+        conn = sqlite3.connect(self.db_file)
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(benchmark_results)")
+        cols = {row[1] for row in cursor.fetchall()}
+        if "device" not in cols:
+            cursor.execute(
+                "ALTER TABLE benchmark_results ADD COLUMN device TEXT NOT NULL DEFAULT ''"
+            )
+            conn.commit()
+        conn.close()
+
+    def _ensure_runtime_config_column(self) -> None:
+        conn = sqlite3.connect(self.db_file)
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(benchmark_results)")
+        cols = {row[1] for row in cursor.fetchall()}
+        if "runtime_config" not in cols:
+            cursor.execute(
+                "ALTER TABLE benchmark_results ADD COLUMN runtime_config TEXT NOT NULL DEFAULT ''"
+            )
+            conn.commit()
+        conn.close()
+
+    def save_result(
+        self,
+        model_name: str,
+        result: Dict[str, Any],
+        run_id: str,
+        device: str = "",
+        runtime_config: str = "",
+    ) -> None:
         """
         Save a single benchmark result to the database.
         
@@ -83,14 +118,16 @@ class BenchmarkDB:
         
         cursor.execute("""
             INSERT INTO benchmark_results (
-                run_id, timestamp, model_name, depth_tokens, input_tokens, max_tokens, run_number,
+                run_id, timestamp, model_name, device, runtime_config, depth_tokens, input_tokens, max_tokens, run_number,
                 ttft_s, tpot_ms, prefill_throughput_tokens_s, decode_throughput_tokens_s,
                 decode_duration_s, input_token_count, new_token_count, total_token_count
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             run_id,
             datetime.now().isoformat(),
             model_name,
+            device,
+            runtime_config,
             int(result.get("d", 0)),
             result['p'],
             result['n'],

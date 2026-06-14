@@ -83,6 +83,10 @@ class OVGenAI_GenConfig(BaseModel):
         default=None,
         description="Flat penalty for tokens which appeared at least once."
     )
+    chat_template_kwargs: dict = Field(
+        default={},
+        description="Additional arguments to apply to the chat template."
+    )
 
     @property
     def text_messages(self) -> List[Dict[str, Any]]:
@@ -92,19 +96,3 @@ class OVGenAI_GenConfig(BaseModel):
 
 class OVGenAI_WhisperGenConfig(BaseModel):
     audio_base64: str = Field(..., description="Base64 encoded audio")
-
-VLM_VISION_TOKENS = {
-    "internvl2": "<image>",
-    "llava15": "<image>",
-    "llavanext": "<image>",
-    "minicpmv26": "(<image>./</image>)",
-    "phi3vision": "<|image_{i}|>",
-    "phi4mm": "<|image_{i}|>",
-    "qwen2vl": "<|vision_start|><|image_pad|><|vision_end|>",
-    "qwen25vl": "<|vision_start|><|image_pad|><|vision_end|>",
-    "qwen3vl": "<|vision_start|><|image_pad|><|vision_end|>",
-    "gemma3": "<start_of_image>",
-    "gemma4": "<|image><|image|><image|>"
-    
-}
-

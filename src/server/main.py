@@ -12,6 +12,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from src.cli.utils import get_config_file_path
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.server.deps import _registry
@@ -55,7 +56,7 @@ async def lifespan(app: FastAPI):
     if models:
         from pathlib import Path
 
-        config_file = Path(__file__).parent.parent.parent / "openarc_config.json"
+        config_file = get_config_file_path()
         if config_file.exists():
             with open(config_file) as f:
                 config = json.load(f)
@@ -66,7 +67,20 @@ async def lifespan(app: FastAPI):
                 if not model_config:
                     logger.warning(f"Startup: model '{name}' not in config, skipping")
                     continue
+                
+                model_path = model_config.get("model_path")
+                if model_path and not Path(model_path).is_absolute():
+                    model_config["model_path"] = str((config_file.parent / model_path).resolve())
+
+                cache_dir = model_config.get("cache_dir")
+                if cache_dir and not Path(cache_dir).is_absolute():
+                    cache_dir = str((config_file.parent / cache_dir).resolve())
+                    model_config["cache_dir"] = cache_dir
+
                 try:
+                    if cache_dir:
+                        # Create the cache directory at startup if it doesn't exist.
+                        Path(cache_dir).mkdir(parents=True, exist_ok=True)
                     await _registry.register_load(ModelLoadConfig(**model_config))
                     logger.info(f"Startup: loaded '{name}'")
                 except Exception as e:

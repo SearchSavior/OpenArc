@@ -13,7 +13,7 @@ This page contains example commands to help you choose models and configure Open
 
     Add a model to `openarc_config.json` for easy loading with `openarc load`.
 
-    === "Single device"
+    === "Required"
 
         ```
         openarc add \
@@ -26,6 +26,18 @@ This page contains example commands to help you choose models and configure Open
 
         To see what options you have for `--device`, use `openarc tool device-detect`.
 
+
+    === "LLM"
+
+        ```
+        openarc add \
+          --model-name <model-name> \
+          --model-path <path/to/model> \
+          --engine <engine> \
+          --model-type llm \
+          --device <target-device>
+        ```
+    
     === "VLM"
 
         ```
@@ -33,30 +45,10 @@ This page contains example commands to help you choose models and configure Open
           --model-name <model-name> \
           --model-path <path/to/model> \
           --engine <engine> \
-          --model-type <model-type> \
-          --device <target-device> \
-          --vlm-type <vlm-type>
+          --model-type vlm \
+          --device <target-device>
         ```
-
-        Getting VLM to work the way I wanted required using VLMPipeline in ways that are not well documented. You can look at the [code](src/engine/ov_genai/vlm.py#L33) to see how OpenArc's VLM backend passes images. Basically, it involves slicing the input sequence by scanning for when there's in image and injecting appropriate tokens. Honestly I have no ideas why they built VLMPipeline this way, but to support all the architectures my approach was easier in the end.
-
-        `vlm-type` maps a vision token for a given architecture. Use `openarc add --help` to see the available options. The server will complain if you get anything wrong, so it should be easy to figure out.
-
-
-        NOTE: you don't have to pass `Vision Token`; these are mapped to the `vlm-type` `openarc add` argument so use that instead. 
-
-        | `--vlm-type`   | Vision token                                        |
-        |----------------|-----------------------------------------------------|
-        | `internvl2`    | `<image>`                                           |
-        | `llava15`      | `<image>`                                           |
-        | `llavanext`    | `<image>`                                           |
-        | `minicpmv26`   | `(<image>./</image>)`                               |
-        | `phi3vision`   | `<\|image_{i}\|>`                                   |
-        | `phi4mm`       | `<\|image_{i}\|>`                                   |
-        | `qwen2vl`      | `<\|vision_start\|><\|image_pad\|><\|vision_end\|>` |
-        | `qwen25vl`     | `<\|vision_start\|><\|image_pad\|><\|vision_end\|>` |
-        | `gemma3`       | `<start_of_image>`                                  |
-
+    
     === "Whisper"
 
         ```
@@ -279,8 +271,7 @@ This page contains example commands to help you choose models and configure Open
           --device CPU
         ```
 
-        Use the `/v1/audio/transcriptions` endpoint with `openarc_asr` in the request body:
-        I have not tested our implementation with any community tooling yet; however, all tests using the openai python library are passing, and usually that's enough. 
+        Chunking can be configured on a per-request basis via the `openarc_asr` in the request body for the `/v1/audio/transcriptions`. If not set, the below defaults will be used. Defaults values cannot currently be configured.
 
         For the options in `extra_body`, they will likely not have support in any third party tool you don't build from scratch. I'm working on improving how these can be configured. Currently, the behavior is modified per request, so you can tinker with performance on CPU and GPU. At this time NPU device is unsupported.
 
@@ -300,6 +291,7 @@ This page contains example commands to help you choose models and configure Open
                 model="<model-name>",
                 file=f,
                 response_format="verbose_json",
+                # Optional. The below values will be used as defaults if `openarc_asr` is not provided.
                 extra_body={
                     "openarc_asr": json.dumps({
                         "qwen3_asr": {
@@ -377,6 +369,34 @@ This page contains example commands to help you choose models and configure Open
               --draft-device CPU \
               --num-assistant-tokens 5 \
               --assistant-confidence-threshold 0.5
+            ```
+
+        === "Model caching"
+
+            The `--cache-dir` parameter can be specified to cache compiled models upon first start. This can greatly reduce startup memory cost and time for subsequent process starts.
+            On some setups this can reduce peak memory utilization on subsequent restarts by 3x or more, and start time by 7x. For additional details, see
+            [here](https://docs.openvino.ai/2026/model-server/ovms_docs_model_cache.html).
+
+            The cache can be shared by multiple processes (and on shared network filesystems such as NFS or CephFS) provided that only one process updates it at a time.
+
+            The cache will be fully or partially invalidated when doing any of the below:
+            * Changing the utilized device(s) (swapping GPU models, adding or removing a GPU, adding or removing a CPU, etc.)
+            * Changing `runtime_config` that impacts the model itself (e.g. `PERFORMANCE_HINT: THROUGHPUT` to `PERFORMANCE_HINT: LATENCY` but not `NUM_STREAMS: 1 to `NUM_STREAMS: 2`)
+            * Changing any part of the software stack from the firmware up - GPU firmware, OS kernel, kernel modules/drivers, dependency libraries, OpenARC, model versions.
+
+            > [!WARNING]
+            > Due to OpenVINO limitations, unused cache files are never cleaned up and will persist until an operator removes them. The cache can grow large over time. It is recommended
+            > that operators monitor the cache size and manually clean it up as needed to reduce disk usage.
+
+
+            ```
+            openarc add \
+              --model-name <model-name> \
+              --model-path <path/to/model> \
+              --engine ovgenai \
+              --model-type llm \
+              --device GPU \
+              --cache-dir <path/to/model/cache>
             ```
 
 === "list"

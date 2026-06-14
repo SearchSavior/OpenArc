@@ -7,7 +7,6 @@ __pycache__/
 *.pyc
 *.egg-info/
 *.egg
-*.pyc
 *.log
 *.env
 openarc_api.log
@@ -28,4 +27,6 @@ gpt_oss_convert.py
 scratchpad.md
 site/
 .cache/
-scratchpad.md
+build/
+dist/
+/models/**/*

@@ -15,8 +15,9 @@ from openvino_genai import (
 from PIL import Image
 from transformers import AutoTokenizer
 
-from src.server.models.ov_genai import OVGenAI_GenConfig, VLM_VISION_TOKENS
+from src.server.models.ov_genai import OVGenAI_GenConfig
 from src.server.utils.chat import flatten_message_content
+from src.server.utils.resolve_vlm_type import resolve_vlm_vision_token
 from src.server.model_registry import ModelRegistry
 from src.server.models.registration import ModelLoadConfig
 from src.engine.ov_genai.streamers import ChunkStreamer
@@ -46,7 +47,8 @@ class OVGenAI_VLM:
 
     def prepare_inputs(self,
         messages: List[Dict[str, Any]],
-        tools: Optional[List[Dict[str, Any]]] = None
+        tools: Optional[List[Dict[str, Any]]] = None,
+        chat_template_kwargs: dict = {},
     ) -> Tuple[str, List[ov.Tensor]]:
         """
         Parse a messages list and prepare text prompt + image tensors for VLM inference.
@@ -113,7 +115,8 @@ class OVGenAI_VLM:
             text_messages,
             tokenize=False,
             tools=tools,
-            add_generation_prompt=True
+            add_generation_prompt=True,
+            **chat_template_kwargs,
         )
 
         # Step 3: Convert images to OpenVINO Tensors
@@ -136,7 +139,7 @@ class OVGenAI_VLM:
             return prompt, []
         if gen_config.prompt:
             return gen_config.prompt, []
-        return self.prepare_inputs(gen_config.messages, gen_config.tools)
+        return self.prepare_inputs(gen_config.messages, gen_config.tools, gen_config.chat_template_kwargs)
 
     def generate_type(self, gen_config: OVGenAI_GenConfig):
         """
@@ -268,23 +271,25 @@ class OVGenAI_VLM:
         try:
             logger.info(f"{loader.model_type} on {loader.device} with {loader.runtime_config}")
             
+            pipeline_kwargs = {**(loader.runtime_config or {})}
+            if loader.cache_dir:
+                pipeline_kwargs['CACHE_DIR'] = loader.cache_dir
+
             self.model_path = VLMPipeline(
                 loader.model_path,
                 loader.device,
-                **(loader.runtime_config or {})
+                **pipeline_kwargs
             )
             
             self.tokenizer = AutoTokenizer.from_pretrained(loader.model_path)
     
-            # Get vision token from the mapping using vlm_type as key
-            self.vision_token = VLM_VISION_TOKENS.get(loader.vlm_type)
-            if self.vision_token is None:
-                raise ValueError(f"Unknown VLM type: {loader.vlm_type}. Supported: {list(VLM_VISION_TOKENS.keys())}")
+            self.vision_token = resolve_vlm_vision_token(loader.model_path)
 
             logger.info(f"{loader.model_name} loaded successfully")
 
         except Exception as e:
             logger.error(f"[{loader.model_name}] Failed to initialize VLMPipeline: {e}", exc_info=True)
+            raise
 
     async def unload_model(self, registry: ModelRegistry, model_name: str) -> bool:
         """
@@ -318,6 +323,7 @@ class OVGenAI_VLM:
         generation_kwargs.top_k = config.top_k
         generation_kwargs.top_p = config.top_p
         generation_kwargs.repetition_penalty = config.repetition_penalty
+        generation_kwargs.apply_chat_template = False
 
         if config.seed:
             generation_kwargs.rng_seed = config.seed

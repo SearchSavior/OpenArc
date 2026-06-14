@@ -34,11 +34,10 @@ from ..utils import validate_model_path
 @click.option("--runtime-config", "--rtc",
     default=None,
     help='OpenVINO runtime configuration as JSON string (e.g., \'{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}\').')
-@click.option('--vlm-type', '--vt',
-    type=click.Choice(['internvl2', 'llava15', 'llavanext', 'minicpmv26', 'phi3vision', 'phi4mm', 'qwen2vl', 'qwen25vl', 'qwen3vl', 'gemma3', 'gemma4']),
+@click.option('--cache-dir', '--cd',
     required=False,
     default=None,
-    help='Vision model type. Used to map correct vision tokens.')
+    help='Directory for the OpenVINO model cache. Caching compiled model blobs here speeds up subsequent loads of this model. Relative paths are resolved against the config file, like --model-path.')
 @click.option('--draft-model-path', '--dmp',
     required=False,
     default=None,
@@ -58,7 +57,7 @@ from ..utils import validate_model_path
     type=float,
     help='Confidence threshold for accepting draft tokens.')
 @click.pass_context
-def add(ctx, model_path, model_name, engine, model_type, device, runtime_config, vlm_type, draft_model_path, draft_device, num_assistant_tokens, assistant_confidence_threshold):
+def add(ctx, model_path, model_name, engine, model_type, device, runtime_config, cache_dir, draft_model_path, draft_device, num_assistant_tokens, assistant_confidence_threshold):
     """- Add a model configuration to the config file."""
     
     # Validate model path
@@ -80,7 +79,7 @@ def add(ctx, model_path, model_name, engine, model_type, device, runtime_config,
             console.print('[yellow]Example format: \'{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}\'[/yellow]')
             ctx.exit(1)
     
-    # Build and save configuration
+    # Legacy configs may still contain vlm_type, but new configs resolve VLM tokens from config.json.
     load_config = {
         "model_name": model_name,
         "model_path": model_path,  
@@ -88,11 +87,17 @@ def add(ctx, model_path, model_name, engine, model_type, device, runtime_config,
         "engine": engine,    
         "device": device,
         "runtime_config": parsed_runtime_config,
-        "vlm_type": vlm_type if vlm_type else None
     }
     
+    # Store the cache directory (resolved relative to the config file at load time)
+    if cache_dir:
+        load_config["cache_dir"] = cache_dir
+
     # Add speculative decoding options if provided
     if draft_model_path:
+        if not validate_model_path(draft_model_path):
+            console.print(f"[red]Model file check failed! {draft_model_path} does not contain openvino model files OR your chosen path is malformed. Verify chosen path is correct and acquired model files match source on the hub, or the destination of converted model.[/red]")
+            ctx.exit(1)
         load_config["draft_model_path"] = draft_model_path
     if draft_device:
         load_config["draft_device"] = draft_device

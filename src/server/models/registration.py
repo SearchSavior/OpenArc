@@ -1,9 +1,7 @@
 from enum import Enum
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, Field, field_validator
-
-from src.server.models.ov_genai import VLM_VISION_TOKENS
+from pydantic import BaseModel, Field
 
 
 class ModelStatus(str, Enum):
@@ -75,7 +73,7 @@ class ModelLoadConfig(BaseModel):
     model_type: ModelType = Field(...)
     vlm_type: Optional[str] = Field(
         default=None,
-        description=f"Vision token type for VLM models. Supported: {list(VLM_VISION_TOKENS.keys())}"
+        description="Deprecated legacy VLM token type. VLM tokens are resolved from config.json."
     )
     engine: EngineType = Field(...)
     device: str = Field(
@@ -87,6 +85,15 @@ class ModelLoadConfig(BaseModel):
     runtime_config: Dict[str, Any] = Field(
         default_factory=dict,
         description="Optional OpenVINO runtime properties.")
+    cache_dir: Optional[str] = Field(
+        default=None,
+        description="""
+        Optional directory for the OpenVINO model cache (CACHE_DIR property).
+
+        When set, compiled model blobs are cached here so subsequent loads of
+        this model skip recompilation. Relative paths are resolved against the
+        config file's directory when the model is loaded, the same as
+        model_path.""")
 
     draft_model_path: Optional[str] = Field(
         default=None,
@@ -105,17 +112,6 @@ class ModelLoadConfig(BaseModel):
         description="Default assistant_confidence_threshold for speculative decoding with this model"
     )
     
-    @field_validator('vlm_type')
-    @classmethod
-    def validate_vlm_type(cls, v, info):
-        # Only validate if vlm_type is provided and model_type is VLM
-        if v is None:
-            return v
-        if v not in VLM_VISION_TOKENS:
-            raise ValueError(f"vlm_type must be one of {list(VLM_VISION_TOKENS.keys())}, got '{v}'")
-        return v
-
 
 class ModelUnloadConfig(BaseModel):
     model_name: str = Field(..., description="Name of the model to unload")
-
