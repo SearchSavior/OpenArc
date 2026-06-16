@@ -50,7 +50,6 @@ from src.server.models.openvino import OV_Qwen3TTSGenConfig
 from src.server.models.registration import EngineType, ModelLoadConfig, ModelType
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 # ICL speech decoder: last N reference frames as left context (matches upstream chunked_decode).
 ICL_DECODER_LEFT_CONTEXT_FRAMES = 25
