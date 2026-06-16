@@ -10,6 +10,31 @@ default_log_file = Path(__file__).parent.parent.parent.parent / "openarc.log"
 log_file = Path(os.getenv("OPENARC_LOG_FILE", default_log_file))
 
 def _level_from_verbose(verbose: int) -> str:
+    # our own code (src.* and OpenArc loggers)
+    if verbose >= 3:
+        return "DEBUG"
+    if verbose >= 2:
+        return "INFO"
+    if verbose == 1:
+        return "WARNING"
+    return "ERROR"
+
+
+def _access_level_from_verbose(verbose: int) -> str:
+    # http request logs (openarc.access + uvicorn.access). shown from -vv.
+    if verbose >= 4:
+        return "DEBUG"
+    if verbose >= 2:
+        return "INFO"
+    return "WARNING"
+
+
+def _root_level_from_verbose(verbose: int) -> str:
+    # floor for third-party libraries (httpx, transformers, openvino, ...).
+    # kept above our own level so -vvv shows our debug without library noise;
+    # -vvvv drops it to DEBUG too.
+    if verbose >= 4:
+        return "DEBUG"
     if verbose >= 2:
         return "INFO"
     if verbose == 1:
@@ -19,7 +44,9 @@ def _level_from_verbose(verbose: int) -> str:
 
 def _build_log_config(verbose: int):
     app_level = _level_from_verbose(verbose)
-    access_level = "INFO" if verbose >= 3 else "WARNING"
+    access_level = _access_level_from_verbose(verbose)
+    root_level = _root_level_from_verbose(verbose)
+    uvicorn_level = "DEBUG" if verbose >= 4 else "INFO"
 
     return {
         "version": 1,
@@ -57,11 +84,11 @@ def _build_log_config(verbose: int):
         "loggers": {
             "uvicorn": {
                 "handlers": ["default", "file"],
-                "level": "INFO",
+                "level": uvicorn_level,
                 "propagate": False,
             },
             "uvicorn.error": {
-                "level": "INFO",
+                "level": uvicorn_level,
                 "handlers": ["default", "file"],
                 "propagate": False,
             },
@@ -70,6 +97,16 @@ def _build_log_config(verbose: int):
                 "level": access_level,
                 "propagate": False,
             },
+            # our own application code. set explicitly so -vvv shows our debug
+            # logs while the root floor keeps third-party libraries quiet.
+            "src": {
+                "level": app_level,
+                "propagate": True,
+            },
+            "OpenArc": {
+                "level": app_level,
+                "propagate": True,
+            },
             "openarc.access": {
                 "handlers": ["default", "file"],
                 "level": access_level,
@@ -77,7 +114,7 @@ def _build_log_config(verbose: int):
             },
         },
         "root": {
-            "level": app_level,
+            "level": root_level,
             "handlers": ["default", "file"],
         },
     }
@@ -94,11 +131,9 @@ def start_server(host: str = "0.0.0.0", port: int = 8001, reload: bool = False, 
         port: Port to bind the server to
     """
 
-    app_level_name = _level_from_verbose(verbose)
-    app_level_num = getattr(logging, app_level_name)
-
-    logger.setLevel(app_level_num)
-    logging.getLogger().setLevel(app_level_num)
+    # applies only until uvicorn.run() installs the dict config below.
+    logger.setLevel(getattr(logging, _level_from_verbose(verbose)))
+    logging.getLogger().setLevel(getattr(logging, _root_level_from_verbose(verbose)))
 
     print(f"Launching  {host}:{port}")
     print("--------------------------------")

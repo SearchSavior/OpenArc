@@ -34,7 +34,7 @@ def serve():
 @click.option("--use-api-key", is_flag=True, default=False,
               help="Require OPENARC_API_KEY for all requests.")
 @click.option("-v", "--verbose", count=True, default=0,
-              help="Increase verbosity: -v for warnings, -vv for info, -vvv for full access logs.")
+              help="Increase verbosity: -v warnings, -vv info + HTTP requests, -vvv debug, -vvvv debug incl. third-party libraries.")
 @click.argument('startup_models', nargs=-1, required=False)
 @click.pass_context
 def start(ctx, host, port, load_models, use_api_key, verbose, startup_models):

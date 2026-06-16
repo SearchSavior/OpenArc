@@ -14,7 +14,6 @@ from src.server.models.registration import ModelLoadConfig
 from src.server.models.ov_genai import OVGenAI_WhisperGenConfig
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 
 class OVGenAI_Whisper:

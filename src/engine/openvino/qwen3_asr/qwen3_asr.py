@@ -41,7 +41,6 @@ from src.server.model_registry import ModelRegistry
 from src.server.models.registration import EngineType, ModelLoadConfig, ModelType
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 
 SAMPLE_RATE = 16000

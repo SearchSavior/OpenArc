@@ -23,7 +23,6 @@ from src.server.models.registration import ModelLoadConfig
 from src.engine.ov_genai.streamers import ChunkStreamer
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 
 class OVGenAI_VLM:
