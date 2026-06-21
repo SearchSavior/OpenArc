@@ -7,6 +7,7 @@ git clone https://huggingface.co/Echo9Zulu/Qwen2.5-VL-3B-Instruct-int4_sym-ov
 git clone https://huggingface.co/Echo9Zulu/Qwen3-Embedding-0.6B-int8_asym-ov
 git clone https://huggingface.co/OpenVINO/Qwen3-Reranker-0.6B-fp16-ov
 git clone https://huggingface.co/OpenVINO/Qwen3-0.6B-int8-ov
+git clone https://huggingface.co/dseditor/Qwen3-ASR-0.6B-INT8_ASYM-OpenVINO
 
 <with huggingface-cli, from the models folder>
 huggingface-cli download --local-dir ./whisper-tiny-int8-ov OpenVINO/whisper-tiny-int8-ov
@@ -15,3 +16,4 @@ huggingface-cli download --local-dir ./Qwen2.5-VL-3B-Instruct-int4_sym-ov Echo9Z
 huggingface-cli download --local-dir ./Qwen3-Embedding-0.6B-int8_asym-ov Echo9Zulu/Qwen3-Embedding-0.6B-int8_asym-ov
 huggingface-cli download --local-dir ./Qwen3-Reranker-0.6B-fp16-ov OpenVINO/Qwen3-Reranker-0.6B-fp16-ov
 huggingface-cli download --local-dir ./Qwen3-0.6B-int8-ov OpenVINO/Qwen3-0.6B-int8-ov
+huggingface-cli download --local-dir ./Qwen3-ASR-0.6B-INT8_ASYM-OpenVINO dseditor/Qwen3-ASR-0.6B-INT8_ASYM-OpenVINO
