@@ -33,11 +33,13 @@ def serve():
               help="Load models on startup. Specify once followed by space-separated model names.")
 @click.option("--use-api-key", is_flag=True, default=False,
               help="Require OPENARC_API_KEY for all requests.")
+@click.option("--power-monitor", is_flag=True, default=False,
+              help="Enable automatic AC/Battery power-state model device monitoring and switching.")
 @click.option("-v", "--verbose", count=True, default=0,
               help="Increase verbosity: -v warnings, -vv info + HTTP requests, -vvv debug, -vvvv debug incl. third-party libraries.")
 @click.argument('startup_models', nargs=-1, required=False)
 @click.pass_context
-def start(ctx, host, port, load_models, use_api_key, verbose, startup_models):
+def start(ctx, host, port, load_models, use_api_key, power_monitor, verbose, startup_models):
     """
     - 'start' reads --host and --port from config or defaults to 0.0.0.0:8000
 
@@ -71,6 +73,12 @@ def start(ctx, host, port, load_models, use_api_key, verbose, startup_models):
 
         os.environ["OPENARC_STARTUP_MODELS"] = ",".join(models_to_load)
         console.print(f"[blue]Models to load on startup:[/blue] {', '.join(models_to_load)}\n")
+
+    if power_monitor:
+        os.environ["OPENARC_POWER_MONITOR"] = "true"
+        console.print("[blue]OPENARC_POWER_MONITOR=[/blue][green]True[/green] [dim][Automatic AC/Battery device switching enabled][/dim]")
+    else:
+        os.environ["OPENARC_POWER_MONITOR"] = "false"
 
     if use_api_key:
         if not os.getenv("OPENARC_API_KEY"):

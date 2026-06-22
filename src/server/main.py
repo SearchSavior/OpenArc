@@ -50,8 +50,61 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             raise
 
 
+async def monitor_power_state(registry):
+    import psutil
+    import asyncio
+    from src.server.models.registration import ModelLoadConfig
+    
+    logger.info("Power monitor background task started.")
+    last_plugged = None
+    
+    while True:
+        try:
+            battery = psutil.sensors_battery()
+            if battery is not None:
+                plugged = battery.power_plugged
+                if last_plugged is not None and plugged != last_plugged:
+                    target_device = "GPU" if plugged else "NPU"
+                    logger.info(f"Power status changed (plugged={plugged}). Switching LLM models to {target_device}...")
+                    
+                    async with registry._lock:
+                        loaded_models = list(registry._models.values())
+                    
+                    for record in loaded_models:
+                        if record.model_type == "llm" and record.device in ("GPU", "NPU", "AUTO", "GPU.0", "GPU.1"):
+                            logger.info(f"Power Switch: Unloading '{record.model_name}' from {record.device}...")
+                            load_config = ModelLoadConfig(
+                                model_path=record.model_path,
+                                model_name=record.model_name,
+                                model_type=record.model_type,
+                                engine=record.engine,
+                                device=target_device,
+                                runtime_config=record.runtime_config,
+                                cache_dir=getattr(record, "cache_dir", None),
+                                draft_model_path=getattr(record, "draft_model_path", None),
+                                draft_device=getattr(record, "draft_device", "CPU"),
+                                num_assistant_tokens=getattr(record, "num_assistant_tokens", None),
+                                assistant_confidence_threshold=getattr(record, "assistant_confidence_threshold", None),
+                            )
+                            try:
+                                await registry.register_unload(record.model_name)
+                                await registry.register_load(load_config)
+                                logger.info(f"Power Switch: Loaded '{record.model_name}' on {target_device} successfully!")
+                            except Exception as err:
+                                logger.error(f"Power Switch: Failed to switch '{record.model_name}' to {target_device}: {err}")
+                last_plugged = plugged
+        except Exception as e:
+            logger.error(f"Error in power monitor: {e}")
+        await asyncio.sleep(5)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    power_task = None
+    if os.getenv("OPENARC_POWER_MONITOR", "").strip().lower() == "true":
+        import asyncio
+        power_task = asyncio.create_task(monitor_power_state(_registry))
+
     models = os.getenv("OPENARC_STARTUP_MODELS", "").strip()
     if models:
         from pathlib import Path
@@ -86,7 +139,11 @@ async def lifespan(app: FastAPI):
                 except Exception as e:
                     logger.error(f"Startup: failed to load '{name}': {e}")
 
-    yield
+    try:
+        yield
+    finally:
+        if power_task:
+            power_task.cancel()
 
 
 app = FastAPI(lifespan=lifespan)
