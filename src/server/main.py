@@ -1,6 +1,7 @@
 # The first implementation of the OpenAI-like API was contributed by @gapeleon.
 # They are one hero among many future heroes working to make OpenArc better.
 
+import asyncio
 import json
 import logging
 import os
@@ -52,8 +53,6 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
 async def monitor_power_state(registry):
     import psutil
-    import asyncio
-    from src.server.models.registration import ModelLoadConfig
     
     logger.info("Power monitor background task started.")
     last_plugged = None
@@ -67,8 +66,7 @@ async def monitor_power_state(registry):
                     target_device = "GPU" if plugged else "NPU"
                     logger.info(f"Power status changed (plugged={plugged}). Switching LLM models to {target_device}...")
                     
-                    async with registry._lock:
-                        loaded_models = list(registry._models.values())
+                    loaded_models = await registry.get_loaded_models()
                     
                     for record in loaded_models:
                         if record.model_type == "llm" and record.device in ("GPU", "NPU", "AUTO", "GPU.0", "GPU.1"):
@@ -87,7 +85,7 @@ async def monitor_power_state(registry):
                                 assistant_confidence_threshold=getattr(record, "assistant_confidence_threshold", None),
                             )
                             try:
-                                await registry.register_unload(record.model_name)
+                                await registry.register_unload(record.model_name, wait=True)
                                 await registry.register_load(load_config)
                                 logger.info(f"Power Switch: Loaded '{record.model_name}' on {target_device} successfully!")
                             except Exception as err:
@@ -96,13 +94,12 @@ async def monitor_power_state(registry):
         except Exception as e:
             logger.error(f"Error in power monitor: {e}")
         await asyncio.sleep(5)
-
-
+ 
+ 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     power_task = None
     if os.getenv("OPENARC_POWER_MONITOR", "").strip().lower() == "true":
-        import asyncio
         power_task = asyncio.create_task(monitor_power_state(_registry))
 
     models = os.getenv("OPENARC_STARTUP_MODELS", "").strip()

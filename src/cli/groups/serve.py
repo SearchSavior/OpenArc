@@ -45,6 +45,7 @@ def start(ctx, host, port, load_models, use_api_key, power_monitor, verbose, sta
 
     Examples:
         openarc serve start
+        openarc serve start --power-monitor
         openarc serve start --load-models model1 model2
         openarc serve start --lm Dolphin-X1 kokoro whisper
     """
