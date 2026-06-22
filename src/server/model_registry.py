@@ -120,8 +120,11 @@ class ModelRegistry:
 
         return record.model_id
 
-    async def register_unload(self, model_name: str) -> bool:
-        """Unregister/unload a model by model_name. Returns True if found and unload task started."""
+    async def register_unload(self, model_name: str, wait: bool = False) -> bool:
+        """Unregister/unload a model by model_name.
+        If wait is True, awaits completion of the unload before returning.
+        Returns True if found and unload task started.
+        """
         async with self._lock:
             # Find model_id by model_name
             model_id = None
@@ -134,7 +137,9 @@ class ModelRegistry:
                 return False
 
             # Start background unload task
-            asyncio.create_task(self._unload_task(model_id))
+            task = asyncio.create_task(self._unload_task(model_id))
+            if wait:
+                await task
             return True
 
     async def _load_task(self, model_id: str, load_config: ModelLoadConfig) -> None:
@@ -218,6 +223,11 @@ class ModelRegistry:
                 "models": models_public,
                 "openai_model_names": [record.model_name for record in self._models.values()],
             }
+
+    async def get_loaded_models(self) -> List[ModelRecord]:
+        """Return a copy of the currently registered model records."""
+        async with self._lock:
+            return list(self._models.values())
 
 # Registry mapping (engine, model_type) to model class paths
 MODEL_CLASS_REGISTRY = {

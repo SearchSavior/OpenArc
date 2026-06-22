@@ -24,6 +24,7 @@ dependencies = [
     "openvino-genai>=2026.2",
     "optimum[openvino]>=2.2.0",
     "pip>=25.2",
+    "psutil>=6.0.0",
     "pybind11>=3.0.4",
     "pydantic>=2.11.7",
     "pynput>=1.8.1",
