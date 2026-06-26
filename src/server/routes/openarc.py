@@ -172,7 +172,7 @@ async def load_model(load_config: ModelLoadConfig):
 @router.post("/unload", dependencies=[Depends(verify_api_key)])
 async def unload_model(unload_config: ModelUnloadConfig):
     try:
-        success = await _registry.register_unload(unload_config.model_name)
+        success = await _registry.register_unload(unload_config.model_name, administrative=True)
         if success:
             return {"model_name": unload_config.model_name, "status": "unloading"}
         else:

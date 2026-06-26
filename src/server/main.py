@@ -118,5 +118,17 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
+@app.get("/readyz")
+async def readyz():
+    """Readiness probe: 200 when every model that should be loaded is loaded.
+
+    Intentionally unauthenticated so orchestrators (e.g. Kubernetes) can probe
+    it without credentials.
+    """
+    result = await _registry.readiness()
+    status_code = 200 if result["ready"] else 503
+    return JSONResponse(status_code=status_code, content=result)
+
+
 app.include_router(openarc_router)
 app.include_router(openai_router)
