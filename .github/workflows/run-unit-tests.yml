@@ -1,0 +1,33 @@
+name: Run Tests
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+  workflow_dispatch: {}
+
+jobs:
+  unit-tests:
+    name: Run Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@v5
+        with:
+          # Automatically installs the Python version specified in your pyproject.toml
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: |
+          uv sync --frozen
+          uv sync --group test --frozen
+
+      
+      - name: Run Unit Tests
+        # run unit tests, ignore / silence python warnings
+        run: uv run pytest -W ignore tests/unit
+
