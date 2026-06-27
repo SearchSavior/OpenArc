@@ -53,3 +53,5 @@ Below are some models to get started which are known to work. My hugg
     - [Qwen3-TTS](models.md#qwen3-tts)
 - [Embedding](models.md#embedding)
 - [Rerank](models.md#rerank)
+
+For a walkthrough on how to serve a model, see our [first steps guide](firststeps.md)
