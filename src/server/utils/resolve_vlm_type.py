@@ -3,6 +3,12 @@ from pathlib import Path
 from typing import Any, Iterable
 
 
+QWEN3_5_ARCHITECTURES: set[str] = {
+    "Qwen3_5ForConditionalGeneration",
+    "Qwen3_5MoeForConditionalGeneration",
+}
+
+
 ARCHITECTURE_VISION_TOKENS = {
     "Gemma4ForConditionalGeneration": "<|image><|image|><image|>",
     "Gemma3ForConditionalGeneration": "<start_of_image>",
@@ -21,6 +27,11 @@ ARCHITECTURE_VISION_TOKENS = {
     "Phi3VisionForCausalLM": "<|image_{i}|>",
     "Phi4MMForCausalLM": "<|image_{i}|>",
 }
+
+
+def is_qwen3_5_architecture(architectures: list[str]) -> bool:
+    """Check if any architecture in the list is a Qwen3.5 variant."""
+    return bool(QWEN3_5_ARCHITECTURES & set(architectures))
 
 
 def _architecture_values(config: Any) -> Iterable[str]:
