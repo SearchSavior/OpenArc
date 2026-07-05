@@ -17,7 +17,7 @@ from transformers import AutoTokenizer
 
 from src.server.models.ov_genai import OVGenAI_GenConfig
 from src.server.utils.chat import flatten_message_content
-from src.server.utils.resolve_vlm_type import resolve_vlm_vision_token
+from src.server.utils.resolve_vlm_type import is_qwen3_5_architecture, resolve_vlm_vision_token
 from src.server.model_registry import ModelRegistry
 from src.server.models.registration import ModelLoadConfig
 from src.engine.ov_genai.streamers import ChunkStreamer
@@ -33,6 +33,7 @@ class OVGenAI_VLM:
         self.load_config = load_config
         self._active_request_id: Optional[str] = None
         self._active_streamer: Optional[ChunkStreamer] = None
+        self._default_chat_template_kwargs: dict = {}
 
     def _vision_token_for_index(self, index: int) -> str:
         """
@@ -47,7 +48,7 @@ class OVGenAI_VLM:
     def prepare_inputs(self,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
-        chat_template_kwargs: dict = {},
+        chat_template_kwargs: dict = {}
     ) -> Tuple[str, List[ov.Tensor]]:
         """
         Parse a messages list and prepare text prompt + image tensors for VLM inference.
@@ -115,7 +116,7 @@ class OVGenAI_VLM:
             tokenize=False,
             tools=tools,
             add_generation_prompt=True,
-            **chat_template_kwargs,
+            **{**self._default_chat_template_kwargs, **chat_template_kwargs},
         )
 
         # Step 3: Convert images to OpenVINO Tensors
@@ -284,6 +285,9 @@ class OVGenAI_VLM:
     
             self.vision_token = resolve_vlm_vision_token(loader.model_path)
 
+            # Auto-detect Qwen3.5 architecture and inject enable_thinking
+            self._detect_chat_template_defaults(loader)
+
             logger.info(f"{loader.model_name} loaded successfully")
 
         except Exception as e:
@@ -312,6 +316,20 @@ class OVGenAI_VLM:
         logger.info(f"[{self.load_config.model_name}] unloaded successfully")
         return removed
         
+    def _detect_chat_template_defaults(self, loader: ModelLoadConfig) -> None:
+        """Read config.json and set default chat_template_kwargs for known architectures."""
+        import json
+        config_path = os.path.join(loader.model_path, "config.json")
+        try:
+            with open(config_path, "r") as f:
+                config = json.load(f)
+            architectures = config.get("architectures", [])
+            if isinstance(architectures, list) and is_qwen3_5_architecture(architectures):
+                self._default_chat_template_kwargs = {"enable_thinking": True}
+                logger.info(f"{loader.model_name}: detected Qwen3.5 architecture, enabling thinking")
+        except Exception as e:
+            logger.debug(f"{loader.model_name}: could not detect architecture defaults: {e}")
+
     def create_generation_config(self, config: OVGenAI_GenConfig) -> GenerationConfig:
         """
         Converts the config received by the API to the OpenVino-compatible config.
