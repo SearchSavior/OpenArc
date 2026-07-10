@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import gc
+import os
 
 import logging
 from io import BytesIO
@@ -15,11 +16,11 @@ from openvino_genai import (
 from PIL import Image
 from transformers import AutoTokenizer
 
-from src.server.models.ov_genai import OVGenAI_GenConfig
+from src.server.schemas.ov_genai import OVGenAI_GenConfig
 from src.server.utils.chat import flatten_message_content
 from src.server.utils.resolve_vlm_type import is_qwen3_5_architecture, resolve_vlm_vision_token
 from src.server.model_registry import ModelRegistry
-from src.server.models.registration import ModelLoadConfig
+from src.server.schemas.registration import ModelLoadConfig
 from src.engine.ov_genai.streamers import ChunkStreamer
 
 logger = logging.getLogger(__name__)

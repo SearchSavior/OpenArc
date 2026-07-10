@@ -6,10 +6,10 @@ from typing import Any
 
 import pytest  # type: ignore[import]
 
-from src.server.models.openvino import OV_Qwen3ASRGenConfig
+from src.server.schemas.openvino import OV_Qwen3ASRGenConfig
 from src.engine.openvino.qwen3_asr.qwen3_asr import OVQwen3ASR
 from test_model_path import model_path
-from src.server.models.registration import EngineType, ModelLoadConfig, ModelType
+from src.server.schemas.registration import EngineType, ModelLoadConfig, ModelType
 
 
 

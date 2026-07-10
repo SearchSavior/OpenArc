@@ -18,11 +18,11 @@ from src.engine.openvino.qwen3_tts.qwen3_tts import OVQwen3TTS
 from src.engine.optimum.optimum_emb import Optimum_EMB
 from src.engine.optimum.optimum_rr import Optimum_RR
 
-from src.server.models.openvino import OV_KokoroGenConfig, OV_Qwen3ASRGenConfig, OV_Qwen3TTSGenConfig
-from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
-from src.server.models.optimum import PreTrainedTokenizerConfig, RerankerConfig
+from src.server.schemas.openvino import OV_KokoroGenConfig, OV_Qwen3ASRGenConfig, OV_Qwen3TTSGenConfig
+from src.server.schemas.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
+from src.server.schemas.optimum import PreTrainedTokenizerConfig, RerankerConfig
 from src.server.model_registry import ModelRecord, ModelRegistry
-from src.server.models.registration import ModelType
+from src.server.schemas.registration import ModelType
 
 logger = logging.getLogger(__name__)
 

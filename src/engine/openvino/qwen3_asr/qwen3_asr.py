@@ -36,9 +36,9 @@ from src.engine.openvino.qwen3_asr.qwen3_asr_utils import (
     validate_language,
 )
 
-from src.server.models.openvino import OV_Qwen3ASRGenConfig
+from src.server.schemas.openvino import OV_Qwen3ASRGenConfig
 from src.server.model_registry import ModelRegistry
-from src.server.models.registration import EngineType, ModelLoadConfig, ModelType
+from src.server.schemas.registration import EngineType, ModelLoadConfig, ModelType
 
 logger = logging.getLogger(__name__)
 

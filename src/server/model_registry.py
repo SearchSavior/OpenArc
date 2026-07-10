@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
 
-from src.server.models.registration import (
+from src.server.schemas.registration import (
     EngineType,
     ModelLoadConfig,
     ModelStatus,

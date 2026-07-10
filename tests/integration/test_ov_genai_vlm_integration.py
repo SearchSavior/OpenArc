@@ -8,8 +8,8 @@ import pytest  # type: ignore[import]
 
 from test_model_path import model_path
 from src.engine.ov_genai.vlm import OVGenAI_VLM
-from src.server.models.registration import EngineType, ModelLoadConfig, ModelType
-from src.server.models.ov_genai import OVGenAI_GenConfig
+from src.server.schemas.registration import EngineType, ModelLoadConfig, ModelType
+from src.server.schemas.ov_genai import OVGenAI_GenConfig
 
 
 MODEL_PATH = model_path("Qwen2.5-VL-3B-Instruct-int4_sym-ov")

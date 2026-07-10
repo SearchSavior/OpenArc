@@ -7,8 +7,8 @@ import pytest  # type: ignore[import]
 
 import src.engine.optimum.optimum_emb as emb_module
 from src.engine.optimum.optimum_emb import Optimum_EMB
-from src.server.models.registration import EngineType, ModelLoadConfig, ModelType
-from src.server.models.optimum import PreTrainedTokenizerConfig
+from src.server.schemas.registration import EngineType, ModelLoadConfig, ModelType
+from src.server.schemas.optimum import PreTrainedTokenizerConfig
 
 
 MODEL_PATH = "/mnt/Ironwolf-4TB/Models/Pytorch/Qwen/Qwen3-Embed-0.6B-INT8-ASYM-ov"

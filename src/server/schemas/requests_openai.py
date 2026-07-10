@@ -2,12 +2,12 @@ from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel
 
-from src.server.models.openvino import (
+from src.server.schemas.openvino import (
     OV_KokoroGenConfig,
     OV_Qwen3ASRGenConfig,
     OV_Qwen3TTSGenConfig,
 )
-from src.server.models.optimum import PreTrainedTokenizerConfig
+from src.server.schemas.optimum import PreTrainedTokenizerConfig
 
 
 class OpenArcASRConfig(BaseModel):

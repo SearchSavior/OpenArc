@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 import pytest  # type: ignore[import]
 
 import src.server.routes.openai as openai_module
-from src.server.models.registration import ModelType
+from src.server.schemas.registration import ModelType
 
 
 _AUDIO_BYTES = b"audio-bytes"

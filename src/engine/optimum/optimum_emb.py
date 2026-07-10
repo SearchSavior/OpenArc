@@ -12,12 +12,12 @@ from torch import Tensor
 from transformers import AutoTokenizer
 from optimum.intel import OVModelForFeatureExtraction
 
-from src.server.models.optimum import PreTrainedTokenizerConfig
+from src.server.schemas.optimum import PreTrainedTokenizerConfig
 
 from typing import Any, AsyncIterator, Dict
 
 from src.server.model_registry import ModelRegistry
-from src.server.models.registration import ModelLoadConfig
+from src.server.schemas.registration import ModelLoadConfig
 
 
 
