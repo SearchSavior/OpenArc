@@ -6,8 +6,8 @@
 #   - battlemage : Battlemage Intel GPU path
 #
 # Build examples:
-#   docker build --target standard   -t {imagename}:dev .
-#   docker build --target battlemage -t {imagename}-battlemage:dev .
+# docker build --target standard -t {imagename}:dev -f .devops/ov.Dockerfile .                                                             
+# docker build --target battlemage -t {imagename}-battlemage:dev -f .devops/ov.Dockerfile . 
 # ============================================================================
 
 # ============================================================================

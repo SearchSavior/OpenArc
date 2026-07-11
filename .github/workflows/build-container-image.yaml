@@ -56,6 +56,7 @@ jobs:
         with:
           context: .
           target: standard
+          file: .devops/ov.Dockerfile
           push: true
           tags: ${{ steps.meta-standard.outputs.tags }}
           labels: ${{ steps.meta-standard.outputs.labels }}
@@ -80,6 +81,7 @@ jobs:
         with:
           context: .
           target: battlemage
+          file: .devops/ov.Dockerfile
           push: true
           tags: ${{ steps.meta-battlemage.outputs.tags }}
           labels: ${{ steps.meta-battlemage.outputs.labels }}
