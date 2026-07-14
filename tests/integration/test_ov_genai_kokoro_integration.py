@@ -6,7 +6,7 @@ import torch
 from test_model_path import model_path
 from src.engine.openvino.kokoro import OV_Kokoro
 from src.server.schemas.registration import EngineType, ModelLoadConfig, ModelType
-from src.server.schemas.openvino import KokoroLanguage, KokoroVoice, OV_KokoroGenConfig
+from src.server.schemas.modeling.contract_kokoro import KokoroLanguage, KokoroVoice, OV_KokoroGenConfig
 
 MODEL_PATH = model_path("Kokoro-82M-FP16-OpenVINO")
 

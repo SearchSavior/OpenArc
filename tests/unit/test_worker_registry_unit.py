@@ -5,9 +5,12 @@ import pytest  # type: ignore[import]
 import src.server.worker_registry as worker_module
 from src.server.model_registry import ModelRecord, ModelRegistry
 from src.server.schemas.registration import ModelType
-from src.server.schemas.openvino import KokoroLanguage, KokoroVoice, OV_KokoroGenConfig, OV_Qwen3ASRGenConfig
-from src.server.schemas.optimum import PreTrainedTokenizerConfig, RerankerConfig
-from src.server.schemas.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
+from src.server.schemas.modeling.contract_kokoro import KokoroLanguage, KokoroVoice, OV_KokoroGenConfig
+from src.server.schemas.modeling.contract_qwen3asr import OV_Qwen3ASRGenConfig
+from src.server.schemas.modeling.contract_optimum_emb import PreTrainedTokenizerConfig
+from src.server.schemas.modeling.contract_optimum_rerank import RerankerConfig
+from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_GenConfig
+from src.server.schemas.modeling.contract_whisper import OVGenAI_WhisperGenConfig
 
 
 def _make_worker(response_value, metrics_value, supports_stream: bool = False, segments_value=None):

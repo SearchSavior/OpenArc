@@ -8,7 +8,7 @@ import pytest  # type: ignore[import]
 from test_model_path import model_path
 from src.engine.ov_genai.whisper import OVGenAI_Whisper
 from src.server.schemas.registration import EngineType, ModelLoadConfig, ModelType
-from src.server.schemas.ov_genai import OVGenAI_WhisperGenConfig
+from src.server.schemas.modeling.contract_whisper import OVGenAI_WhisperGenConfig
 
 
 MODEL_PATH = model_path("whisper-tiny-int8-ov")

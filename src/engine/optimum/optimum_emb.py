@@ -12,7 +12,7 @@ from torch import Tensor
 from transformers import AutoTokenizer
 from optimum.intel import OVModelForFeatureExtraction
 
-from src.server.schemas.optimum import PreTrainedTokenizerConfig
+from src.server.schemas.modeling.contract_optimum_emb import PreTrainedTokenizerConfig
 
 from typing import Any, AsyncIterator, Dict
 

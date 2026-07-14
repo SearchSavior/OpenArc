@@ -18,9 +18,13 @@ from src.engine.openvino.qwen3_tts.qwen3_tts import OVQwen3TTS
 from src.engine.optimum.optimum_emb import Optimum_EMB
 from src.engine.optimum.optimum_rr import Optimum_RR
 
-from src.server.schemas.openvino import OV_KokoroGenConfig, OV_Qwen3ASRGenConfig, OV_Qwen3TTSGenConfig
-from src.server.schemas.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
-from src.server.schemas.optimum import PreTrainedTokenizerConfig, RerankerConfig
+from src.server.schemas.modeling.contract_kokoro import OV_KokoroGenConfig
+from src.server.schemas.modeling.contract_qwen3asr import OV_Qwen3ASRGenConfig
+from src.server.schemas.modeling.contract_qwen3tts import OV_Qwen3TTSGenConfig
+from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_GenConfig
+from src.server.schemas.modeling.contract_whisper import OVGenAI_WhisperGenConfig
+from src.server.schemas.modeling.contract_optimum_emb import PreTrainedTokenizerConfig
+from src.server.schemas.modeling.contract_optimum_rerank import RerankerConfig
 from src.server.model_registry import ModelRecord, ModelRegistry
 from src.server.schemas.registration import ModelType
 

@@ -16,7 +16,7 @@ from openvino_genai import (
 from PIL import Image
 from transformers import AutoTokenizer
 
-from src.server.schemas.ov_genai import OVGenAI_GenConfig
+from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_GenConfig
 from src.server.utils.chat import flatten_message_content
 from src.server.utils.resolve_vlm_type import is_qwen3_5_architecture, resolve_vlm_vision_token
 from src.server.model_registry import ModelRegistry

@@ -20,7 +20,7 @@ from kokoro.model import KModel
 
 from src.server.model_registry import ModelRegistry
 from src.server.schemas.registration import ModelLoadConfig
-from src.server.schemas.openvino import OV_KokoroGenConfig
+from src.server.schemas.modeling.contract_kokoro import OV_KokoroGenConfig
 
 
 class StreamChunk(NamedTuple):

@@ -12,7 +12,7 @@ from openvino_genai import (
 )
 from transformers import AutoTokenizer, BatchEncoding
 
-from src.server.schemas.ov_genai import OVGenAI_GenConfig
+from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_GenConfig
 from src.server.model_registry import ModelRegistry
 from src.server.schemas.registration import ModelLoadConfig
 from src.engine.ov_genai.streamers import ChunkStreamer

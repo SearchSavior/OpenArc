@@ -46,7 +46,7 @@ from src.engine.openvino.qwen3_tts.qwen3_tts_helpers import (
     _SYNTH_TMPL,
 )
 from src.server.model_registry import ModelRegistry
-from src.server.schemas.openvino import OV_Qwen3TTSGenConfig
+from src.server.schemas.modeling.contract_qwen3tts import OV_Qwen3TTSGenConfig
 from src.server.schemas.registration import EngineType, ModelLoadConfig, ModelType
 
 logger = logging.getLogger(__name__)

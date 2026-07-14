@@ -8,7 +8,7 @@ import pytest  # type: ignore[import]
 import src.engine.optimum.optimum_rr as rr_module
 from src.engine.optimum.optimum_rr import Optimum_RR
 from src.server.schemas.registration import EngineType, ModelLoadConfig, ModelType
-from src.server.schemas.optimum import RerankerConfig
+from src.server.schemas.modeling.contract_optimum_rerank import RerankerConfig
 
 
 MODEL_PATH = "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Qwen3-Reranker-0.6B-fp16-ov"

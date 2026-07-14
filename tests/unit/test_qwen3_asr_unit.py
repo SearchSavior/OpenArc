@@ -6,7 +6,7 @@ import pytest  # type: ignore[import]
 
 import src.engine.openvino.qwen3_asr.qwen3_asr as qwen3_asr_module
 from src.engine.openvino.qwen3_asr.qwen3_asr import OVQwen3ASR, SAMPLE_RATE
-from src.server.schemas.openvino import OV_Qwen3ASRGenConfig
+from src.server.schemas.modeling.contract_qwen3asr import OV_Qwen3ASRGenConfig
 from src.server.schemas.registration import EngineType, ModelLoadConfig, ModelType
 from src.engine.openvino.qwen3_asr.qwen3_asr_utils import (
     LANGUAGE_CODE_TO_NAME,

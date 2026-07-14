@@ -15,7 +15,7 @@ import shutil
 
 from src.server.deps import _registry, _workers, verify_api_key
 from src.server.downloader import get_default_models_dir, global_downloader
-from src.server.schemas.ov_genai import OVGenAI_GenConfig
+from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_GenConfig
 from src.server.schemas.registration import ModelLoadConfig, ModelUnloadConfig
 from src.server.schemas.requests_internal import OpenArcBenchRequest
 from src.server.schemas.requests_management import (

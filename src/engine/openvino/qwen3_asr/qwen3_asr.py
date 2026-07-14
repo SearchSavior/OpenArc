@@ -36,7 +36,7 @@ from src.engine.openvino.qwen3_asr.qwen3_asr_utils import (
     validate_language,
 )
 
-from src.server.schemas.openvino import OV_Qwen3ASRGenConfig
+from src.server.schemas.modeling.contract_qwen3asr import OV_Qwen3ASRGenConfig
 from src.server.model_registry import ModelRegistry
 from src.server.schemas.registration import EngineType, ModelLoadConfig, ModelType
 

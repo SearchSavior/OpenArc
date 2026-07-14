@@ -5,7 +5,7 @@ import pytest  # type: ignore[import]
 import src.engine.ov_genai.llm as llm_module
 from src.engine.ov_genai.llm import OVGenAI_LLM
 from src.server.schemas.registration import EngineType, ModelLoadConfig, ModelType
-from src.server.schemas.ov_genai import OVGenAI_GenConfig
+from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_GenConfig
 
 
 MODEL_PATH ="some_fake_url/Qwen3-Reranker-0.6B-fp16-ov"

@@ -11,7 +11,7 @@ from openvino_genai import WhisperPipeline
 
 from src.server.model_registry import ModelRegistry
 from src.server.schemas.registration import ModelLoadConfig
-from src.server.schemas.ov_genai import OVGenAI_WhisperGenConfig
+from src.server.schemas.modeling.contract_whisper import OVGenAI_WhisperGenConfig
 
 logger = logging.getLogger(__name__)
 

@@ -11,9 +11,11 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from src.server.deps import _registry, _workers, verify_api_key
-from src.server.schemas.openvino import KokoroLanguage, KokoroVoice
-from src.server.schemas.optimum import PreTrainedTokenizerConfig, RerankerConfig
-from src.server.schemas.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
+from src.server.schemas.modeling.contract_kokoro import KokoroLanguage, KokoroVoice
+from src.server.schemas.modeling.contract_optimum_emb import PreTrainedTokenizerConfig
+from src.server.schemas.modeling.contract_optimum_rerank import RerankerConfig
+from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_GenConfig
+from src.server.schemas.modeling.contract_whisper import OVGenAI_WhisperGenConfig
 from src.server.schemas.registration import ModelLoadConfig, ModelType, ModelUnloadConfig
 from src.server.schemas.requests_internal import OpenArcBenchRequest
 from src.server.schemas.requests_openai import (

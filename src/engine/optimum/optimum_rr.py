@@ -9,7 +9,7 @@ import torch
 from transformers import AutoTokenizer
 from optimum.intel import OVModelForCausalLM
 
-from src.server.schemas.optimum import RerankerConfig
+from src.server.schemas.modeling.contract_optimum_rerank import RerankerConfig
 from src.server.model_registry import ModelRegistry
 from src.server.schemas.registration import ModelLoadConfig
 
