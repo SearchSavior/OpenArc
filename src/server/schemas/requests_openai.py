@@ -4,7 +4,11 @@ from pydantic import BaseModel
 
 from src.server.schemas.modeling.contract_kokoro import OV_KokoroGenConfig
 from src.server.schemas.modeling.contract_qwen3asr import OV_Qwen3ASRGenConfig
-from src.server.schemas.modeling.contract_qwen3tts import OV_Qwen3TTSGenConfig
+from src.server.schemas.modeling.contract_qwen3tts import (
+    OV_Qwen3TTSCustomVoice,
+    OV_Qwen3TTSVoiceClone,
+    OV_Qwen3TTSVoiceDesign,
+)
 from src.server.schemas.modeling.contract_optimum_emb import PreTrainedTokenizerConfig
 
 
@@ -15,7 +19,11 @@ class OpenArcASRConfig(BaseModel):
 
 class OpenArcTTSConfig(BaseModel):
     kokoro: Optional[OV_KokoroGenConfig] = None
-    qwen3_tts: Optional[OV_Qwen3TTSGenConfig] = None
+    # Request shape is locked at model load time by the loaded model's model_type:
+    # exactly one of the three qwen3_tts_* fields is valid, matching the loaded mode.
+    qwen3_tts_custom_voice: Optional[OV_Qwen3TTSCustomVoice] = None
+    qwen3_tts_voice_design: Optional[OV_Qwen3TTSVoiceDesign] = None
+    qwen3_tts_voice_clone: Optional[OV_Qwen3TTSVoiceClone] = None
 
 
 class OpenAIChatCompletionRequest(BaseModel):

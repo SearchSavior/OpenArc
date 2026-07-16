@@ -46,7 +46,12 @@ from src.engine.openvino.qwen3_tts.qwen3_tts_helpers import (
     _SYNTH_TMPL,
 )
 from src.server.model_registry import ModelRegistry
-from src.server.schemas.modeling.contract_qwen3tts import OV_Qwen3TTSGenConfig
+from src.server.schemas.modeling.contract_qwen3tts import (
+    OV_Qwen3TTSCustomVoice,
+    OV_Qwen3TTSVoiceClone,
+    OV_Qwen3TTSVoiceDesign,
+    OV_Qwen3TTSGenConfig,
+)
 from src.server.schemas.registration import EngineType, ModelLoadConfig, ModelType
 
 logger = logging.getLogger(__name__)
@@ -198,27 +203,33 @@ class OVQwen3TTS:
         if not self._loaded:
             raise RuntimeError("Call load_model() before generate_stream()")
         gc = gen_config.model_copy(update={"non_streaming_mode": False})
-        if self.load_config.model_type == ModelType.QWEN3_TTS_VOICE_CLONE:
+        if isinstance(gc, OV_Qwen3TTSVoiceClone):
             yield from self._generate_voice_clone_stream(gc)
-        else:
+        elif isinstance(gc, (OV_Qwen3TTSCustomVoice, OV_Qwen3TTSVoiceDesign)):
             yield from self._generate_standard_stream(gc)
+        else:
+            raise TypeError(f"Unsupported gen_config type: {type(gc).__name__}")
 
     def _generate_sync(self, gen_config: OV_Qwen3TTSGenConfig) -> tuple[np.ndarray, int]:
         if not self._loaded:
             raise RuntimeError("Call load_model() before generate()")
-        if self.load_config.model_type == ModelType.QWEN3_TTS_VOICE_CLONE:
+        if isinstance(gen_config, OV_Qwen3TTSVoiceClone):
             return self._generate_voice_clone(gen_config)
-        return self._generate_standard(gen_config)
+        if isinstance(gen_config, (OV_Qwen3TTSCustomVoice, OV_Qwen3TTSVoiceDesign)):
+            return self._generate_standard(gen_config)
+        raise TypeError(f"Unsupported gen_config type: {type(gen_config).__name__}")
 
     # ---- Internal: standard generation (custom_voice / voice_design) --------
 
-    def _generate_standard(self, gen_config: OV_Qwen3TTSGenConfig) -> tuple[np.ndarray, int]:
+    def _generate_standard(
+        self, gen_config: OV_Qwen3TTSCustomVoice | OV_Qwen3TTSVoiceDesign,
+    ) -> tuple[np.ndarray, int]:
         t_total = time.perf_counter()
         perf: dict = {}
-        speaker = Speaker(gen_config.speaker) if gen_config.speaker else None
         language = Language(gen_config.language) if gen_config.language else None
 
-        if self.load_config.model_type == ModelType.QWEN3_TTS_CUSTOM_VOICE:
+        if isinstance(gen_config, OV_Qwen3TTSCustomVoice):
+            speaker = Speaker(gen_config.speaker) if gen_config.speaker else None
             build_kw = dict(
                 text=gen_config.input,
                 speaker=speaker,
@@ -251,7 +262,7 @@ class OVQwen3TTS:
 
     # ---- Internal: voice clone generation -----------------------------------
 
-    def _generate_voice_clone(self, gen_config: OV_Qwen3TTSGenConfig) -> tuple[np.ndarray, int]:
+    def _generate_voice_clone(self, gen_config: OV_Qwen3TTSVoiceClone) -> tuple[np.ndarray, int]:
         t_total = time.perf_counter()
         perf: dict = {}
         language = Language(gen_config.language) if gen_config.language else None
@@ -303,13 +314,15 @@ class OVQwen3TTS:
         self._log_pipeline_summary(perf, t_total, wav_seconds=float(len(wav) / SPEECH_DECODER_SR), voice_clone=True)
         return wav, SPEECH_DECODER_SR
 
-    def _generate_standard_stream(self, gen_config: OV_Qwen3TTSGenConfig) -> Iterator[TTSStreamChunk]:
+    def _generate_standard_stream(
+        self, gen_config: OV_Qwen3TTSCustomVoice | OV_Qwen3TTSVoiceDesign,
+    ) -> Iterator[TTSStreamChunk]:
         t_total = time.perf_counter()
         perf: dict = {}
-        speaker = Speaker(gen_config.speaker) if gen_config.speaker else None
         language = Language(gen_config.language) if gen_config.language else None
 
-        if self.load_config.model_type == ModelType.QWEN3_TTS_CUSTOM_VOICE:
+        if isinstance(gen_config, OV_Qwen3TTSCustomVoice):
+            speaker = Speaker(gen_config.speaker) if gen_config.speaker else None
             build_kw = dict(
                 text=gen_config.input,
                 speaker=speaker,
@@ -340,7 +353,7 @@ class OVQwen3TTS:
         if n_samples > 0:
             logger.info(f"[info] streaming: {n_chunks} chunks -> {n_samples} samples ({wav_sec:.2f}s audio)")
 
-    def _generate_voice_clone_stream(self, gen_config: OV_Qwen3TTSGenConfig) -> Iterator[TTSStreamChunk]:
+    def _generate_voice_clone_stream(self, gen_config: OV_Qwen3TTSVoiceClone) -> Iterator[TTSStreamChunk]:
         t_total = time.perf_counter()
         perf: dict = {}
         language = Language(gen_config.language) if gen_config.language else None
@@ -1090,7 +1103,7 @@ if __name__ == "__main__":
         device=_device,
         runtime_config={},
     )
-    _gen = OV_Qwen3TTSGenConfig(
+    _gen = OV_Qwen3TTSVoiceClone(
         input=_synth_text,
         ref_audio_b64=_ref_b64,
         ref_text=_ref_text,
