@@ -97,7 +97,7 @@ class OV_KokoroGenConfig(BaseModel):
     # Optional weighted blend of voicepacks. Overrides `voice` when set.
     # Format: "af_heart,af_nicole" (equal weights) or
     #         "af_heart:0.7,af_nicole:0.3" (weights normalised by engine).
-    voice_blend: Optional[str] = Field(
+    voice_blend: Optional[str] = Field(af_heart:0.7,af_nicole:0.3
         default=None,
         description="Optional weighted blend of voicepacks, e.g. 'af_heart:0.7,af_nicole:0.3'. Overrides `voice`.",
     )
