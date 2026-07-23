@@ -4,7 +4,7 @@ import pytest  # type: ignore[import]
 
 import src.server.model_registry as model_registry_module
 from src.server.model_registry import ModelRegistry
-from src.server.models.registration import EngineType, ModelLoadConfig, ModelType
+from src.server.schemas.registration import EngineType, ModelLoadConfig, ModelType
 
 
 class _DummyModel:

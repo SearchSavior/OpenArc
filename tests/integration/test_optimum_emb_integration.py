@@ -4,8 +4,8 @@ import pytest  # type: ignore[import]
 
 from test_model_path import model_path
 from src.engine.optimum.optimum_emb import Optimum_EMB
-from src.server.models.registration import EngineType, ModelLoadConfig, ModelType
-from src.server.models.optimum import PreTrainedTokenizerConfig
+from src.server.schemas.registration import EngineType, ModelLoadConfig, ModelType
+from src.server.schemas.modeling.contract_optimum_emb import PreTrainedTokenizerConfig
 
 MODEL_PATH = model_path("Qwen3-Embedding-0.6B-int8_asym-ov")
 

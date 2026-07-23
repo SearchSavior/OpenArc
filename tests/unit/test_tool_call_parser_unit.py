@@ -5,7 +5,7 @@ import pytest  # type: ignore[import]
 from fastapi.responses import StreamingResponse
 
 import src.server.routes.openai as openai_routes
-from src.server.models.requests_openai import OpenAIChatCompletionRequest
+from src.server.schemas.requests_openai import OpenAIChatCompletionRequest
 
 
 class _DummyRequest:

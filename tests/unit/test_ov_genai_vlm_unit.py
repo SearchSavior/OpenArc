@@ -7,8 +7,8 @@ import pytest  # type: ignore[import]
 
 import src.engine.ov_genai.vlm as vlm_module
 from src.engine.ov_genai.vlm import OVGenAI_VLM
-from src.server.models.registration import EngineType, ModelLoadConfig, ModelType
-from src.server.models.ov_genai import OVGenAI_GenConfig
+from src.server.schemas.registration import EngineType, ModelLoadConfig, ModelType
+from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_GenConfig
 
 
 MODEL_PATH = "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Qwen2.5-VL-3B-Instruct-int4_sym-ov"

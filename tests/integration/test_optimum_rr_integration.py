@@ -4,8 +4,8 @@ import pytest  # type: ignore[import]
 
 from test_model_path import model_path
 from src.engine.optimum.optimum_rr import Optimum_RR
-from src.server.models.registration import EngineType, ModelLoadConfig, ModelType
-from src.server.models.optimum import RerankerConfig
+from src.server.schemas.registration import EngineType, ModelLoadConfig, ModelType
+from src.server.schemas.modeling.contract_optimum_rerank import RerankerConfig
 
 MODEL_PATH = model_path("Qwen3-Reranker-0.6B-fp16-ov")
 

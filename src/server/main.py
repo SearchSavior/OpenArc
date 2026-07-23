@@ -16,7 +16,7 @@ from src.cli.utils import get_config_file_path
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.server.deps import _registry
-from src.server.models.registration import ModelLoadConfig
+from src.server.schemas.registration import ModelLoadConfig
 from src.server.routes.openai import router as openai_router
 from src.server.routes.openarc import router as openarc_router
 

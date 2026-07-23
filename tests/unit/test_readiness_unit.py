@@ -5,7 +5,7 @@ import pytest  # type: ignore[import]
 
 import src.server.model_registry as registry_module
 from src.server.model_registry import ModelRecord, ModelRegistry
-from src.server.models.registration import (
+from src.server.schemas.registration import (
     EngineType,
     ModelLoadConfig,
     ModelStatus,

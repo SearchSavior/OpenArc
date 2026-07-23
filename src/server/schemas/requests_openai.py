@@ -1,0 +1,104 @@
+from typing import Any, Dict, List, Optional, Union
+
+from pydantic import BaseModel
+
+from src.server.schemas.modeling.contract_kokoro import OV_KokoroGenConfig
+from src.server.schemas.modeling.contract_qwen3asr import OV_Qwen3ASRGenConfig
+from src.server.schemas.modeling.contract_qwen3tts import (
+    OV_Qwen3TTSCustomVoice,
+    OV_Qwen3TTSVoiceClone,
+    OV_Qwen3TTSVoiceDesign,
+)
+from src.server.schemas.modeling.contract_optimum_emb import PreTrainedTokenizerConfig
+
+
+class OpenArcASRConfig(BaseModel):
+    """Backend config for /v1/audio/transcriptions. Only qwen3_asr extra params; audio_base64 from file."""
+    qwen3_asr: Optional[OV_Qwen3ASRGenConfig] = None
+
+
+class OpenArcTTSConfig(BaseModel):
+    kokoro: Optional[OV_KokoroGenConfig] = None
+    # Request shape is locked at model load time by the loaded model's model_type:
+    # exactly one of the three qwen3_tts_* fields is valid, matching the loaded mode.
+    qwen3_tts_custom_voice: Optional[OV_Qwen3TTSCustomVoice] = None
+    qwen3_tts_voice_design: Optional[OV_Qwen3TTSVoiceDesign] = None
+    qwen3_tts_voice_clone: Optional[OV_Qwen3TTSVoiceClone] = None
+
+
+class OpenAIChatCompletionRequest(BaseModel):
+    model: str
+    messages: Any
+    tools: Optional[List[Dict[str, Any]]] = None
+    stream: Optional[bool] = None
+    
+    temperature: Optional[float] = None
+    max_tokens: Optional[int] = None
+    stop: Optional[List[str]] = None
+    top_p: Optional[float] = None
+    top_k: Optional[int] = None
+    repetition_penalty: Optional[float] = None
+    do_sample: Optional[bool] = None
+    num_return_sequences: Optional[int] = None
+    seed: Optional[int] = None
+    frequency_penalty: Optional[float] = None
+    presence_penalty: Optional[float] = None
+    chat_template_kwargs: Optional[dict] = {}
+
+
+class OpenAICompletionRequest(BaseModel):
+    model: str
+    prompt: Union[str, List[str]]
+    stream: Optional[bool] = None
+    
+    temperature: Optional[float] = None
+    max_tokens: Optional[int] = None
+    stop: Optional[List[str]] = None
+    top_p: Optional[float] = None
+    top_k: Optional[int] = None
+    repetition_penalty: Optional[float] = None
+    do_sample: Optional[bool] = None
+    num_return_sequences: Optional[int] = None
+
+
+class OpenAIWhisperRequest(BaseModel):
+    model: str
+    audio_base64: Optional[str] = None  # For internal use only
+    language: Optional[str] = None
+    prompt: Optional[str] = None
+    response_format: Optional[str] = "json"
+    temperature: Optional[float] = 0.0
+
+
+
+class OpenAISpeechRequest(BaseModel):
+    """OpenAI-compatible request for /v1/audio/speech; backend config in openarc_tts."""
+    model: str
+    input: str
+    voice: Optional[str] = None
+    instructions: Optional[str] = None
+    language: Optional[str] = None
+    response_format: Optional[str] = "wav"
+    openarc_tts: Optional[OpenArcTTSConfig] = None
+
+
+# https://platform.openai.com/docs/api-reference/embeddings
+class EmbeddingsRequest(BaseModel):
+    model: str
+    input: Union[str, List[str], List[List[str]]]
+    dimensions: Optional[int] = None
+    encoding_format: Optional[str] = "float"  # not implemented
+    user: Optional[str] = None  # not implemented
+    # end of openai api
+    config: Optional[PreTrainedTokenizerConfig] = None
+
+
+# No openai api to reference
+class RerankRequest(BaseModel):
+    model: str
+    query: str
+    documents: List[str]
+    prefix: Optional[str] = None
+    suffix: Optional[str] = None
+    instruction: Optional[str] = None
+

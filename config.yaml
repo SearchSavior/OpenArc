@@ -1,0 +1,57 @@
+server:
+port:
+
+
+# comma seperated list of model_name to load on startup
+
+# from env
+startup_models : ${OPENRARC_AUTOLOAD_MODELS}
+
+
+models:
+  qwen35-08b:
+    engine: ovgenai
+    model_type: llm
+    model_path: /mnt/Ironwolf-4TB/Models/OpenVINO/Qwen3.5/Qwen3.5-0.8B-int8_asym-ov/
+    device: CPU
+    runtime_config:
+      PERFORMANCE_HINT: LATENCY
+    samplers:
+      temperature: 0.7
+      top_k: 40
+      top_p: 0.95
+      repetition_penalty: 1.05
+      max_tokens: 1024
+
+
+  kokoro:
+    engine: openvino
+    model_type: kokoro
+    model_path:
+    device: CPU
+    kokoro_options:
+      voice: af_sarah
+      voice_blend: af_heart:0.7,af_nicole:0.3 
+      lang_code:
+      speed: 1.0
+      chracter_count_chunk: 100
+
+  qwen3asr:
+    engine: openvino
+    model_type: qwen3_asr
+    model_path: 
+    device: CPU
+    qwen3_asr_options:
+      language:
+      max_tokens:
+      max_chunk_sec:
+      search_expand_sec:
+      min_window_ms:
+
+  
+  qwen3_tts_elmo:
+    model_type: qwen3_tts_voice_clone
+    model_path:
+    engine: openvino
+    device: GPU.0
+  
