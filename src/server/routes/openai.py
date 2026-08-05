@@ -11,12 +11,19 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from src.server.deps import _registry, _workers, verify_api_key
-from src.server.models.openvino import KokoroLanguage, KokoroVoice
-from src.server.models.optimum import PreTrainedTokenizerConfig, RerankerConfig
-from src.server.models.ov_genai import OVGenAI_GenConfig, OVGenAI_WhisperGenConfig
-from src.server.models.registration import ModelLoadConfig, ModelType, ModelUnloadConfig
-from src.server.models.requests_internal import OpenArcBenchRequest
-from src.server.models.requests_openai import (
+from src.server.schemas.modeling.contract_kokoro import KokoroLanguage, KokoroVoice
+from src.server.schemas.modeling.contract_optimum_emb import PreTrainedTokenizerConfig
+from src.server.schemas.modeling.contract_optimum_rerank import RerankerConfig
+from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_GenConfig
+from src.server.schemas.modeling.contract_qwen3tts import (
+    OV_Qwen3TTSCustomVoice,
+    OV_Qwen3TTSVoiceClone,
+    OV_Qwen3TTSVoiceDesign,
+)
+from src.server.schemas.modeling.contract_whisper import OVGenAI_WhisperGenConfig
+from src.server.schemas.registration import ModelLoadConfig, ModelType, ModelUnloadConfig
+from src.server.schemas.requests_internal import OpenArcBenchRequest
+from src.server.schemas.requests_openai import (
     EmbeddingsRequest,
     OpenAIChatCompletionRequest,
     OpenAICompletionRequest,
@@ -587,15 +594,30 @@ async def openai_audio_speech(request: OpenAISpeechRequest):
             ModelType.QWEN3_TTS_VOICE_DESIGN,
             ModelType.QWEN3_TTS_VOICE_CLONE,
         ):
-            if not request.openarc_tts or not request.openarc_tts.qwen3_tts:
-                raise ValueError("openarc_tts.qwen3_tts required for Qwen3 TTS models")
-            gen_config = request.openarc_tts.qwen3_tts
+            if not request.openarc_tts:
+                raise ValueError("openarc_tts required for Qwen3 TTS models")
+            _qwen3_tts_field = {
+                ModelType.QWEN3_TTS_CUSTOM_VOICE: "qwen3_tts_custom_voice",
+                ModelType.QWEN3_TTS_VOICE_DESIGN: "qwen3_tts_voice_design",
+                ModelType.QWEN3_TTS_VOICE_CLONE: "qwen3_tts_voice_clone",
+            }[normalized]
+            gen_config = getattr(request.openarc_tts, _qwen3_tts_field)
+            if gen_config is None:
+                raise ValueError(f"openarc_tts.{_qwen3_tts_field} required for {normalized.value} models")
             gen_config.input = request.input
             if request.language is not None and "language" not in gen_config.model_fields_set:
                 gen_config.language = request.language
-            if request.instructions is not None and "instruct" not in gen_config.model_fields_set:
+            if (
+                request.instructions is not None
+                and hasattr(gen_config, "instruct")
+                and "instruct" not in gen_config.model_fields_set
+            ):
                 gen_config.instruct = request.instructions
-            if request.voice is not None and "speaker" not in gen_config.model_fields_set:
+            if (
+                request.voice is not None
+                and isinstance(gen_config, OV_Qwen3TTSCustomVoice)
+                and "speaker" not in gen_config.model_fields_set
+            ):
                 gen_config.speaker = request.voice
             if gen_config.stream:
                 return StreamingResponse(

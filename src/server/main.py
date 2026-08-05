@@ -16,11 +16,12 @@ from src.cli.utils import get_config_file_path
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.server.deps import _registry
-from src.server.models.registration import ModelLoadConfig
+from src.server.schemas.registration import ModelLoadConfig
 from src.server.routes.openai import router as openai_router
 from src.server.routes.openarc import router as openarc_router
 
 logger = logging.getLogger(__name__)
+_access_logger = logging.getLogger("openarc.access")
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
@@ -28,21 +29,21 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         start_time = time.time()
         client_ip = request.client.host if request.client else "unknown"
 
-        logger.info(
+        _access_logger.info(
             f"Request received: {request.method} {request.url.path} from {client_ip}"
         )
 
         try:
             response = await call_next(request)
             process_time = time.time() - start_time
-            logger.info(
+            _access_logger.info(
                 f"Request completed: {request.method} {request.url.path} "
                 f"status={response.status_code} duration={process_time:.3f}s"
             )
             return response
         except Exception as e:
             process_time = time.time() - start_time
-            logger.error(
+            _access_logger.error(
                 f"Request failed: {request.method} {request.url.path} "
                 f"error={str(e)} duration={process_time:.3f}s"
             )
@@ -115,6 +116,18 @@ async def global_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=500, content={"status": "error", "detail": str(exc)}
     )
+
+
+@app.get("/readyz")
+async def readyz():
+    """Readiness probe: 200 when every model that should be loaded is loaded.
+
+    Intentionally unauthenticated so orchestrators (e.g. Kubernetes) can probe
+    it without credentials.
+    """
+    result = await _registry.readiness()
+    status_code = 200 if result["ready"] else 503
+    return JSONResponse(status_code=status_code, content=result)
 
 
 app.include_router(openarc_router)

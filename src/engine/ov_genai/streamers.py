@@ -3,7 +3,7 @@ import openvino_genai
 import asyncio
 
 from openvino_genai import StreamerBase
-from src.server.models.ov_genai import OVGenAI_GenConfig
+from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_GenConfig
 
 
 class ChunkStreamer(StreamerBase):

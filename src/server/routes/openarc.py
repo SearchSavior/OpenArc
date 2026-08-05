@@ -15,10 +15,10 @@ import shutil
 
 from src.server.deps import _registry, _workers, verify_api_key
 from src.server.downloader import get_default_models_dir, global_downloader
-from src.server.models.ov_genai import OVGenAI_GenConfig
-from src.server.models.registration import ModelLoadConfig, ModelUnloadConfig
-from src.server.models.requests_internal import OpenArcBenchRequest
-from src.server.models.requests_management import (
+from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_GenConfig
+from src.server.schemas.registration import ModelLoadConfig, ModelUnloadConfig
+from src.server.schemas.requests_internal import OpenArcBenchRequest
+from src.server.schemas.requests_management import (
     DownloaderActionRequest,
     DownloaderRequest,
 )
@@ -172,7 +172,7 @@ async def load_model(load_config: ModelLoadConfig):
 @router.post("/unload", dependencies=[Depends(verify_api_key)])
 async def unload_model(unload_config: ModelUnloadConfig):
     try:
-        success = await _registry.register_unload(unload_config.model_name)
+        success = await _registry.register_unload(unload_config.model_name, administrative=True)
         if success:
             return {"model_name": unload_config.model_name, "status": "unloading"}
         else:
