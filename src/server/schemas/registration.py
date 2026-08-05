@@ -1,8 +1,10 @@
-from src.server.models.ov_genai import SchedulerConfigSchema
+
 from enum import Enum
 from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field
+
+from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import SchedulerConfigSchema
 
 
 class ModelStatus(str, Enum):

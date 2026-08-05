@@ -6,7 +6,7 @@ import json
 import click
 from pydantic import ValidationError
 
-from src.server.models.ov_genai import SchedulerConfigSchema
+from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import SchedulerConfigSchema
 
 from ..main import cli, console
 from ..utils import validate_model_path

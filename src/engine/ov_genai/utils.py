@@ -4,8 +4,8 @@ from typing import Literal
 
 from openvino_genai import SchedulerConfig
 
-from src.server.models.ov_genai import SchedulerConfigSchema
-from src.server.models.registration import ModelLoadConfig
+from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import SchedulerConfigSchema
+from src.server.schemas.registration import ModelLoadConfig
 
 logger = logging.getLogger(__name__)
 
