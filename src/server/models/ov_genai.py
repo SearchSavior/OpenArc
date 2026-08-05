@@ -96,3 +96,63 @@ class OVGenAI_GenConfig(BaseModel):
 
 class OVGenAI_WhisperGenConfig(BaseModel):
     audio_base64: str = Field(..., description="Base64 encoded audio")
+
+
+class SchedulerConfigSchema(BaseModel):
+    """Model for OV scheduler config."""
+
+    max_num_batched_tokens: Optional[int] = Field(
+        default=None,
+        description=(
+            "Maximum number of tokens to batch (in contrast to max_batch_size which "
+        "combines independent sequences, we consider total amount of tokens in a batch).",
+    ))
+    num_kv_blocks: Optional[int] = Field(
+        default=None,
+        description="Total number of KV blocks available to scheduler logic.",
+    )
+    cache_size: Optional[int] = Field(
+        default=None,
+        description="Total size of cache in GB."
+    )
+    num_linear_attention_blocks: Optional[int] = Field(
+        default=None,
+        description="Total number of linear attention blocks available to scheduler logic. Only applicable for models with linear attention cache inputs."
+    )
+    cache_interval_multiplier: Optional[int] = Field(
+        default=None,
+        description="""
+        Optional multiplier used to derive the linear-attention checkpoint interval for prefix caching.
+        The internal interval is KV cache block size * cache_interval_multiplier.
+        When unset, the default value 8 is used for hybrid models with prefix caching.
+        Explicit values are supported only for models with linear attention cache inputs.
+        0 is valid only when prefix caching is disabled.
+        """
+    )
+    dynamic_split_fuse: Optional[bool] = Field(
+        default=None,
+        description="Whether to split prompt / generate to different scheduling phases."
+    )
+    max_num_seqs: Optional[int] = Field(
+        default=None,
+        description="Max number of scheduled sequences (you can think of it as \"max batch size\")."
+    )
+    enable_prefix_caching: Optional[bool] = Field(
+        default=None,
+        description="""
+        Enable caching of KV-blocks.
+        When turned on all previously calculated KV-caches are kept in memory for future usages.
+        KV-caches can be overridden if KV-cache limit is reached, but blocks are not released.
+        This results in more RAM usage, maximum RAM usage is determined by cache_size or num_kv_blocks parameters.
+        When turned off only KV-cache required for batch calculation is kept in memory and
+        when a sequence has finished generation its cache is released.
+        """
+    )
+    use_cache_eviction: Optional[bool] = Field(
+        default=None,
+        description="Whether to use cache eviction during generation."
+    )
+    use_sparse_attention: Optional[bool] = Field(
+        default=None,
+        description="Whether to use sparse attention during prefill."
+    )

@@ -1,3 +1,4 @@
+from src.server.models.ov_genai import SchedulerConfigSchema
 from enum import Enum
 from typing import Any, Dict, Optional
 
@@ -111,7 +112,11 @@ class ModelLoadConfig(BaseModel):
         default=None,
         description="Default assistant_confidence_threshold for speculative decoding with this model"
     )
-    
+    scheduler_config: Optional[SchedulerConfigSchema] = Field(
+        default=None,
+        description="Optional OpenVINO scheduler properties.",
+    )
+
 
 class ModelUnloadConfig(BaseModel):
     model_name: str = Field(..., description="Name of the model to unload")
