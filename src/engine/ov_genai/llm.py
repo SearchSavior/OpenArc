@@ -1,3 +1,4 @@
+from src.engine.ov_genai.utils import extract_scheduler_config_from_loader
 import asyncio
 import gc
 import logging
@@ -269,6 +270,7 @@ class OVGenAI_LLM:
             self.model_assistant_confidence_threshold = None
         
         pipeline_kwargs = {**(loader.runtime_config or {})}
+        scheduler_config = extract_scheduler_config_from_loader(loader)
         if loader.cache_dir:
             pipeline_kwargs['CACHE_DIR'] = loader.cache_dir
         if draft_model is not None:
@@ -277,7 +279,8 @@ class OVGenAI_LLM:
         self.model = LLMPipeline(
             loader.model_path,
             loader.device,
-            **pipeline_kwargs
+            **scheduler_config,
+            **pipeline_kwargs,
         )
 
         self.encoder_tokenizer = AutoTokenizer.from_pretrained(loader.model_path)
