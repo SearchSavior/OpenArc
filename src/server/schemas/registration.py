@@ -1,7 +1,10 @@
+
 from enum import Enum
 from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field
+
+from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import SchedulerConfigSchema
 
 
 class ModelStatus(str, Enum):
@@ -111,7 +114,11 @@ class ModelLoadConfig(BaseModel):
         default=None,
         description="Default assistant_confidence_threshold for speculative decoding with this model"
     )
-    
+    scheduler_config: Optional[SchedulerConfigSchema] = Field(
+        default=None,
+        description="Optional OpenVINO scheduler properties.",
+    )
+
 
 class ModelUnloadConfig(BaseModel):
     model_name: str = Field(..., description="Name of the model to unload")

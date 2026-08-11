@@ -1,3 +1,4 @@
+from src.engine.ov_genai.utils import extract_scheduler_config_from_loader
 import asyncio
 import base64
 import gc
@@ -271,7 +272,8 @@ class OVGenAI_VLM:
         """
         try:
             logger.info(f"{loader.model_type} on {loader.device} with {loader.runtime_config}")
-            
+
+            scheduler_config = extract_scheduler_config_from_loader(loader)
             pipeline_kwargs = {**(loader.runtime_config or {})}
             if loader.cache_dir:
                 pipeline_kwargs['CACHE_DIR'] = loader.cache_dir
@@ -279,6 +281,7 @@ class OVGenAI_VLM:
             self.model_path = VLMPipeline(
                 loader.model_path,
                 loader.device,
+                **scheduler_config,
                 **pipeline_kwargs
             )
             
