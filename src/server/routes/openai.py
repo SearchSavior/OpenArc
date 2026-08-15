@@ -31,6 +31,10 @@ from src.server.schemas.requests_openai import (
     OpenArcASRConfig,
     RerankRequest,
 )
+from src.engine.ov_genai.qwen_tool_parser import (
+    QwenXmlToolCallParser,
+    ReasoningSplitter,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +57,6 @@ def _extract_hermes_tool_call_payloads(text: str) -> List[str]:
         payload_start = start + len(open_tag)
         end = text.find(close_tag, payload_start)
         if end < 0:
-            # hermes parsers accept an open tool call until EOS
             payload = text[payload_start:].strip()
             if payload:
                 payloads.append(payload)
@@ -77,9 +80,28 @@ def _format_tool_call_arguments(arguments: Any) -> str:
     return json.dumps(arguments)
 
 
-def parse_tool_calls(text: str) -> Optional[List[Dict[str, Any]]]:
+def _finalize_qwen_calls(parser: QwenXmlToolCallParser) -> List[Dict[str, Any]]:
     tool_calls: List[Dict[str, Any]] = []
+    for call in parser.tool_calls:
+        fn = call.get("function") or {}
+        name = fn.get("name") or ""
+        if not name:
+            continue
+        tool_calls.append(
+            {
+                "id": call.get("id") or f"call_{uuid.uuid4().hex[:24]}",
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "arguments": fn.get("arguments") or "{}",
+                },
+            }
+        )
+    return tool_calls
 
+
+def parse_hermes_tool_calls(text: str) -> Optional[List[Dict[str, Any]]]:
+    tool_calls: List[Dict[str, Any]] = []
     for payload in _extract_hermes_tool_call_payloads(text):
         try:
             data = json.loads(payload)
@@ -98,8 +120,48 @@ def parse_tool_calls(text: str) -> Optional[List[Dict[str, Any]]]:
                 )
         except json.JSONDecodeError:
             continue
-
     return tool_calls if tool_calls else None
+
+
+def parse_generation(
+    text: str,
+    tools: Optional[List[Dict[str, Any]]] = None,
+    enable_thinking: bool = True,
+) -> tuple[str, str, Optional[List[Dict[str, Any]]]]:
+    """Split model output into (reasoning, content, tool_calls).
+
+    Prefers Qwen XML ``<function=...>`` tool calls; falls back to Hermes JSON
+    inside ``<tool_call>`` tags.
+    """
+    # Whole-string parse: only split reasoning when </think> is present.
+    # Otherwise Hermes / plain replies would be swallowed as thinking.
+    reasoning, remainder = ReasoningSplitter(enabled="</think>" in text).feed(text)
+    if remainder.startswith("<think>"):
+        remainder = remainder[len("<think>") :]
+
+    if "<function=" in remainder:
+        parser = QwenXmlToolCallParser(tools)
+        content, _ = parser.feed(remainder)
+        parser.finalize()
+        tool_calls = _finalize_qwen_calls(parser) or None
+        return reasoning, content, tool_calls
+
+    hermes = parse_hermes_tool_calls(remainder)
+    if hermes:
+        content = remainder
+        for payload in _extract_hermes_tool_call_payloads(remainder):
+            content = content.replace(f"<tool_call>{payload}</tool_call>", "")
+            content = content.replace(f"<tool_call>\n{payload}\n</tool_call>", "")
+        return reasoning, content.strip(), hermes
+
+    return reasoning, remainder, None
+
+
+def parse_tool_calls(
+    text: str, tools: Optional[List[Dict[str, Any]]] = None
+) -> Optional[List[Dict[str, Any]]]:
+    _, _, tool_calls = parse_generation(text, tools)
+    return tool_calls
 
 
 # ---- endpoints ----
@@ -158,14 +220,26 @@ async def openai_chat_completions(
         created_ts = int(time.time())
         request_id = f"ov-{uuid.uuid4().hex[:24]}"
 
+        thinking_enabled = True
+        if request.chat_template_kwargs:
+            thinking_enabled = request.chat_template_kwargs.get(
+                "enable_thinking", True
+            )
+
         if generation_config.stream:
 
             async def event_stream() -> AsyncIterator[bytes]:
-                accumulated_text = ""
                 metrics_data = None
                 tool_call_sent = False
-                tool_call_started = False
                 cancel_request_id = None
+                reasoning = ReasoningSplitter(enabled=thinking_enabled)
+                tool_parser = QwenXmlToolCallParser(request.tools)
+                accumulated_text = ""
+
+                def _chunk(delta: dict) -> bytes:
+                    return (
+                        f"data: {json.dumps({'id': request_id, 'object': 'chat.completion.chunk', 'created': created_ts, 'model': model_name, 'choices': [{'index': 0, 'delta': delta, 'finish_reason': None}]})}\n\n"
+                    ).encode()
 
                 try:
                     async for item in _workers.stream_generate(
@@ -187,83 +261,16 @@ async def openai_chat_completions(
                             continue
 
                         accumulated_text += item
-                        if not tool_call_started:
-                            tool_call_started = (
-                                "<tool_call>" in accumulated_text
-                                or "<tool_call" in accumulated_text
-                                or "<tool_" in accumulated_text
-                            )
+                        reason_delta, text_delta = reasoning.feed(item)
+                        content_delta, fragments = tool_parser.feed(text_delta)
 
-                        tool_calls = parse_tool_calls(accumulated_text)
-
-                        if tool_calls and not tool_call_sent:
+                        if reason_delta:
+                            yield _chunk({"reasoning_content": reason_delta})
+                        if content_delta:
+                            yield _chunk({"content": content_delta})
+                        if fragments:
                             tool_call_sent = True
-                            for idx, tc in enumerate(tool_calls):
-                                tool_call_start = {
-                                    "id": request_id,
-                                    "object": "chat.completion.chunk",
-                                    "created": created_ts,
-                                    "model": model_name,
-                                    "choices": [
-                                        {
-                                            "index": 0,
-                                            "delta": {
-                                                "tool_calls": [
-                                                    {
-                                                        "index": idx,
-                                                        "id": tc["id"],
-                                                        "type": tc["type"],
-                                                        "function": {
-                                                            "name": tc["function"]["name"],
-                                                            "arguments": "",
-                                                        },
-                                                    }
-                                                ]
-                                            },
-                                            "finish_reason": None,
-                                        }
-                                    ],
-                                }
-                                yield (f"data: {json.dumps(tool_call_start)}\n\n").encode()
-
-                                tool_call_args = {
-                                    "id": request_id,
-                                    "object": "chat.completion.chunk",
-                                    "created": created_ts,
-                                    "model": model_name,
-                                    "choices": [
-                                        {
-                                            "index": 0,
-                                            "delta": {
-                                                "tool_calls": [
-                                                    {
-                                                        "index": idx,
-                                                        "function": {
-                                                            "arguments": tc["function"]["arguments"]
-                                                        },
-                                                    }
-                                                ]
-                                            },
-                                            "finish_reason": None,
-                                        }
-                                    ],
-                                }
-                                yield (f"data: {json.dumps(tool_call_args)}\n\n").encode()
-                        elif not tool_calls and not tool_call_started:
-                            chunk_payload = {
-                                "id": request_id,
-                                "object": "chat.completion.chunk",
-                                "created": created_ts,
-                                "model": model_name,
-                                "choices": [
-                                    {
-                                        "index": 0,
-                                        "delta": {"content": item},
-                                        "finish_reason": None,
-                                    }
-                                ],
-                            }
-                            yield (f"data: {json.dumps(chunk_payload)}\n\n").encode()
+                            yield _chunk({"tool_calls": fragments})
                 except asyncio.CancelledError:
                     if cancel_request_id:
                         await _workers.infer_cancel(cancel_request_id)
@@ -271,6 +278,40 @@ async def openai_chat_completions(
                             f"[chat/completions] Task cancelled, cleaned up {cancel_request_id}"
                         )
                     raise
+
+                tool_parser.finalize()
+                if not tool_call_sent:
+                    hermes = parse_hermes_tool_calls(accumulated_text)
+                    if hermes:
+                        tool_call_sent = True
+                        for idx, tc in enumerate(hermes):
+                            yield _chunk(
+                                {
+                                    "tool_calls": [
+                                        {
+                                            "index": idx,
+                                            "id": tc["id"],
+                                            "type": tc["type"],
+                                            "function": {
+                                                "name": tc["function"]["name"],
+                                                "arguments": "",
+                                            },
+                                        }
+                                    ]
+                                }
+                            )
+                            yield _chunk(
+                                {
+                                    "tool_calls": [
+                                        {
+                                            "index": idx,
+                                            "function": {
+                                                "arguments": tc["function"]["arguments"]
+                                            },
+                                        }
+                                    ]
+                                }
+                            )
 
                 prompt_tokens = (metrics_data or {}).get("input_token", 0)
                 completion_tokens = (metrics_data or {}).get("new_token", 0)
@@ -311,16 +352,21 @@ async def openai_chat_completions(
             completion_tokens = metrics.get("new_token", 0)
             total_tokens = metrics.get("total_token", prompt_tokens + completion_tokens)
 
-            tool_calls = parse_tool_calls(text)
+            reasoning_text, content_text, tool_calls = parse_generation(
+                text, request.tools, thinking_enabled
+            )
             message = {"role": "assistant"}
             finish_reason = "stop"
 
+            if reasoning_text:
+                message["reasoning_content"] = reasoning_text
+
             if tool_calls:
-                message["content"] = None
+                message["content"] = content_text or None
                 message["tool_calls"] = tool_calls
                 finish_reason = "tool_calls"
             else:
-                message["content"] = text
+                message["content"] = content_text if content_text else text
 
             return {
                 "id": request_id,

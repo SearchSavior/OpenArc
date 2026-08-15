@@ -21,13 +21,23 @@ class ChunkStreamer(StreamerBase):
         self.since_last_emit: int = 0              # tokens collected since last emit
         self.last_print_len: int = 0               # length of decoded text we've already emitted
         self.text_queue: "asyncio.Queue[Optional[str]]" = asyncio.Queue()
-        self._cancelled = asyncio.Event()          # cancellation flag for thread-safe signaling
+        self._cancelled = asyncio.Event()
+        try:
+            self._loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._loop = None
+
+    def _enqueue(self, msg: Optional[str]) -> None:
+        if self._loop is not None:
+            self._loop.call_soon_threadsafe(self.text_queue.put_nowait, msg)
+        else:
+            self.text_queue.put_nowait(msg)
 
     def write(self, token: Union[int, List[int]]) -> openvino_genai.StreamingStatus:
         # Check for cancellation first
         if self._cancelled.is_set():
             # Signal completion to the queue so the consumer can exit
-            self.text_queue.put_nowait(None)
+            self._enqueue(None)
             return openvino_genai.StreamingStatus.CANCEL
 
         # Normalize input to a list of ints
@@ -48,7 +58,7 @@ class ChunkStreamer(StreamerBase):
                     self.since_last_emit -= 1
                     return openvino_genai.StreamingStatus.RUNNING
                 if chunk:
-                    self.text_queue.put_nowait(chunk)
+                    self._enqueue(chunk)
                 self.last_print_len = len(text)
             self.since_last_emit = 0
 
@@ -68,6 +78,5 @@ class ChunkStreamer(StreamerBase):
         if len(text) > self.last_print_len:
             chunk = text[self.last_print_len:]
             if chunk:
-                self.text_queue.put_nowait(chunk)
-        # Signal completion
-        self.text_queue.put_nowait(None)
+                self._enqueue(chunk)
+        self._enqueue(None)
