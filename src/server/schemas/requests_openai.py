@@ -30,6 +30,8 @@ class OpenAIChatCompletionRequest(BaseModel):
     model: str
     messages: Any
     tools: Optional[List[Dict[str, Any]]] = None
+    tool_choice: Optional[Union[str, Dict[str, Any]]] = None
+    parallel_tool_calls: Optional[bool] = None
     stream: Optional[bool] = None
     
     temperature: Optional[float] = None
@@ -101,4 +103,3 @@ class RerankRequest(BaseModel):
     prefix: Optional[str] = None
     suffix: Optional[str] = None
     instruction: Optional[str] = None
-

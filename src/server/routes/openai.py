@@ -164,6 +164,68 @@ def parse_tool_calls(
     return tool_calls
 
 
+def _prepend_system_instruction(messages: Any, instruction: str) -> Any:
+    if not isinstance(messages, list):
+        return messages
+    messages = [dict(message) for message in messages]
+    if messages and messages[0].get("role") == "system":
+        content = messages[0].get("content") or ""
+        messages[0]["content"] = f"{content}\n\n{instruction}".strip()
+    else:
+        messages.insert(0, {"role": "system", "content": instruction})
+    return messages
+
+
+def _apply_tool_choice(
+    messages: Any,
+    tools: Optional[List[Dict[str, Any]]],
+    tool_choice: Optional[Any],
+    parallel_tool_calls: Optional[bool],
+) -> tuple[Any, Optional[List[Dict[str, Any]]]]:
+    """Translate OpenAI tool-choice controls into Qwen prompt constraints."""
+    if tool_choice == "none":
+        return messages, None
+
+    effective_tools = tools
+    instruction = ""
+
+    if tool_choice in (None, "auto"):
+        pass
+    elif tool_choice == "required":
+        if not tools:
+            raise ValueError("tool_choice='required' needs at least one tool")
+        instruction = (
+            "You must emit at least one tool call now. Do not answer in natural "
+            "language. Select the best available tool and infer reasonable arguments."
+        )
+    elif isinstance(tool_choice, dict):
+        function = tool_choice.get("function") or {}
+        name = function.get("name")
+        if tool_choice.get("type") != "function" or not name:
+            raise ValueError("Named tool_choice must specify type='function' and function.name")
+        effective_tools = [
+            tool for tool in tools or []
+            if (tool.get("function") or {}).get("name") == name
+        ]
+        if not effective_tools:
+            raise ValueError(f"tool_choice references unknown function '{name}'")
+        instruction = (
+            f"You must call the provided '{name}' tool now. Output exactly one tool "
+            "call and no natural-language answer. Infer reasonable arguments from "
+            "the user's request."
+        )
+    else:
+        raise ValueError("tool_choice must be 'auto', 'none', 'required', or a named function")
+
+    if parallel_tool_calls is False and effective_tools:
+        suffix = "Call at most one tool in your response."
+        instruction = f"{instruction} {suffix}".strip()
+
+    if instruction:
+        messages = _prepend_system_instruction(messages, instruction)
+    return messages, effective_tools
+
+
 # ---- endpoints ----
 
 @router.get("/models", dependencies=[Depends(verify_api_key)])
@@ -196,8 +258,18 @@ async def openai_chat_completions(
     try:
         logger.info(f'"{request.model}" request received')
 
+        messages, tools = _apply_tool_choice(
+            request.messages,
+            request.tools,
+            request.tool_choice,
+            request.parallel_tool_calls,
+        )
+        chat_template_kwargs = dict(request.chat_template_kwargs or {})
+        if request.tool_choice == "required" or isinstance(request.tool_choice, dict):
+            chat_template_kwargs.setdefault("enable_thinking", False)
+
         config_kwargs = {
-            "messages": request.messages,
+            "messages": messages,
             "temperature": request.temperature,
             "max_tokens": request.max_tokens,
             "top_p": request.top_p,
@@ -206,11 +278,11 @@ async def openai_chat_completions(
             "do_sample": request.do_sample,
             "num_return_sequences": request.num_return_sequences,
             "stream": request.stream,
-            "tools": request.tools,
+            "tools": tools,
             "seed": request.seed,
             "frequency_penalty": request.frequency_penalty,
             "presence_penalty": request.presence_penalty,
-            "chat_template_kwargs": request.chat_template_kwargs,
+            "chat_template_kwargs": chat_template_kwargs,
         }
         config_kwargs = {k: v for k, v in config_kwargs.items() if v is not None}
 
@@ -221,8 +293,8 @@ async def openai_chat_completions(
         request_id = f"ov-{uuid.uuid4().hex[:24]}"
 
         thinking_enabled = True
-        if request.chat_template_kwargs:
-            thinking_enabled = request.chat_template_kwargs.get(
+        if chat_template_kwargs:
+            thinking_enabled = chat_template_kwargs.get(
                 "enable_thinking", True
             )
 
@@ -233,7 +305,7 @@ async def openai_chat_completions(
                 tool_call_sent = False
                 cancel_request_id = None
                 reasoning = ReasoningSplitter(enabled=thinking_enabled)
-                tool_parser = QwenXmlToolCallParser(request.tools)
+                tool_parser = QwenXmlToolCallParser(tools)
                 accumulated_text = ""
 
                 def _chunk(delta: dict) -> bytes:
@@ -355,7 +427,7 @@ async def openai_chat_completions(
             total_tokens = metrics.get("total_token", prompt_tokens + completion_tokens)
 
             reasoning_text, content_text, tool_calls = parse_generation(
-                text, request.tools, thinking_enabled
+                text, tools, thinking_enabled
             )
             message = {"role": "assistant"}
             finish_reason = "stop"

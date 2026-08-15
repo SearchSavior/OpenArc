@@ -303,6 +303,45 @@ def test_parse_tool_calls_qwen_typed_params() -> None:
     assert args["urgent"] is False
 
 
+def test_apply_tool_choice_none_hides_tools() -> None:
+    messages, tools = openai_routes._apply_tool_choice(
+        [{"role": "user", "content": "Weather?"}], QWEN_TOOLS, "none", None
+    )
+    assert messages == [{"role": "user", "content": "Weather?"}]
+    assert tools is None
+
+
+def test_apply_tool_choice_required_adds_instruction() -> None:
+    messages, tools = openai_routes._apply_tool_choice(
+        [{"role": "user", "content": "Hello"}], QWEN_TOOLS, "required", None
+    )
+    assert messages[0]["role"] == "system"
+    assert "must emit at least one tool call" in messages[0]["content"].lower()
+    assert tools == QWEN_TOOLS
+
+
+def test_apply_named_tool_choice_filters_tools() -> None:
+    messages, tools = openai_routes._apply_tool_choice(
+        [{"role": "system", "content": "Be terse"}, {"role": "user", "content": "Do it"}],
+        QWEN_TOOLS,
+        {"type": "function", "function": {"name": "set_reminder"}},
+        False,
+    )
+    assert [tool["function"]["name"] for tool in tools] == ["set_reminder"]
+    assert "set_reminder" in messages[0]["content"]
+    assert "at most one" in messages[0]["content"].lower()
+
+
+def test_apply_named_tool_choice_rejects_unknown_tool() -> None:
+    with pytest.raises(ValueError, match="unknown function"):
+        openai_routes._apply_tool_choice(
+            [{"role": "user", "content": "Do it"}],
+            QWEN_TOOLS,
+            {"type": "function", "function": {"name": "missing"}},
+            None,
+        )
+
+
 @pytest.mark.asyncio
 async def test_openai_chat_completions_non_streaming_qwen_xml(
     monkeypatch: pytest.MonkeyPatch,
