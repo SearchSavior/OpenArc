@@ -54,4 +54,6 @@ models:
     model_path:
     engine: openvino
     device: GPU.0
+    qwen3_tts_voice_clone_options:
+      
   
