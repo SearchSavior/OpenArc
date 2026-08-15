@@ -6,6 +6,54 @@ from fastapi.responses import StreamingResponse
 
 import src.server.routes.openai as openai_routes
 from src.server.schemas.requests_openai import OpenAIChatCompletionRequest
+from src.server.utils.chat import flatten_messages, normalize_tool_calls_for_template
+
+
+def test_normalize_tool_call_arguments_json_string_to_mapping() -> None:
+    calls = normalize_tool_calls_for_template(
+        [
+            {
+                "id": "call_1",
+                "type": "function",
+                "function": {
+                    "name": "get_weather",
+                    "arguments": '{"location": "Warsaw", "unit": "celsius"}',
+                },
+            }
+        ]
+    )
+    assert calls[0]["function"]["arguments"] == {
+        "location": "Warsaw",
+        "unit": "celsius",
+    }
+
+
+def test_flatten_messages_preserves_tool_role_and_parses_args() -> None:
+    msgs = flatten_messages(
+        [
+            {"role": "user", "content": "Weather?"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": '{"location": "Tokyo"}',
+                        },
+                    }
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call_1", "content": '{"temp": 22}'},
+        ]
+    )
+    assert msgs[1]["content"] == ""
+    assert msgs[1]["tool_calls"][0]["function"]["arguments"]["location"] == "Tokyo"
+    assert msgs[2]["content"] == '{"temp": 22}'
+    assert msgs[2]["tool_call_id"] == "call_1"
+
 
 
 class _DummyRequest:

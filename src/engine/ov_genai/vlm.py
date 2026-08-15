@@ -17,7 +17,7 @@ from PIL import Image
 from transformers import AutoTokenizer
 
 from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_GenConfig
-from src.server.utils.chat import flatten_message_content
+from src.server.utils.chat import flatten_message_content, flatten_messages
 from src.server.utils.resolve_vlm_type import is_qwen3_5_architecture, resolve_vlm_vision_token
 from src.server.model_registry import ModelRegistry
 from src.server.schemas.registration import ModelLoadConfig
@@ -112,6 +112,7 @@ class OVGenAI_VLM:
 
         # Step 2: Build the chat template prompt using cached tokenizer
         tokenizer = self.tokenizer
+        text_messages = flatten_messages(text_messages)
         tokenized_messages: str = tokenizer.apply_chat_template(
             text_messages,
             tokenize=False,

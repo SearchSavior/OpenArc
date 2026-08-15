@@ -50,12 +50,44 @@ def flatten_message_content(content: Any) -> str:
     return "\n".join(fragment for fragment in _iter_text_fragments(content))
 
 
+def _arguments_as_mapping(arguments: Any) -> Any:
+    """Qwen chat templates iterate ``arguments|items`` and need a mapping."""
+    if isinstance(arguments, str):
+        try:
+            parsed = json.loads(arguments)
+        except json.JSONDecodeError:
+            return arguments
+        return parsed if isinstance(parsed, dict) else arguments
+    return arguments
+
+
+def normalize_tool_calls_for_template(tool_calls: Any) -> Any:
+    if not isinstance(tool_calls, list):
+        return tool_calls
+    normalized: List[Dict[str, Any]] = []
+    for call in tool_calls:
+        if not isinstance(call, dict):
+            normalized.append(call)
+            continue
+        fn = call.get("function")
+        if isinstance(fn, dict) and "arguments" in fn:
+            fn = {**fn, "arguments": _arguments_as_mapping(fn.get("arguments"))}
+            normalized.append({**call, "function": fn})
+        else:
+            call = {**call, "arguments": _arguments_as_mapping(call.get("arguments"))}
+            normalized.append(call)
+    return normalized
+
+
 def flatten_messages(messages: List[Dict[str, Any]] | None) -> List[Dict[str, Any]]:
     if not messages:
         return []
 
-    return [
-        {**message, "content": flatten_message_content(message.get("content"))}
-        for message in messages
-    ]
+    out: List[Dict[str, Any]] = []
+    for message in messages:
+        item = {**message, "content": flatten_message_content(message.get("content"))}
+        if "tool_calls" in item:
+            item["tool_calls"] = normalize_tool_calls_for_template(item.get("tool_calls"))
+        out.append(item)
+    return out
 
