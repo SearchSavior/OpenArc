@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 from typing import AsyncIterator, NamedTuple
 
+import numpy as np
 import openvino as ov
 import soundfile as sf
 import torch
@@ -36,9 +37,17 @@ class OV_Kokoro(KModel):
     """
     
     def __init__(self, load_config: ModelLoadConfig):
-        super().__init__()
+        # Skip KModel.__init__: it downloads config.json + model.pth from HF.
+        torch.nn.Module.__init__(self)
         self.model = None
         self._device = None
+        self.vocab = {}
+        self.context_length = 0
+        self.repo_id = None
+
+    @property
+    def device(self):
+        return torch.device("cpu")
 
     def load_model(self, load_config: ModelLoadConfig):
         self.model_path = Path(load_config.model_path)
@@ -57,6 +66,33 @@ class OV_Kokoro(KModel):
             core.set_property(load_config.runtime_config)
         self.model = core.compile_model(self.model_path / "openvino_model.xml", self._device)
         return self.model
+
+    def forward_with_tokens(self, input_ids, ref_s, speed: float = 1):
+        """Run the compiled OpenVINO IR instead of the PyTorch KModel graph."""
+        if self.model is None:
+            raise RuntimeError("OpenVINO Kokoro model is not loaded")
+
+        feed = {}
+        for inp in self.model.inputs:
+            name = inp.get_any_name()
+            key = name.lower()
+            if "speed" in key:
+                feed[name] = np.array(speed, dtype=np.float32)
+            elif "input" in key or key.endswith("ids"):
+                feed[name] = input_ids.detach().cpu().numpy()
+            elif "ref" in key or "style" in key:
+                feed[name] = ref_s.detach().cpu().numpy()
+        if not feed:
+            feed = {
+                self.model.inputs[0].get_any_name(): input_ids.detach().cpu().numpy(),
+            }
+        result = self.model(feed)
+        tensors = list(result.values())
+        audio = torch.from_numpy(np.asarray(tensors[0])).squeeze()
+        pred_dur = None
+        if len(tensors) > 1:
+            pred_dur = torch.from_numpy(np.asarray(tensors[1]))
+        return audio, pred_dur
 
     async def unload_model(self, registry: ModelRegistry, model_name: str) -> bool:
         """Unregister model from registry and free memory resources.

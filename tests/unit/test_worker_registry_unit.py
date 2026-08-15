@@ -303,10 +303,77 @@ def test_infer_qwen3_asr_handles_error() -> None:
     result = asyncio.run(worker_module.InferWorker.infer_qwen3_asr(packet, FailingASR()))
 
     assert result is packet
-    assert packet.response.startswith("Error:")
-    assert "boom" in packet.response
+    assert packet.error is not None
+    assert "boom" in str(packet.error)
+    assert packet.response is None
     assert packet.metrics is None
     assert packet.segments is None
+
+
+def test_commit_treats_error_field_not_error_prefix() -> None:
+    class DummyRegistry:
+        def __init__(self):
+            self.unloaded = []
+
+        async def register_unload(self, name):
+            self.unloaded.append(name)
+            return True
+
+    async def _run():
+        registry = DummyRegistry()
+        ok_future = asyncio.get_running_loop().create_future()
+        ok = worker_module.WorkerPacket(
+            request_id="ok",
+            id_model="m",
+            gen_config=OVGenAI_GenConfig(messages=[{"role": "user", "content": "hi"}]),
+            result_future=ok_future,
+            response="Error: invalid input",
+        )
+        assert worker_module._commit_completed_packet(ok, ok, "m", registry) is False
+        assert ok_future.result().response == "Error: invalid input"
+        await asyncio.sleep(0)
+        assert registry.unloaded == []
+
+        err_future = asyncio.get_running_loop().create_future()
+        err = worker_module.WorkerPacket(
+            request_id="err",
+            id_model="m",
+            gen_config=OVGenAI_GenConfig(messages=[{"role": "user", "content": "hi"}]),
+            result_future=err_future,
+            error=RuntimeError("gpu oom"),
+        )
+        assert worker_module._commit_completed_packet(err, err, "m", registry) is True
+        with pytest.raises(RuntimeError, match="gpu oom"):
+            err_future.result()
+        await asyncio.sleep(0)
+        assert registry.unloaded == ["m"]
+
+    asyncio.run(_run())
+
+
+def test_infer_llm_stream_error_is_not_silent_success() -> None:
+    class FailingLLM:
+        async def generate_type(self, gen_config):
+            raise RuntimeError("decode failed")
+            yield  # make this an async generator
+
+    packet = worker_module.WorkerPacket(
+        request_id="s1",
+        id_model="llm",
+        gen_config=OVGenAI_GenConfig(
+            messages=[{"role": "user", "content": "hi"}],
+            stream=True,
+        ),
+        stream_queue=asyncio.Queue(),
+    )
+
+    result = asyncio.run(worker_module.InferWorker.infer_llm(packet, FailingLLM()))
+    assert result.error is not None
+    assert result.response is None
+    first = asyncio.run(packet.stream_queue.get())
+    assert first == {"error": "decode failed"}
+    assert asyncio.run(packet.stream_queue.get()) is None
+
 
 
 def test_embed(worker_registry: worker_module.WorkerRegistry) -> None:

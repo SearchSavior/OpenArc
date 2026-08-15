@@ -41,7 +41,8 @@ dependencies = [
 [dependency-groups]
 test = [
     "pytest>=8.4.2",
-    "pytest-asyncio>=1.4.0"
+    "pytest-asyncio>=1.4.0",
+    "httpx>=0.27",
 ]
 
 [build-system]

@@ -73,6 +73,40 @@ class WorkerPacket:
     # Orchestration plumbing
     result_future: Optional[asyncio.Future] = None
     stream_queue: Optional[asyncio.Queue] = None
+    error: Optional[BaseException] = None
+
+
+def _mark_inference_error(packet: WorkerPacket, exc: BaseException) -> None:
+    packet.error = exc
+    packet.response = None
+    packet.metrics = None
+
+
+async def _signal_stream_error(packet: WorkerPacket, exc: BaseException) -> None:
+    if packet.stream_queue is None:
+        return
+    await packet.stream_queue.put({"error": str(exc)})
+    await packet.stream_queue.put(None)
+
+
+def _commit_completed_packet(
+    packet: WorkerPacket,
+    completed: WorkerPacket,
+    model_name: str,
+    registry: ModelRegistry,
+) -> bool:
+    """Complete the request future. Return True if the worker should exit."""
+    if completed.error is not None:
+        logger.error(
+            f"[{model_name}] Inference failed, triggering model unload..."
+        )
+        if packet.result_future is not None and not packet.result_future.done():
+            packet.result_future.set_exception(completed.error)
+        asyncio.create_task(registry.register_unload(model_name))
+        return True
+    if packet.result_future is not None and not packet.result_future.done():
+        packet.result_future.set_result(completed)
+    return False
 
 class InferWorker:
     """
@@ -116,14 +150,10 @@ class InferWorker:
                     await packet.stream_queue.put({"metrics": metrics})
                 await packet.stream_queue.put(None)
         except Exception as e:
-            # Log the full exception with traceback
             logger.error("LLM inference failed!", exc_info=True)
-            # Store error in packet response
-            packet.response = f"Error: {str(e)}"
-            packet.metrics = None
-            # Signal error to stream if streaming
-            if packet.gen_config.stream and packet.stream_queue is not None:
-                await packet.stream_queue.put(None)
+            _mark_inference_error(packet, e)
+            if packet.gen_config.stream:
+                await _signal_stream_error(packet, e)
 
         return packet
 
@@ -152,14 +182,10 @@ class InferWorker:
                     await packet.stream_queue.put({"metrics": metrics})
                 await packet.stream_queue.put(None)
         except Exception as e:
-            # Log the full exception with traceback
             logger.error("VLM inference failed!", exc_info=True)
-            # Store error in packet response
-            packet.response = f"Error: {str(e)}"
-            packet.metrics = None
-            # Signal error to stream if streaming
-            if packet.gen_config.stream and packet.stream_queue is not None:
-                await packet.stream_queue.put(None)
+            _mark_inference_error(packet, e)
+            if packet.gen_config.stream:
+                await _signal_stream_error(packet, e)
 
         return packet
 
@@ -183,11 +209,8 @@ class InferWorker:
             packet.response = final_text
             packet.metrics = metrics
         except Exception as e:
-            # Log the full exception with traceback
             logger.error("Whisper inference failed!", exc_info=True)
-            # Store error in packet response
-            packet.response = f"Error: {str(e)}"
-            packet.metrics = None
+            _mark_inference_error(packet, e)
 
         return packet
 
@@ -201,7 +224,8 @@ class InferWorker:
             packet.response, packet.metrics, packet.segments = await asr_model.transcribe(packet.gen_config)
         except Exception as e:
             logger.error("Qwen3 ASR inference failed!", exc_info=True)
-            packet.response, packet.metrics, packet.segments = f"Error: {str(e)}", None, None
+            _mark_inference_error(packet, e)
+            packet.segments = None
 
         return packet
 
@@ -242,11 +266,8 @@ class InferWorker:
                 "total_samples": sum(len(chunk) for chunk in audio_chunks) if audio_chunks else 0
             }
         except Exception as e:
-            # Log the full exception with traceback
             logger.error("Kokoro inference failed!", exc_info=True)
-            # Store error in packet response
-            packet.response = f"Error: {str(e)}"
-            packet.metrics = None
+            _mark_inference_error(packet, e)
 
         return packet
 
@@ -271,8 +292,7 @@ class InferWorker:
             }
         except Exception as e:
             logger.error("Qwen3 TTS inference failed!", exc_info=True)
-            packet.response = f"Error: {str(e)}"
-            packet.metrics = None
+            _mark_inference_error(packet, e)
 
         return packet
 
@@ -315,14 +335,10 @@ class InferWorker:
             packet.metrics = metrics
 
         except Exception as e:
-            # Log the full exception with traceback
             logger.error("EMB inference failed!", exc_info=True)
-            # Store error in packet response
-            packet.response = f"Error: {str(e)}"
-            packet.metrics = None
-            # Signal error to stream if streaming
-            if packet.gen_config.stream and packet.stream_queue is not None:
-                await packet.stream_queue.put(None)
+            _mark_inference_error(packet, e)
+            if getattr(packet.gen_config, "stream", False):
+                await _signal_stream_error(packet, e)
 
         return packet
 
@@ -343,14 +359,10 @@ class InferWorker:
             packet.metrics = metrics
 
         except Exception as e:
-            # Log the full exception with traceback
             logger.error("Reranking failed!", exc_info=True)
-            # Store error in packet response
-            packet.response = f"Error: {str(e)}"
-            packet.metrics = None
-            # Signal error to stream if streaming
-            if packet.gen_config.stream and packet.stream_queue is not None:
-                await packet.stream_queue.put(None)
+            _mark_inference_error(packet, e)
+            if getattr(packet.gen_config, "stream", False):
+                await _signal_stream_error(packet, e)
 
         return packet
 
@@ -372,17 +384,12 @@ class QueueWorker:
 
             completed_packet = await InferWorker.infer_llm(packet, llm_model)
 
-            # Check if inference failed and trigger model unload
-            if completed_packet.response and completed_packet.response.startswith("Error:"):
-                logger.error(f"[LLM Worker: {model_name}] Inference failed, triggering model unload...")
-                asyncio.create_task(registry.register_unload(model_name))
-                break
-
             if completed_packet.metrics:
                 logger.info(f"[LLM Worker: {model_name}] Metrics: {completed_packet.metrics}")
 
-            if packet.result_future is not None and not packet.result_future.done():
-                packet.result_future.set_result(completed_packet)
+            if _commit_completed_packet(packet, completed_packet, model_name, registry):
+                model_queue.task_done()
+                break
 
             model_queue.task_done()
 
@@ -398,17 +405,12 @@ class QueueWorker:
 
             completed_packet = await InferWorker.infer_vlm(packet, vlm_model)
 
-            # Check if inference failed and trigger model unload
-            if completed_packet.response and completed_packet.response.startswith("Error:"):
-                logger.error(f"[VLM Worker: {model_name}] Inference failed, triggering model unload...")
-                asyncio.create_task(registry.register_unload(model_name))
-                break
-
             if completed_packet.metrics:
                 logger.info(f"[VLM Worker: {model_name}] Metrics: {completed_packet.metrics}")
 
-            if packet.result_future is not None and not packet.result_future.done():
-                packet.result_future.set_result(completed_packet)
+            if _commit_completed_packet(packet, completed_packet, model_name, registry):
+                model_queue.task_done()
+                break
 
             model_queue.task_done()
 
@@ -424,17 +426,12 @@ class QueueWorker:
 
             completed_packet = await InferWorker.infer_whisper(packet, whisper_model)
 
-            # Check if inference failed and trigger model unload
-            if completed_packet.response and completed_packet.response.startswith("Error:"):
-                logger.error(f"[Whisper Worker: {model_name}] Inference failed, triggering model unload...")
-                asyncio.create_task(registry.register_unload(model_name))
-                break
-
             if completed_packet.metrics:
                 logger.info(f"[Whisper Worker: {model_name}] Metrics: {completed_packet.metrics}")
 
-            if packet.result_future is not None and not packet.result_future.done():
-                packet.result_future.set_result(completed_packet)
+            if _commit_completed_packet(packet, completed_packet, model_name, registry):
+                model_queue.task_done()
+                break
 
             model_queue.task_done()
 
@@ -450,16 +447,12 @@ class QueueWorker:
 
             completed_packet = await InferWorker.infer_qwen3_asr(packet, asr_model)
 
-            if completed_packet.response and completed_packet.response.startswith("Error:"):
-                logger.error(f"[Qwen3ASR Worker: {model_name}] Inference failed, triggering model unload...")
-                asyncio.create_task(registry.register_unload(model_name))
-                break
-
             if completed_packet.metrics:
                 logger.info(f"[Qwen3ASR Worker: {model_name}] Metrics: {completed_packet.metrics}")
 
-            if packet.result_future is not None and not packet.result_future.done():
-                packet.result_future.set_result(completed_packet)
+            if _commit_completed_packet(packet, completed_packet, model_name, registry):
+                model_queue.task_done()
+                break
 
             model_queue.task_done()
 
@@ -475,19 +468,12 @@ class QueueWorker:
 
             completed_packet = await InferWorker.infer_kokoro(packet, kokoro_model)
 
-            # Check if inference failed and trigger model unload
-            if completed_packet.response and completed_packet.response.startswith("Error:"):
-                logger.error(f"[Kokoro Worker: {model_name}] Inference failed, triggering model unload...")
-                asyncio.create_task(registry.register_unload(model_name))
-                break
-
-            # Log the text that was converted to speech
-
             if completed_packet.metrics:
                 logger.info(f"[Kokoro Worker: {model_name}] Metrics: {completed_packet.metrics}")
 
-            if packet.result_future is not None and not packet.result_future.done():
-                packet.result_future.set_result(completed_packet)
+            if _commit_completed_packet(packet, completed_packet, model_name, registry):
+                model_queue.task_done()
+                break
 
             model_queue.task_done()
 
@@ -505,16 +491,13 @@ class QueueWorker:
                 completed_packet = await InferWorker.infer_qwen3_tts_stream(packet, tts_model)
             else:
                 completed_packet = await InferWorker.infer_qwen3_tts(packet, tts_model)
-                if completed_packet.response and completed_packet.response.startswith("Error:"):
-                    logger.error(f"[Qwen3TTS Worker: {model_name}] Inference failed, triggering model unload...")
-                    asyncio.create_task(registry.register_unload(model_name))
-                    break
 
             if completed_packet.metrics:
                 logger.info(f"[Qwen3TTS Worker: {model_name}] Metrics: {completed_packet.metrics}")
 
-            if packet.result_future is not None and not packet.result_future.done():
-                packet.result_future.set_result(completed_packet)
+            if _commit_completed_packet(packet, completed_packet, model_name, registry):
+                model_queue.task_done()
+                break
 
             model_queue.task_done()
 
@@ -529,15 +512,11 @@ class QueueWorker:
                 break
 
             completed_packet = await InferWorker.infer_emb(packet, emb_model)
-            # Check if inference failed and trigger model unload
-            if not completed_packet.response:
-                logger.error(f"[EMB Worker: {model_name}] Inference failed, triggering model unload...")
-                asyncio.create_task(registry.register_unload(model_name))
-                break
             if completed_packet.metrics:
                 logger.info(f"[EMB Worker: {model_name}] Metrics: {completed_packet.metrics}")
-            if packet.result_future is not None and not packet.result_future.done():
-                packet.result_future.set_result(completed_packet)
+            if _commit_completed_packet(packet, completed_packet, model_name, registry):
+                model_queue.task_done()
+                break
             model_queue.task_done()
 
     @staticmethod
@@ -551,15 +530,11 @@ class QueueWorker:
                 break
 
             completed_packet = await InferWorker.infer_rerank(packet, rr_model)
-            # Check if inference failed and trigger model unload
-            if not completed_packet.response:
-                logger.error(f"[Reranker Worker: {model_name}] Inference failed, triggering model unload...")
-                asyncio.create_task(registry.register_unload(model_name))
-                break
             if completed_packet.metrics:
                 logger.info(f"[Reranker Worker: {model_name}] Metrics: {completed_packet.metrics}")
-            if packet.result_future is not None and not packet.result_future.done():
-                packet.result_future.set_result(completed_packet)
+            if _commit_completed_packet(packet, completed_packet, model_name, registry):
+                model_queue.task_done()
+                break
             model_queue.task_done()
 
 class WorkerRegistry:
@@ -845,8 +820,21 @@ class WorkerRegistry:
                 item = await stream_queue.get()
                 if item is None:
                     break
+                if isinstance(item, dict) and item.get("error"):
+                    raise RuntimeError(item["error"])
                 yield item
+            if result_future.done():
+                exc = result_future.exception()
+                if exc is not None:
+                    raise exc
+            else:
+                await result_future
         finally:
+            if not result_future.done():
+                result_future.cancel()
+            elif result_future.exception() is not None:
+                # Retrieve so the event loop does not log "never retrieved".
+                result_future.exception()
             # Unregister active request when done
             async with self._lock:
                 self._active_requests.pop(request_id, None)

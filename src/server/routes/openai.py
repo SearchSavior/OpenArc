@@ -257,6 +257,8 @@ async def openai_chat_completions(
                             return
 
                         if isinstance(item, dict):
+                            if item.get("error"):
+                                raise RuntimeError(item["error"])
                             metrics_data = item.get("metrics", item)
                             continue
 
@@ -442,6 +444,8 @@ async def openai_completions(request: OpenAICompletionRequest, raw_request: Requ
                             return
 
                         if isinstance(item, dict):
+                            if item.get("error"):
+                                raise RuntimeError(item["error"])
                             metrics_data = item.get("metrics", item)
                             continue
 
