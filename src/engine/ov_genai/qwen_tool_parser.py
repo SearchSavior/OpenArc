@@ -221,7 +221,7 @@ class QwenXmlToolCallParser:
                     self.status = StreamingStatus.TOOL_CALL_STOP
                 return True
             self._buf = buf[len(TOOL_OPEN):]
-            self._start_call(fragments)
+            self._start_call()
             self._state = IN_TOOL_CALL
             return True
 
@@ -238,11 +238,7 @@ class QwenXmlToolCallParser:
                 return False
             name = buf[:gt].strip()
             self._buf = buf[gt + 1:]
-            self._cur["function"]["name"] = name
-            fragments.append({
-                "index": len(self._calls) - 1,
-                "function": {"name": name},
-            })
+            self._register_call(name, fragments)
             self._state = IN_FUNCTION
             return True
 
@@ -332,19 +328,28 @@ class QwenXmlToolCallParser:
         })
         self._cur["function"]["arguments"] += arguments
 
-    def _start_call(self, fragments: list):
+    def _start_call(self):
+        # Pending only: not registered in `_calls` (and no fragment emitted)
+        # until `_register_call` confirms this is really Qwen's
+        # <function=NAME> syntax. A <tool_call> block using a different
+        # format (e.g. Hermes-style raw JSON) never registers, so it can't
+        # surface as a bogus half-empty tool call - it's left for the
+        # accumulated-text Hermes fallback in openai.py to pick up instead.
         self._cur = {
             "id": f"call_{next(self._ids):024x}",
             "type": "function",
             "function": {"name": "", "arguments": ""},
         }
-        self._calls.append(self._cur)
         self._param_index = 0
+
+    def _register_call(self, name: str, fragments: list):
+        self._cur["function"]["name"] = name
+        self._calls.append(self._cur)
         fragments.append({
             "index": len(self._calls) - 1,
             "id": self._cur["id"],
             "type": "function",
-            "function": {"name": "", "arguments": ""},
+            "function": {"name": name, "arguments": ""},
         })
 
     def _close_call(self, fragments: list):

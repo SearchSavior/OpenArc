@@ -292,11 +292,10 @@ async def openai_chat_completions(
         created_ts = int(time.time())
         request_id = f"ov-{uuid.uuid4().hex[:24]}"
 
-        thinking_enabled = True
-        if chat_template_kwargs:
-            thinking_enabled = chat_template_kwargs.get(
-                "enable_thinking", True
-            )
+        # Don't assume hybrid-thinking mode unless told to expect it (see PR
+        # description): models without a closing </think> tag would otherwise
+        # have their entire streamed answer misclassified as reasoning_content.
+        thinking_enabled = bool(chat_template_kwargs.get("enable_thinking", False))
 
         if generation_config.stream:
 
