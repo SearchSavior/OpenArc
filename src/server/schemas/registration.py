@@ -60,6 +60,17 @@ class EngineType(str, Enum):
     OPENVINO = "openvino"
 
 
+class ToolCallParser(str, Enum):
+    """Tool-call output format the model was trained to emit, selected at load time.
+
+    Options:
+    - qwen35: Qwen3.5 XML format (<tool_call><function=NAME><parameter=KEY>...)
+    - hermes: Hermes JSON format (<tool_call>{"name": ..., "arguments": {...}}</tool_call>)"""
+
+    HERMES_PARSER = "hermes"
+    QWEN35_PARSER = "qwen35"
+
+
 class ModelLoadConfig(BaseModel):
     model_path: str = Field(
         description="""
@@ -117,6 +128,14 @@ class ModelLoadConfig(BaseModel):
     scheduler_config: Optional[SchedulerConfigSchema] = Field(
         default=None,
         description="Optional OpenVINO scheduler properties.",
+    )
+    tool_call_parser: Optional[ToolCallParser] = Field(
+        default=None,
+        description="""
+        Tool-call parser for this model, selected at load time (llm/vlm only).
+
+        When unset, /chat/completions requests containing tools are rejected
+        with 400.""",
     )
 
 

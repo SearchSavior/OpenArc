@@ -36,6 +36,7 @@ None signals completion.
 import asyncio
 import itertools
 import json
+import uuid
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import openvino_genai
@@ -518,3 +519,76 @@ class ToolCallStreamer(StreamerBase):
 
     def is_cancelled(self) -> bool:
         return self._cancelled.is_set()
+
+
+def _finalize_tool_calls(parser: QwenXmlToolCallParser) -> List[Dict[str, Any]]:
+    tool_calls: List[Dict[str, Any]] = []
+    for call in parser.tool_calls:
+        fn = call.get("function") or {}
+        name = fn.get("name") or ""
+        if not name:
+            continue
+        tool_calls.append(
+            {
+                "id": call.get("id") or f"call_{uuid.uuid4().hex[:24]}",
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "arguments": fn.get("arguments") or "{}",
+                },
+            }
+        )
+    return tool_calls
+
+
+def parse_generation(
+    text: str,
+    tools: Optional[List[Dict[str, Any]]] = None,
+    enable_thinking: bool = True,
+) -> tuple[str, str, Optional[List[Dict[str, Any]]]]:
+    """Split model output into (reasoning, content, tool_calls)."""
+    reasoning, remainder = ReasoningSplitter(enabled="</think>" in text).feed(text)
+    if remainder.startswith("<think>"):
+        remainder = remainder[len("<think>") :]
+    if "<function=" not in remainder:
+        return reasoning, remainder, None
+
+    parser = QwenXmlToolCallParser(tools)
+    content, _ = parser.feed(remainder)
+    parser.finalize()
+    tool_calls = _finalize_tool_calls(parser) or None
+    return reasoning, content, tool_calls
+
+
+class Qwen35StreamParser:
+    """Streaming facade over ReasoningSplitter + QwenXmlToolCallParser.
+
+    feed() returns OpenAI delta dicts in order
+    [{reasoning_content}, {content}, {tool_calls}], skipping empty entries.
+    finish() finalizes the parser (surfaces truncated structures in
+    parser.errors) and returns [].
+    """
+
+    def __init__(
+        self,
+        tools: Optional[List[Dict[str, Any]]] = None,
+        enable_thinking: bool = True,
+    ):
+        self._reasoning = ReasoningSplitter(enabled=enable_thinking)
+        self._tool_parser = QwenXmlToolCallParser(tools)
+
+    def feed(self, text: str) -> List[Dict[str, Any]]:
+        out: List[Dict[str, Any]] = []
+        reason_delta, text_delta = self._reasoning.feed(text)
+        content_delta, fragments = self._tool_parser.feed(text_delta)
+        if reason_delta:
+            out.append({"reasoning_content": reason_delta})
+        if content_delta:
+            out.append({"content": content_delta})
+        if fragments:
+            out.append({"tool_calls": fragments})
+        return out
+
+    def finish(self) -> List[Dict[str, Any]]:
+        self._tool_parser.finalize()
+        return []

@@ -31,137 +31,18 @@ from src.server.schemas.requests_openai import (
     OpenArcASRConfig,
     RerankRequest,
 )
-from src.engine.ov_genai.qwen_tool_parser import (
-    QwenXmlToolCallParser,
-    ReasoningSplitter,
-)
+from src.engine.ov_genai.tool_parse import hermes, qwen35
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1")
 
 
-# ---- tool call helpers ----
-
-def _extract_hermes_tool_call_payloads(text: str) -> List[str]:
-    open_tag = "<tool_call>"
-    close_tag = "</tool_call>"
-    payloads: List[str] = []
-    cursor = 0
-
-    while True:
-        start = text.find(open_tag, cursor)
-        if start < 0:
-            break
-
-        payload_start = start + len(open_tag)
-        end = text.find(close_tag, payload_start)
-        if end < 0:
-            payload = text[payload_start:].strip()
-            if payload:
-                payloads.append(payload)
-            break
-
-        payload = text[payload_start:end].strip()
-        if payload:
-            payloads.append(payload)
-
-        cursor = end + len(close_tag)
-
-    return payloads
-
-
-def _format_tool_call_arguments(arguments: Any) -> str:
-    if isinstance(arguments, str):
-        try:
-            return json.dumps(json.loads(arguments))
-        except json.JSONDecodeError:
-            return arguments
-    return json.dumps(arguments)
-
-
-def _finalize_qwen_calls(parser: QwenXmlToolCallParser) -> List[Dict[str, Any]]:
-    tool_calls: List[Dict[str, Any]] = []
-    for call in parser.tool_calls:
-        fn = call.get("function") or {}
-        name = fn.get("name") or ""
-        if not name:
-            continue
-        tool_calls.append(
-            {
-                "id": call.get("id") or f"call_{uuid.uuid4().hex[:24]}",
-                "type": "function",
-                "function": {
-                    "name": name,
-                    "arguments": fn.get("arguments") or "{}",
-                },
-            }
-        )
-    return tool_calls
-
-
-def parse_hermes_tool_calls(text: str) -> Optional[List[Dict[str, Any]]]:
-    tool_calls: List[Dict[str, Any]] = []
-    for payload in _extract_hermes_tool_call_payloads(text):
-        try:
-            data = json.loads(payload)
-            if isinstance(data, dict) and "name" in data and "arguments" in data:
-                tool_calls.append(
-                    {
-                        "id": f"call_{uuid.uuid4().hex[:24]}",
-                        "type": "function",
-                        "function": {
-                            "name": str(data.get("name", "")),
-                            "arguments": _format_tool_call_arguments(
-                                data.get("arguments", {})
-                            ),
-                        },
-                    }
-                )
-        except json.JSONDecodeError:
-            continue
-    return tool_calls if tool_calls else None
-
-
-def parse_generation(
-    text: str,
-    tools: Optional[List[Dict[str, Any]]] = None,
-    enable_thinking: bool = True,
-) -> tuple[str, str, Optional[List[Dict[str, Any]]]]:
-    """Split model output into (reasoning, content, tool_calls).
-
-    Prefers Qwen XML ``<function=...>`` tool calls; falls back to Hermes JSON
-    inside ``<tool_call>`` tags.
-    """
-    # Whole-string parse: only split reasoning when </think> is present.
-    # Otherwise Hermes / plain replies would be swallowed as thinking.
-    reasoning, remainder = ReasoningSplitter(enabled="</think>" in text).feed(text)
-    if remainder.startswith("<think>"):
-        remainder = remainder[len("<think>") :]
-
-    if "<function=" in remainder:
-        parser = QwenXmlToolCallParser(tools)
-        content, _ = parser.feed(remainder)
-        parser.finalize()
-        tool_calls = _finalize_qwen_calls(parser) or None
-        return reasoning, content, tool_calls
-
-    hermes = parse_hermes_tool_calls(remainder)
-    if hermes:
-        content = remainder
-        for payload in _extract_hermes_tool_call_payloads(remainder):
-            content = content.replace(f"<tool_call>{payload}</tool_call>", "")
-            content = content.replace(f"<tool_call>\n{payload}\n</tool_call>", "")
-        return reasoning, content.strip(), hermes
-
-    return reasoning, remainder, None
-
-
-def parse_tool_calls(
-    text: str, tools: Optional[List[Dict[str, Any]]] = None
-) -> Optional[List[Dict[str, Any]]]:
-    _, _, tool_calls = parse_generation(text, tools)
-    return tool_calls
+# Tool-call parser modules keyed by ModelLoadConfig.tool_call_parser value.
+_TOOL_PARSERS = {
+    "qwen35": qwen35,
+    "hermes": hermes,
+}
 
 
 def _prepend_system_instruction(messages: Any, instruction: str) -> Any:
@@ -258,6 +139,20 @@ async def openai_chat_completions(
     try:
         logger.info(f'"{request.model}" request received')
 
+        tool_parser_name = None
+        async with _registry._lock:
+            for record in _registry._models.values():
+                if record.model_name == request.model:
+                    tool_parser_name = record.tool_call_parser
+                    break
+
+        if tool_parser_name is None and request.tools:
+            raise ValueError(
+                f"Model '{request.model}' has no tool_call_parser configured; "
+                "set one in the model config (e.g. 'openarc add --tool-call-parser qwen35|hermes')"
+            )
+        parser_module = _TOOL_PARSERS.get(tool_parser_name) if tool_parser_name else None
+
         messages, tools = _apply_tool_choice(
             request.messages,
             request.tools,
@@ -304,9 +199,15 @@ async def openai_chat_completions(
                 metrics_data = None
                 tool_call_sent = False
                 cancel_request_id = None
-                reasoning = ReasoningSplitter(enabled=thinking_enabled)
-                tool_parser = QwenXmlToolCallParser(tools)
-                accumulated_text = ""
+                stream_parser = None
+                if parser_module is qwen35:
+                    stream_parser = qwen35.Qwen35StreamParser(
+                        tools, enable_thinking=thinking_enabled
+                    )
+                elif parser_module is hermes:
+                    stream_parser = hermes.HermesStreamParser(
+                        enable_thinking=thinking_enabled
+                    )
 
                 def _chunk(delta: dict) -> bytes:
                     return (
@@ -334,17 +235,13 @@ async def openai_chat_completions(
                             metrics_data = item.get("metrics", item)
                             continue
 
-                        accumulated_text += item
-                        reason_delta, text_delta = reasoning.feed(item)
-                        content_delta, fragments = tool_parser.feed(text_delta)
-
-                        if reason_delta:
-                            yield _chunk({"reasoning_content": reason_delta})
-                        if content_delta:
-                            yield _chunk({"content": content_delta})
-                        if fragments:
-                            tool_call_sent = True
-                            yield _chunk({"tool_calls": fragments})
+                        if stream_parser is not None:
+                            for delta in stream_parser.feed(item):
+                                if "tool_calls" in delta:
+                                    tool_call_sent = True
+                                yield _chunk(delta)
+                        else:
+                            yield _chunk({"content": item})
                 except asyncio.CancelledError:
                     if cancel_request_id:
                         await _workers.infer_cancel(cancel_request_id)
@@ -353,39 +250,11 @@ async def openai_chat_completions(
                         )
                     raise
 
-                tool_parser.finalize()
-                if not tool_call_sent:
-                    hermes = parse_hermes_tool_calls(accumulated_text)
-                    if hermes:
-                        tool_call_sent = True
-                        for idx, tc in enumerate(hermes):
-                            yield _chunk(
-                                {
-                                    "tool_calls": [
-                                        {
-                                            "index": idx,
-                                            "id": tc["id"],
-                                            "type": tc["type"],
-                                            "function": {
-                                                "name": tc["function"]["name"],
-                                                "arguments": "",
-                                            },
-                                        }
-                                    ]
-                                }
-                            )
-                            yield _chunk(
-                                {
-                                    "tool_calls": [
-                                        {
-                                            "index": idx,
-                                            "function": {
-                                                "arguments": tc["function"]["arguments"]
-                                            },
-                                        }
-                                    ]
-                                }
-                            )
+                if stream_parser is not None:
+                    for delta in stream_parser.finish():
+                        if "tool_calls" in delta:
+                            tool_call_sent = True
+                        yield _chunk(delta)
 
                 prompt_tokens = (metrics_data or {}).get("input_token", 0)
                 completion_tokens = (metrics_data or {}).get("new_token", 0)
@@ -426,9 +295,12 @@ async def openai_chat_completions(
             completion_tokens = metrics.get("new_token", 0)
             total_tokens = metrics.get("total_token", prompt_tokens + completion_tokens)
 
-            reasoning_text, content_text, tool_calls = parse_generation(
-                text, tools, thinking_enabled
-            )
+            if parser_module is not None:
+                reasoning_text, content_text, tool_calls = parser_module.parse_generation(
+                    text, tools, thinking_enabled
+                )
+            else:
+                reasoning_text, content_text, tool_calls = None, text, None
             message = {"role": "assistant"}
             finish_reason = "stop"
 

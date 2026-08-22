@@ -1,10 +1,13 @@
 import json
-from typing import Any, AsyncIterator, Dict, List
+from types import SimpleNamespace
+from typing import Any, AsyncIterator, Dict, List, Optional
 
 import pytest  # type: ignore[import]
+from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 
 import src.server.routes.openai as openai_routes
+from src.engine.ov_genai.tool_parse import hermes, qwen35
 from src.server.schemas.requests_openai import OpenAIChatCompletionRequest
 from src.server.utils.chat import flatten_messages, normalize_tool_calls_for_template
 
@@ -61,6 +64,26 @@ class _DummyRequest:
         return False
 
 
+class _FakeRegistry:
+    """Minimal registry stand-in: one record with a configurable parser."""
+
+    def __init__(self, tool_call_parser: Optional[str]) -> None:
+        class _Lock:
+            async def __aenter__(self) -> "_Lock":
+                return self
+
+            async def __aexit__(self, *exc: Any) -> bool:
+                return False
+
+        self._lock = _Lock()
+        self._models = {
+            "fake-id": SimpleNamespace(
+                model_name="demo-model",
+                tool_call_parser=tool_call_parser,
+            )
+        }
+
+
 def _extract_sse_payloads(chunks: List[bytes]) -> List[str]:
     payloads: List[str] = []
     for chunk in chunks:
@@ -70,14 +93,17 @@ def _extract_sse_payloads(chunks: List[bytes]) -> List[str]:
     return payloads
 
 
-def test_parse_tool_calls_supports_hermes_tool_call_tags() -> None:
+# ---- hermes parser unit tests ----
+
+
+def test_parse_generation_supports_hermes_tool_call_tags() -> None:
     text = (
         "<tool_call>"
         '{"name":"search","arguments":{"query":"OpenVINO"}}'
         "</tool_call>"
     )
 
-    tool_calls = openai_routes.parse_tool_calls(text)
+    _, _, tool_calls = hermes.parse_generation(text)
 
     assert tool_calls is not None
     assert len(tool_calls) == 1
@@ -86,10 +112,10 @@ def test_parse_tool_calls_supports_hermes_tool_call_tags() -> None:
     assert json.loads(tool_calls[0]["function"]["arguments"]) == {"query": "OpenVINO"}
 
 
-def test_parse_tool_calls_supports_missing_closing_tag_until_eos() -> None:
+def test_parse_generation_supports_missing_closing_tag_until_eos() -> None:
     text = '<tool_call>{"name":"search","arguments":{"query":"vLLM"}}'
 
-    tool_calls = openai_routes.parse_tool_calls(text)
+    _, _, tool_calls = hermes.parse_generation(text)
 
     assert tool_calls is not None
     assert len(tool_calls) == 1
@@ -97,98 +123,38 @@ def test_parse_tool_calls_supports_missing_closing_tag_until_eos() -> None:
     assert json.loads(tool_calls[0]["function"]["arguments"]) == {"query": "vLLM"}
 
 
-def test_parse_tool_calls_rejects_plain_json_without_tool_call_tags() -> None:
+def test_parse_generation_rejects_plain_json_without_tool_call_tags() -> None:
     text = '{"name":"search","arguments":{"query":"legacy"}}'
 
-    tool_calls = openai_routes.parse_tool_calls(text)
+    _, _, tool_calls = hermes.parse_generation(text)
 
     assert tool_calls is None
 
 
-@pytest.mark.asyncio
-async def test_openai_chat_completions_non_streaming_tool_calls(monkeypatch: pytest.MonkeyPatch) -> None:
-    class _Workers:
-        async def generate(self, model_name: str, generation_config: Any) -> Dict[str, Any]:
-            return {
-                "text": (
-                    "<tool_call>"
-                    '{"name":"search","arguments":{"query":"OpenArc"}}'
-                    "</tool_call>"
-                ),
-                "metrics": {"input_token": 4, "new_token": 6, "total_token": 10},
-            }
+def test_hermes_stream_parser_incremental() -> None:
+    parser = hermes.HermesStreamParser(enable_thinking=False)
+    deltas: List[Dict[str, Any]] = []
+    for chunk in (
+        "The answer",
+        " is.<tool_",
+        'call>{"name":"search","arguments":{"query":"OpenArc"}}',
+        "</tool_call>",
+    ):
+        deltas.extend(parser.feed(chunk))
+    deltas.extend(parser.finish())
 
-    monkeypatch.setattr(openai_routes, "_workers", _Workers())
+    content = "".join(d.get("content", "") for d in deltas)
+    assert content == "The answer is."
 
-    request = OpenAIChatCompletionRequest(
-        model="demo-model",
-        messages=[{"role": "user", "content": "Find OpenArc docs"}],
-        stream=False,
-    )
-
-    response = await openai_routes.openai_chat_completions(request, _DummyRequest())
-
-    choice = response["choices"][0]
-    assert choice["finish_reason"] == "tool_calls"
-    assert choice["message"]["content"] is None
-    assert len(choice["message"]["tool_calls"]) == 1
-    assert choice["message"]["tool_calls"][0]["function"]["name"] == "search"
-    assert json.loads(choice["message"]["tool_calls"][0]["function"]["arguments"]) == {
+    tool_deltas = [d for d in deltas if "tool_calls" in d]
+    assert len(tool_deltas) == 2
+    assert tool_deltas[0]["tool_calls"][0]["function"]["name"] == "search"
+    assert json.loads(tool_deltas[1]["tool_calls"][0]["function"]["arguments"]) == {
         "query": "OpenArc"
     }
 
 
-@pytest.mark.asyncio
-async def test_openai_chat_completions_streaming_hermes_tool_call(monkeypatch: pytest.MonkeyPatch) -> None:
-    class _Workers:
-        async def stream_generate(self, model_name: str, generation_config: Any) -> AsyncIterator[Any]:
-            yield "<tool_"
-            yield 'call>{"name":"search","arguments":{"query":"OpenArc"}}'
-            yield "</tool_call>"
-            yield {"metrics": {"input_token": 2, "new_token": 3, "total_token": 5}}
-
-        async def infer_cancel(self, request_id: str) -> None:
-            return None
-
-    monkeypatch.setattr(openai_routes, "_workers", _Workers())
-
-    request = OpenAIChatCompletionRequest(
-        model="demo-model",
-        messages=[{"role": "user", "content": "Find OpenArc docs"}],
-        stream=True,
-    )
-
-    response = await openai_routes.openai_chat_completions(request, _DummyRequest())
-    assert isinstance(response, StreamingResponse)
-
-    chunks: List[bytes] = []
-    async for chunk in response.body_iterator:
-        chunks.append(chunk)
-
-    payloads = _extract_sse_payloads(chunks)
-    assert payloads[-1] == "[DONE]"
-
-    json_payloads = [json.loads(p) for p in payloads if p != "[DONE]"]
-
-    content_deltas = [
-        payload
-        for payload in json_payloads
-        if payload["choices"][0]["delta"].get("content")
-    ]
-    assert content_deltas == []
-
-    tool_deltas = [
-        payload
-        for payload in json_payloads
-        if payload["choices"][0]["delta"].get("tool_calls")
-    ]
-    assert len(tool_deltas) >= 2
-    assert tool_deltas[0]["choices"][0]["delta"]["tool_calls"][0]["function"]["name"] == "search"
-    assert json.loads(
-        tool_deltas[1]["choices"][0]["delta"]["tool_calls"][0]["function"]["arguments"]
-    ) == {"query": "OpenArc"}
-
-    assert json_payloads[-1]["choices"][0]["finish_reason"] == "tool_calls"
+# ---- qwen35 parser unit tests ----
 
 
 QWEN_TOOLS = [
@@ -257,8 +223,12 @@ QWEN_TYPED = (
 )
 
 
-def test_parse_tool_calls_supports_qwen_xml() -> None:
-    tool_calls = openai_routes.parse_tool_calls(QWEN_SINGLE, QWEN_TOOLS)
+def _qwen_tool_calls(text: str) -> Optional[List[Dict[str, Any]]]:
+    return qwen35.parse_generation(text, QWEN_TOOLS)[2]
+
+
+def test_parse_generation_supports_qwen_xml() -> None:
+    tool_calls = _qwen_tool_calls(QWEN_SINGLE)
 
     assert tool_calls is not None
     assert len(tool_calls) == 1
@@ -269,8 +239,8 @@ def test_parse_tool_calls_supports_qwen_xml() -> None:
     }
 
 
-def test_parse_tool_calls_supports_qwen_xml_parallel_and_bools() -> None:
-    tool_calls = openai_routes.parse_tool_calls(QWEN_PARALLEL, QWEN_TOOLS)
+def test_parse_generation_supports_qwen_xml_parallel_and_bools() -> None:
+    tool_calls = _qwen_tool_calls(QWEN_PARALLEL)
 
     assert tool_calls is not None
     assert [c["function"]["name"] for c in tool_calls] == [
@@ -285,9 +255,7 @@ def test_parse_tool_calls_supports_qwen_xml_parallel_and_bools() -> None:
 
 
 def test_parse_generation_strips_thinking_and_xml() -> None:
-    reasoning, content, tool_calls = openai_routes.parse_generation(
-        QWEN_SINGLE, QWEN_TOOLS
-    )
+    reasoning, content, tool_calls = qwen35.parse_generation(QWEN_SINGLE, QWEN_TOOLS)
 
     assert "weather" in reasoning
     assert "<tool_call>" not in content
@@ -296,11 +264,15 @@ def test_parse_generation_strips_thinking_and_xml() -> None:
     assert tool_calls[0]["function"]["name"] == "get_weather"
 
 
-def test_parse_tool_calls_qwen_typed_params() -> None:
-    tool_calls = openai_routes.parse_tool_calls(QWEN_TYPED, QWEN_TOOLS)
+def test_parse_generation_qwen_typed_params() -> None:
+    tool_calls = _qwen_tool_calls(QWEN_TYPED)
+    assert tool_calls is not None
     args = json.loads(tool_calls[0]["function"]["arguments"])
     assert args["days"] == 5
     assert args["urgent"] is False
+
+
+# ---- _apply_tool_choice ----
 
 
 def test_apply_tool_choice_none_hides_tools() -> None:
@@ -342,6 +314,97 @@ def test_apply_named_tool_choice_rejects_unknown_tool() -> None:
         )
 
 
+# ---- route tests ----
+
+
+@pytest.mark.asyncio
+async def test_openai_chat_completions_non_streaming_tool_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Workers:
+        async def generate(self, model_name: str, generation_config: Any) -> Dict[str, Any]:
+            return {
+                "text": (
+                    "<tool_call>"
+                    '{"name":"search","arguments":{"query":"OpenArc"}}'
+                    "</tool_call>"
+                ),
+                "metrics": {"input_token": 4, "new_token": 6, "total_token": 10},
+            }
+
+    monkeypatch.setattr(openai_routes, "_workers", _Workers())
+    monkeypatch.setattr(openai_routes, "_registry", _FakeRegistry("hermes"))
+
+    request = OpenAIChatCompletionRequest(
+        model="demo-model",
+        messages=[{"role": "user", "content": "Find OpenArc docs"}],
+        stream=False,
+    )
+
+    response = await openai_routes.openai_chat_completions(request, _DummyRequest())
+
+    choice = response["choices"][0]
+    assert choice["finish_reason"] == "tool_calls"
+    assert choice["message"]["content"] is None
+    assert len(choice["message"]["tool_calls"]) == 1
+    assert choice["message"]["tool_calls"][0]["function"]["name"] == "search"
+    assert json.loads(choice["message"]["tool_calls"][0]["function"]["arguments"]) == {
+        "query": "OpenArc"
+    }
+
+
+@pytest.mark.asyncio
+async def test_openai_chat_completions_streaming_hermes_tool_call(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Workers:
+        async def stream_generate(self, model_name: str, generation_config: Any) -> AsyncIterator[Any]:
+            yield "<tool_"
+            yield 'call>{"name":"search","arguments":{"query":"OpenArc"}}'
+            yield "</tool_call>"
+            yield {"metrics": {"input_token": 2, "new_token": 3, "total_token": 5}}
+
+        async def infer_cancel(self, request_id: str) -> None:
+            return None
+
+    monkeypatch.setattr(openai_routes, "_workers", _Workers())
+    monkeypatch.setattr(openai_routes, "_registry", _FakeRegistry("hermes"))
+
+    request = OpenAIChatCompletionRequest(
+        model="demo-model",
+        messages=[{"role": "user", "content": "Find OpenArc docs"}],
+        stream=True,
+    )
+
+    response = await openai_routes.openai_chat_completions(request, _DummyRequest())
+    assert isinstance(response, StreamingResponse)
+
+    chunks: List[bytes] = []
+    async for chunk in response.body_iterator:
+        chunks.append(chunk)
+
+    payloads = _extract_sse_payloads(chunks)
+    assert payloads[-1] == "[DONE]"
+
+    json_payloads = [json.loads(p) for p in payloads if p != "[DONE]"]
+
+    content_deltas = [
+        payload
+        for payload in json_payloads
+        if payload["choices"][0]["delta"].get("content")
+    ]
+    assert content_deltas == []
+
+    tool_deltas = [
+        payload
+        for payload in json_payloads
+        if payload["choices"][0]["delta"].get("tool_calls")
+    ]
+    assert len(tool_deltas) >= 2
+    assert tool_deltas[0]["choices"][0]["delta"]["tool_calls"][0]["function"]["name"] == "search"
+    assert json.loads(
+        tool_deltas[1]["choices"][0]["delta"]["tool_calls"][0]["function"]["arguments"]
+    ) == {"query": "OpenArc"}
+
+    assert json_payloads[-1]["choices"][0]["finish_reason"] == "tool_calls"
+
+
 @pytest.mark.asyncio
 async def test_openai_chat_completions_non_streaming_qwen_xml(
     monkeypatch: pytest.MonkeyPatch,
@@ -354,6 +417,7 @@ async def test_openai_chat_completions_non_streaming_qwen_xml(
             }
 
     monkeypatch.setattr(openai_routes, "_workers", _Workers())
+    monkeypatch.setattr(openai_routes, "_registry", _FakeRegistry("qwen35"))
 
     request = OpenAIChatCompletionRequest(
         model="demo-model",
@@ -385,6 +449,7 @@ async def test_openai_chat_completions_streaming_qwen_xml(
             return None
 
     monkeypatch.setattr(openai_routes, "_workers", _Workers())
+    monkeypatch.setattr(openai_routes, "_registry", _FakeRegistry("qwen35"))
 
     request = OpenAIChatCompletionRequest(
         model="demo-model",
@@ -411,3 +476,87 @@ async def test_openai_chat_completions_streaming_qwen_xml(
     assert "get_weather" in names
     assert json.loads(args) == {"location": "Warsaw", "unit": "celsius"}
     assert payloads[-1]["choices"][0]["finish_reason"] == "tool_calls"
+
+
+# ---- unset tool_call_parser ----
+
+
+@pytest.mark.asyncio
+async def test_tools_request_rejected_without_parser(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Workers:
+        async def generate(self, model_name: str, generation_config: Any) -> Dict[str, Any]:
+            return {"text": "hello", "metrics": {}}
+
+    monkeypatch.setattr(openai_routes, "_workers", _Workers())
+    monkeypatch.setattr(openai_routes, "_registry", _FakeRegistry(None))
+
+    request = OpenAIChatCompletionRequest(
+        model="demo-model",
+        messages=[{"role": "user", "content": "Hi"}],
+        tools=QWEN_TOOLS,
+        stream=False,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await openai_routes.openai_chat_completions(request, _DummyRequest())
+    assert exc_info.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_plain_request_passthrough_without_parser(monkeypatch: pytest.MonkeyPatch) -> None:
+    raw_text = "Plain answer. <tool_call> not parsed."
+
+    class _Workers:
+        async def generate(self, model_name: str, generation_config: Any) -> Dict[str, Any]:
+            return {
+                "text": raw_text,
+                "metrics": {"input_token": 2, "new_token": 3, "total_token": 5},
+            }
+
+    monkeypatch.setattr(openai_routes, "_workers", _Workers())
+    monkeypatch.setattr(openai_routes, "_registry", _FakeRegistry(None))
+
+    request = OpenAIChatCompletionRequest(
+        model="demo-model",
+        messages=[{"role": "user", "content": "Hi"}],
+        stream=False,
+    )
+
+    response = await openai_routes.openai_chat_completions(request, _DummyRequest())
+    choice = response["choices"][0]
+    assert choice["finish_reason"] == "stop"
+    assert choice["message"]["content"] == raw_text
+    assert "reasoning_content" not in choice["message"]
+
+
+@pytest.mark.asyncio
+async def test_streaming_passthrough_without_parser(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Workers:
+        async def stream_generate(self, model_name: str, generation_config: Any) -> AsyncIterator[Any]:
+            yield "chunk one. "
+            yield "chunk two."
+            yield {"metrics": {"input_token": 2, "new_token": 3, "total_token": 5}}
+
+        async def infer_cancel(self, request_id: str) -> None:
+            return None
+
+    monkeypatch.setattr(openai_routes, "_workers", _Workers())
+    monkeypatch.setattr(openai_routes, "_registry", _FakeRegistry(None))
+
+    request = OpenAIChatCompletionRequest(
+        model="demo-model",
+        messages=[{"role": "user", "content": "Hi"}],
+        stream=True,
+    )
+
+    response = await openai_routes.openai_chat_completions(request, _DummyRequest())
+    chunks: List[bytes] = []
+    async for chunk in response.body_iterator:
+        chunks.append(chunk)
+
+    payloads = [json.loads(p) for p in _extract_sse_payloads(chunks) if p != "[DONE]"]
+    content = "".join(
+        p["choices"][0]["delta"].get("content", "") for p in payloads[:-1]
+    )
+    assert content == "chunk one. chunk two."
+    assert payloads[-1]["choices"][0]["finish_reason"] == "stop"

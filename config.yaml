@@ -14,6 +14,7 @@ models:
     model_type: llm
     model_path: /mnt/Ironwolf-4TB/Models/OpenVINO/Qwen3.5/Qwen3.5-0.8B-int8_asym-ov/
     device: CPU
+    tool_call_parser: qwen35
     runtime_config:
       PERFORMANCE_HINT: LATENCY
     samplers:

@@ -35,6 +35,7 @@ class ModelRecord:
     engine: str = ""
     device: str = ""
     runtime_config: Dict[str, Any] = field(default_factory=dict)
+    tool_call_parser: Optional[str] = None
 
 
     def registered_models(self) -> dict:
@@ -45,6 +46,7 @@ class ModelRecord:
             "engine": self.engine,
             "device": self.device,
             "runtime_config": self.runtime_config,
+            "tool_call_parser": self.tool_call_parser,
             "status": self.status.value,
             "time_loaded": self.time_loaded.isoformat(),
         }
@@ -96,6 +98,9 @@ class ModelRegistry:
             engine=loader.engine,
             device=loader.device,
             runtime_config=loader.runtime_config,
+            tool_call_parser=(
+                loader.tool_call_parser.value if loader.tool_call_parser else None
+            ),
             status=ModelStatus.LOADING,
         )
 
