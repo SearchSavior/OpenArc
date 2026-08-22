@@ -16,6 +16,16 @@ models:
     device: CPU
     runtime_config:
       PERFORMANCE_HINT: LATENCY
+    scheduler_config:
+      max_num_batched_tokens: 
+      num_kv_blocks:
+      cache_size:
+      num_linear_attention_blocks:
+      cache_interval_multiplier:
+      dynamic_split_fuse:
+      enable_prefix_caching:
+      use_cache_eviction:
+      use_sparse_attention:
     samplers:
       temperature: 0.7
       top_k: 40
@@ -54,4 +64,52 @@ models:
     model_path:
     engine: openvino
     device: GPU.0
-  
+    qwen3_tts_custom_voice_options:
+      language:
+      speaker: 
+      instruct:
+    qwen3_tts_options:
+      max_new_tokens:
+      do_sample:
+      top_k:
+      top_p:
+      temperature:
+      repetition_penalty:
+      subtalker_do_sample:
+      subtalker_top_k:
+      subtalker_top_p:
+      subtalker_temperature:
+      stream: 
+      stream_chunk_frames:
+      stream_left_context:
+
+
+  qwen3_tts_oscar:
+    model_type: qwen3_tts_voice_design
+    model_path:
+    engine: openvino
+    device: GPU.0
+    qwen3_tts_voice_design_options:
+      voice_description:
+    qwen3_tts_options:
+      max_new_tokens:
+      do_sample:
+      top_k:
+      top_p:
+      temperature:
+      repetition_penalty:
+      subtalker_do_sample:
+      subtalker_top_k:
+      subtalker_top_p:
+      subtalker_temperature:
+      stream: 
+      stream_chunk_frames:
+      stream_left_context:
+
+
+  qwen3_tts_oscar:
+    model_type: qwen3_tts_voice_clone
+    model_path:
+    engine: openvino
+    device: GPU.0
+    qwen3_tts_voice_clone_options:
