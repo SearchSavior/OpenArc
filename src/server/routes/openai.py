@@ -179,6 +179,8 @@ async def openai_chat_completions(
             "presence_penalty": request.presence_penalty,
             "chat_template_kwargs": chat_template_kwargs,
         }
+        if parser_module is not None:
+            config_kwargs["tool_call_parser"] = tool_parser_name
         config_kwargs = {k: v for k, v in config_kwargs.items() if v is not None}
 
         generation_config = OVGenAI_GenConfig(**config_kwargs)
@@ -200,7 +202,11 @@ async def openai_chat_completions(
                 tool_call_sent = False
                 cancel_request_id = None
                 stream_parser = None
-                if parser_module is qwen35:
+                # qwen35 tool requests stream through the engine's
+                # Qwen35ToolCallStreamer (parsed deltas on the worker queue);
+                # the text-delta facade only handles no-tool qwen35 requests.
+                engine_tool_stream = parser_module is qwen35 and bool(tools)
+                if parser_module is qwen35 and not engine_tool_stream:
                     stream_parser = qwen35.Qwen35StreamParser(
                         tools, enable_thinking=thinking_enabled
                     )
@@ -232,6 +238,13 @@ async def openai_chat_completions(
                         if isinstance(item, dict):
                             if item.get("error"):
                                 raise RuntimeError(item["error"])
+                            if "chat_delta" in item:
+                                # Parsed deltas from Qwen35ToolCallStreamer
+                                for delta in item["chat_delta"]:
+                                    if "tool_calls" in delta:
+                                        tool_call_sent = True
+                                    yield _chunk(delta)
+                                continue
                             metrics_data = item.get("metrics", item)
                             continue
 

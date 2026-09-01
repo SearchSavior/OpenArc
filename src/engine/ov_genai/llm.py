@@ -16,7 +16,7 @@ from transformers import AutoTokenizer, BatchEncoding
 from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_GenConfig
 from src.server.model_registry import ModelRegistry
 from src.server.schemas.registration import ModelLoadConfig
-from src.engine.ov_genai.streamers import ChunkStreamer
+from src.engine.ov_genai.streamers import select_streamer
 from src.server.utils.chat import flatten_messages
 
 logger = logging.getLogger(__name__)
@@ -115,7 +115,7 @@ class OVGenAI_LLM:
 
         generation_kwargs = self.create_generation_config(gen_config)
         decoder_tokenizer = self.model.get_tokenizer()
-        streamer = ChunkStreamer(decoder_tokenizer, gen_config)
+        streamer = select_streamer(decoder_tokenizer, gen_config)
         
         # Track active request and streamer for cancellation
         self._active_request_id = gen_config.request_id

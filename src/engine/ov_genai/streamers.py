@@ -4,6 +4,7 @@ import asyncio
 
 from openvino_genai import StreamerBase
 from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_GenConfig
+from src.engine.ov_genai.tool_parse import qwen35 as qwen35_tool_parse
 
 
 class ChunkStreamer(StreamerBase):
@@ -80,3 +81,15 @@ class ChunkStreamer(StreamerBase):
             if chunk:
                 self._enqueue(chunk)
         self._enqueue(None)
+
+
+def select_streamer(tokenizer, gen_config: OVGenAI_GenConfig) -> StreamerBase:
+    """Pick the streaming implementation for a generation request.
+
+    Tool-call requests on qwen35 models stream through Qwen35ToolCallStreamer
+    (token-ID block boundaries, parsed OpenAI deltas); everything else uses
+    ChunkStreamer. Both enqueue on .text_queue, so consumers are unaffected.
+    """
+    if gen_config.tools and getattr(gen_config, "tool_call_parser", None) == "qwen35":
+        return qwen35_tool_parse.Qwen35ToolCallStreamer(tokenizer, gen_config)
+    return ChunkStreamer(tokenizer, gen_config)

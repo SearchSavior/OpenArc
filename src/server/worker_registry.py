@@ -134,7 +134,10 @@ class InferWorker:
         try:
             async for item in llm_instance.generate_type(packet.gen_config):
                 if isinstance(item, dict):
-                    metrics = item
+                    if "chat_delta" in item and packet.stream_queue is not None:
+                        await packet.stream_queue.put(item)
+                    elif "chat_delta" not in item:
+                        metrics = item
                 else:
                     if packet.gen_config.stream:
                         final_text += item
@@ -166,7 +169,10 @@ class InferWorker:
         try:
             async for item in vlm_model.generate_type(packet.gen_config):
                 if isinstance(item, dict):
-                    metrics = item
+                    if "chat_delta" in item and packet.stream_queue is not None:
+                        await packet.stream_queue.put(item)
+                    elif "chat_delta" not in item:
+                        metrics = item
                 else:
                     if packet.gen_config.stream:
                         final_text += item

@@ -65,6 +65,16 @@ class OVGenAI_GenConfig(BaseModel):
         default=None,
         description="List of tools/functions available to the model. None by default."
     )
+    tool_call_parser: Optional[str] = Field(
+        default=None,
+        description=(
+            "Name of the server-side tool-call parser registered for the model "
+            "(e.g. 'qwen35'). Set by /v1/chat/completions; when tools are present "
+            "and the parser is qwen35, the engine streams with the token-ID "
+            "Qwen35ToolCallStreamer instead of ChunkStreamer (stream_chunk_tokens "
+            "does not apply to that path)."
+        ),
+    )
     request_id: Optional[str] = Field(
         default=None,
         description="Request ID for tracking and cancellation."

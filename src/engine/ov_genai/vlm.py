@@ -22,7 +22,7 @@ from src.server.utils.chat import flatten_message_content, flatten_messages
 from src.server.utils.resolve_vlm_type import is_qwen3_5_architecture, resolve_vlm_vision_token
 from src.server.model_registry import ModelRegistry
 from src.server.schemas.registration import ModelLoadConfig
-from src.engine.ov_genai.streamers import ChunkStreamer
+from src.engine.ov_genai.streamers import select_streamer
 
 logger = logging.getLogger(__name__)
 
@@ -192,7 +192,7 @@ class OVGenAI_VLM:
         generation_kwargs = self.create_generation_config(gen_config)
 
         decoder_tokenizer = self.model_path.get_tokenizer()
-        streamer = ChunkStreamer(decoder_tokenizer, gen_config)
+        streamer = select_streamer(decoder_tokenizer, gen_config)
         
         # Track active request and streamer for cancellation
         self._active_request_id = gen_config.request_id

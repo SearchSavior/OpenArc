@@ -193,33 +193,33 @@ QWEN_TOOLS = [
 
 
 QWEN_SINGLE = (
-    "The user asked for weather.\n</think>\n\n"
-    "<tool_call>\n<function=get_weather>\n"
+    "The user asked for weather.\n" + qwen35.THINK_CLOSE + "\n\n"
+    + qwen35.TOOL_OPEN + "\n<function=get_weather>\n"
     "<parameter=location>\nWarsaw\n</parameter>\n"
     "<parameter=unit>\ncelsius\n</parameter>\n"
-    "</function>\n</tool_call>\n"
+    "</function>\n" + qwen35.TOOL_CLOSE + "\n"
 )
 
 QWEN_PARALLEL = (
-    "Need two tools.\n</think>\n\n"
-    "<tool_call>\n<function=get_weather>\n"
+    "Need two tools.\n" + qwen35.THINK_CLOSE + "\n\n"
+    + qwen35.TOOL_OPEN + "\n<function=get_weather>\n"
     "<parameter=location>\nWarsaw\n</parameter>\n"
     "<parameter=unit>\ncelsius\n</parameter>\n"
-    "</function>\n</tool_call>\n"
-    "<tool_call>\n<function=set_reminder>\n"
+    "</function>\n" + qwen35.TOOL_CLOSE + "\n"
+    + qwen35.TOOL_OPEN + "\n<function=set_reminder>\n"
     "<parameter=task>\ncall mom\n</parameter>\n"
     "<parameter=days>\n3\n</parameter>\n"
     "<parameter=urgent>\nTrue\n</parameter>\n"
-    "</function>\n</tool_call>\n"
+    "</function>\n" + qwen35.TOOL_CLOSE + "\n"
 )
 
 QWEN_TYPED = (
-    "Reminder time.\n</think>\n\n"
-    "<tool_call>\n<function=set_reminder>\n"
+    "Reminder time.\n" + qwen35.THINK_CLOSE + "\n\n"
+    + qwen35.TOOL_OPEN + "\n<function=set_reminder>\n"
     "<parameter=task>\nwater the plants\n</parameter>\n"
     "<parameter=days>\n5\n</parameter>\n"
     "<parameter=urgent>\nFalse\n</parameter>\n"
-    "</function>\n</tool_call>\n"
+    "</function>\n" + qwen35.TOOL_CLOSE + "\n"
 )
 
 
@@ -249,8 +249,8 @@ def test_parse_generation_supports_qwen_xml_parallel_and_bools() -> None:
     ]
     assert json.loads(tool_calls[1]["function"]["arguments"]) == {
         "task": "call mom",
-        "days": 3,
-        "urgent": True,
+        "days": "3",
+        "urgent": "True",
     }
 
 
@@ -258,7 +258,7 @@ def test_parse_generation_strips_thinking_and_xml() -> None:
     reasoning, content, tool_calls = qwen35.parse_generation(QWEN_SINGLE, QWEN_TOOLS)
 
     assert "weather" in reasoning
-    assert "<tool_call>" not in content
+    assert qwen35.TOOL_OPEN not in content
     assert "<function=" not in content
     assert tool_calls is not None
     assert tool_calls[0]["function"]["name"] == "get_weather"
@@ -268,8 +268,155 @@ def test_parse_generation_qwen_typed_params() -> None:
     tool_calls = _qwen_tool_calls(QWEN_TYPED)
     assert tool_calls is not None
     args = json.loads(tool_calls[0]["function"]["arguments"])
-    assert args["days"] == 5
-    assert args["urgent"] is False
+    assert args == {"task": "water the plants", "days": "5", "urgent": "False"}
+
+
+def test_parse_generation_without_think_close_is_pure_content() -> None:
+    reasoning, content, tool_calls = qwen35.parse_generation("just an answer", QWEN_TOOLS)
+    assert reasoning == ""
+    assert content == "just an answer"
+    assert tool_calls is None
+
+
+def _feed_tokenized(text: str, **parser_kwargs):
+    """Feed text through QwenXMLToolParser with synthesized boundary IDs."""
+    parser = qwen35.QwenXMLToolParser(**parser_kwargs)
+    synth = qwen35._TextTagSynthesizer()
+    content: List[str] = []
+    for chunk, delta_tokens in synth.feed(text):
+        content.append(parser.parse({}, chunk, delta_tokens))
+    tail = synth.flush()
+    if tail:
+        content.append(parser.parse({}, tail, None))
+    return parser, "".join(content)
+
+
+def test_boundary_requires_token_id() -> None:
+    parser = qwen35.QwenXMLToolParser()
+    out = parser.parse({}, "abc" + qwen35.TOOL_OPEN + "def", None)
+    assert out == "abc" + qwen35.TOOL_OPEN + "def"
+    assert parser.completed_calls == []
+
+
+def test_boundary_fires_on_token_id_and_slices_tag() -> None:
+    parser = qwen35.QwenXMLToolParser()
+    out = parser.parse({}, "abc" + qwen35.TOOL_OPEN + "def", [qwen35.TOOL_OPEN_ID])
+    assert out == "abc"
+    assert parser._calls_seen == 1
+
+
+def test_grouped_delta_with_both_boundary_ids() -> None:
+    payload = (
+        qwen35.TOOL_OPEN + "\n<function=get_weather>\n"
+        "<parameter=location>\nWarsaw\n</parameter>\n"
+        "</function>\n" + qwen35.TOOL_CLOSE
+    )
+    parser = qwen35.QwenXMLToolParser()
+    out = parser.parse({}, payload, [qwen35.TOOL_OPEN_ID, qwen35.TOOL_CLOSE_ID])
+    assert out == ""
+    assert len(parser.completed_calls) == 1
+    assert json.loads(parser.completed_calls[0]["function"]["arguments"]) == {
+        "location": "Warsaw"
+    }
+
+
+def test_fragment_stream_shape() -> None:
+    parser, _ = _feed_tokenized(QWEN_SINGLE)
+    fragments: List[Dict[str, Any]] = []
+    parser2 = qwen35.QwenXMLToolParser(on_fragment=fragments.append)
+    synth = qwen35._TextTagSynthesizer()
+    for chunk, delta_tokens in synth.feed(QWEN_SINGLE):
+        parser2.parse({}, chunk, delta_tokens)
+
+    assert fragments[0]["function"] == {"name": "", "arguments": ""}
+    assert fragments[0]["id"].startswith("call_")
+    assert fragments[1]["function"] == {"name": "get_weather"}
+    args = "".join(
+        f["function"]["arguments"]
+        for f in fragments
+        if "arguments" in f.get("function", {})
+    )
+    assert json.loads(args) == {"location": "Warsaw", "unit": "celsius"}
+    assert [f["index"] for f in fragments] == [0] * len(fragments)
+
+
+def test_ramble_after_call_sets_tool_call_stop() -> None:
+    parser, content = _feed_tokenized(QWEN_SINGLE + " oops extra text")
+    assert parser.status == qwen35.StreamingStatus.TOOL_CALL_STOP
+    assert parser.get_status() == qwen35.StreamingStatus.TOOL_CALL_STOP
+    assert "oops" not in content
+
+
+def test_sequential_parallel_calls_allowed_by_default() -> None:
+    parser, content = _feed_tokenized(QWEN_PARALLEL)
+    assert parser.status == qwen35.StreamingStatus.RUNNING
+    assert [c["function"]["name"] for c in parser.completed_calls] == [
+        "get_weather",
+        "set_reminder",
+    ]
+
+
+def test_stop_after_tool_call_stops_first_call() -> None:
+    parser, _ = _feed_tokenized(QWEN_PARALLEL, stop_after_tool_call=True)
+    assert [c["function"]["name"] for c in parser.completed_calls] == ["get_weather"]
+    assert parser.status == qwen35.StreamingStatus.TOOL_CALL_STOP
+
+
+def test_malformed_block_records_error_and_valid_args() -> None:
+    text = (
+        qwen35.TOOL_OPEN + "\ngarbage here\n" + qwen35.TOOL_CLOSE + "\n"
+    )
+    parser, _ = _feed_tokenized(text)
+    assert any("expected" in e for e in parser.errors)
+    assert parser.completed_calls[0]["function"]["arguments"] == "{}"
+
+
+def test_finalize_force_closes_unterminated_call() -> None:
+    text = (
+        qwen35.TOOL_OPEN + "\n<function=get_weather>\n"
+        "<parameter=location>\nWarsaw\n</parameter>\n"
+        "</function>\n"
+    )
+    parser, _ = _feed_tokenized(text)
+    parser.finalize()
+    assert any("unterminated" in e for e in parser.errors)
+    assert json.loads(parser.completed_calls[0]["function"]["arguments"]) == {
+        "location": "Warsaw"
+    }
+
+
+def test_parse_mutates_msg_with_index_keyed_calls() -> None:
+    parser = qwen35.QwenXMLToolParser()
+    synth = qwen35._TextTagSynthesizer()
+    msg: Dict[str, Any] = {}
+    for chunk, delta_tokens in synth.feed(QWEN_PARALLEL):
+        parser.parse(msg, chunk, delta_tokens)
+    assert msg["tool_calls"]["0"]["function"]["name"] == "get_weather"
+    assert msg["tool_calls"]["1"]["function"]["name"] == "set_reminder"
+
+
+def test_stream_parser_facade_split_boundary_tag() -> None:
+    text = (
+        "Answer. " + qwen35.TOOL_OPEN + "\n<function=get_weather>\n"
+        "<parameter=location>\nOslo\n</parameter>\n"
+        "</function>\n" + qwen35.TOOL_CLOSE
+    )
+    cut = text.index(qwen35.TOOL_OPEN) + 3  # inside the open tag
+    parser = qwen35.Qwen35StreamParser(QWEN_TOOLS, enable_thinking=False)
+    deltas: List[Dict[str, Any]] = []
+    deltas.extend(parser.feed(text[:cut]))
+    deltas.extend(parser.feed(text[cut:]))
+    deltas.extend(parser.finish())
+
+    content = "".join(d.get("content", "") for d in deltas)
+    assert content == "Answer. "
+    tool_frags = [f for d in deltas for f in d.get("tool_calls", [])]
+    args = "".join(
+        f["function"]["arguments"]
+        for f in tool_frags
+        if "arguments" in f.get("function", {})
+    )
+    assert json.loads(args) == {"location": "Oslo"}
 
 
 # ---- _apply_tool_choice ----
@@ -438,11 +585,35 @@ async def test_openai_chat_completions_non_streaming_qwen_xml(
 async def test_openai_chat_completions_streaming_qwen_xml(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Tools + qwen35 parser -> the engine streams parsed deltas; the fake
+    # worker yields the Qwen35ToolCallStreamer queue items directly.
+    seen_configs: List[Any] = []
+
     class _Workers:
         async def stream_generate(self, model_name: str, generation_config: Any) -> AsyncIterator[Any]:
-            text = QWEN_SINGLE
-            for i in range(0, len(text), 7):
-                yield text[i : i + 7]
+            seen_configs.append(generation_config)
+            yield {"chat_delta": [{"reasoning_content": "thinking"}]}
+            yield {
+                "chat_delta": [
+                    {
+                        "tool_calls": [
+                            {
+                                "index": 0,
+                                "id": "call_abc123",
+                                "type": "function",
+                                "function": {"name": "", "arguments": ""},
+                            }
+                        ]
+                    },
+                    {"tool_calls": [{"index": 0, "function": {"name": "get_weather"}}]},
+                    {
+                        "tool_calls": [
+                            {"index": 0, "function": {"arguments": '{"location": '}},
+                            {"index": 0, "function": {"arguments": '"Warsaw"}'}},
+                        ]
+                    },
+                ]
+            }
             yield {"metrics": {"input_token": 2, "new_token": 3, "total_token": 5}}
 
         async def infer_cancel(self, request_id: str) -> None:
@@ -463,7 +634,13 @@ async def test_openai_chat_completions_streaming_qwen_xml(
     async for chunk in response.body_iterator:
         chunks.append(chunk)
 
+    assert seen_configs and seen_configs[0].tool_call_parser == "qwen35"
+
     payloads = [json.loads(p) for p in _extract_sse_payloads(chunks) if p != "[DONE]"]
+    reasoning = "".join(
+        p["choices"][0]["delta"].get("reasoning_content", "") for p in payloads
+    )
+    assert reasoning == "thinking"
     names = []
     args = ""
     for payload in payloads:
@@ -474,8 +651,91 @@ async def test_openai_chat_completions_streaming_qwen_xml(
             if fn.get("arguments"):
                 args += fn["arguments"]
     assert "get_weather" in names
-    assert json.loads(args) == {"location": "Warsaw", "unit": "celsius"}
+    assert json.loads(args) == {"location": "Warsaw"}
     assert payloads[-1]["choices"][0]["finish_reason"] == "tool_calls"
+
+
+@pytest.mark.asyncio
+async def test_openai_chat_completions_streaming_qwen35_no_tools_uses_text_facade(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # No tools -> ChunkStreamer text path; the facade does reasoning-only
+    # splitting plus the tool-XML guard.
+    class _Workers:
+        async def stream_generate(self, model_name: str, generation_config: Any) -> AsyncIterator[Any]:
+            text = " pondering" + qwen35.THINK_CLOSE + "Just an answer."
+            for i in range(0, len(text), 5):
+                yield text[i : i + 5]
+            yield {"metrics": {"input_token": 2, "new_token": 3, "total_token": 5}}
+
+        async def infer_cancel(self, request_id: str) -> None:
+            return None
+
+    monkeypatch.setattr(openai_routes, "_workers", _Workers())
+    monkeypatch.setattr(openai_routes, "_registry", _FakeRegistry("qwen35"))
+
+    request = OpenAIChatCompletionRequest(
+        model="demo-model",
+        messages=[{"role": "user", "content": "Hi"}],
+        stream=True,
+    )
+
+    response = await openai_routes.openai_chat_completions(request, _DummyRequest())
+    chunks: List[bytes] = []
+    async for chunk in response.body_iterator:
+        chunks.append(chunk)
+
+    payloads = [json.loads(p) for p in _extract_sse_payloads(chunks) if p != "[DONE]"]
+    reasoning = "".join(
+        p["choices"][0]["delta"].get("reasoning_content", "") for p in payloads[:-1]
+    )
+    content = "".join(
+        p["choices"][0]["delta"].get("content", "") for p in payloads[:-1]
+    )
+    assert reasoning == " pondering"
+    assert content == "Just an answer."
+    assert payloads[-1]["choices"][0]["finish_reason"] == "stop"
+
+
+def test_select_streamer_picks_tool_streamer_for_qwen35_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.engine.ov_genai import streamers as streamers_mod
+
+    sentinels = {"tool": object(), "chunk": object()}
+
+    class _FakeToolStreamer:
+        def __init__(self, tokenizer, gen_config):
+            self.args = (tokenizer, gen_config)
+
+    class _FakeChunkStreamer:
+        def __init__(self, tokenizer, gen_config):
+            self.args = (tokenizer, gen_config)
+
+    monkeypatch.setattr(streamers_mod, "ChunkStreamer", _FakeChunkStreamer)
+    monkeypatch.setattr(
+        streamers_mod.qwen35_tool_parse, "Qwen35ToolCallStreamer", _FakeToolStreamer
+    )
+
+    tokenizer = object()
+    tool_config = SimpleNamespace(
+        tools=[{"type": "function"}], tool_call_parser="qwen35", chat_template_kwargs={}
+    )
+    picked = streamers_mod.select_streamer(tokenizer, tool_config)
+    assert isinstance(picked, _FakeToolStreamer)
+    assert picked.args[0] is tokenizer
+
+    plain_config = SimpleNamespace(tools=None, tool_call_parser="qwen35", chat_template_kwargs={})
+    assert isinstance(
+        streamers_mod.select_streamer(tokenizer, plain_config), _FakeChunkStreamer
+    )
+
+    hermes_config = SimpleNamespace(
+        tools=[{"type": "function"}], tool_call_parser="hermes", chat_template_kwargs={}
+    )
+    assert isinstance(
+        streamers_mod.select_streamer(tokenizer, hermes_config), _FakeChunkStreamer
+    )
 
 
 # ---- unset tool_call_parser ----
