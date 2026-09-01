@@ -7,7 +7,7 @@ import pytest  # type: ignore[import]
 from test_model_path import model_path
 from src.engine.ov_genai.llm import OVGenAI_LLM
 from src.engine.ov_genai.vlm import OVGenAI_VLM
-from src.engine.ov_genai.tool_parse import hermes, qwen35
+from src.engine.ov_genai.tool_parse import gemma4, hermes, qwen35
 from src.server.schemas.registration import (
     EngineType,
     ModelLoadConfig,
@@ -225,6 +225,87 @@ def test_qwen35_streamer_offline_write_tokens() -> None:
 
     reasoning = "".join(d.get("reasoning_content", "") for d in deltas)
     assert "Checking the weather." in reasoning
+
+    tool_frags = [f for d in deltas for f in d.get("tool_calls", [])]
+    args = "".join(
+        f["function"]["arguments"]
+        for f in tool_frags
+        if "arguments" in f.get("function", {})
+    )
+    assert json.loads(args) == {"location": "Oslo"}
+    assert tool_frags[0]["id"].startswith("call_")
+
+
+# ---- gemma4 (Chimera-X-26B) ----
+
+GEMMA4_MODEL_PATH = model_path("OpenVINO/Gemma/Chimera-X-26B-A4B-int4-ov")
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    os.getenv("OPENARC_TEST_DEVICE", "CPU").startswith("CPU"),
+    reason="gemma4 live test needs GPU (26B model; CPU inference is impractical)",
+)
+async def test_gemma4_tool_call_integration() -> None:
+    text = await _generate_text(
+        GEMMA4_MODEL_PATH, "integration-gemma4", ToolCallParser.GEMMA4_PARSER,
+        OVGenAI_VLM, ModelType.VLM,
+    )
+
+    _, content, tool_calls = gemma4.parse_generation(text, TOOLS, enable_thinking=False)
+
+    assert tool_calls, f"Expected gemma4 tool calls in output: {text!r}"
+    assert tool_calls[0]["type"] == "function"
+    assert tool_calls[0]["function"]["name"] == "get_weather"
+
+    arguments = json.loads(tool_calls[0]["function"]["arguments"])
+    assert "location" in arguments
+    assert "<|tool_call>" not in content and "<|channel>" not in content
+
+
+def test_gemma4_streamer_offline_write_tokens() -> None:
+    """Drive Gemma4ToolCallStreamer.write() with token chunks from a real
+    tokenizer (no model, no GPU): locks in the write/decode/parser contract
+    for special=True protocol tags (reasoning channel + tool call)."""
+    if not GEMMA4_MODEL_PATH.exists():
+        pytest.skip(f"Model path not found: {GEMMA4_MODEL_PATH}")
+
+    import openvino_genai as ov
+
+    tokenizer = ov.Tokenizer(str(GEMMA4_MODEL_PATH))
+    gen_config = OVGenAI_GenConfig(
+        tools=TOOLS,
+        chat_template_kwargs={"enable_thinking": True},
+    )
+    streamer = gemma4.Gemma4ToolCallStreamer(tokenizer, gen_config)
+
+    text = (
+        "Checking the weather.\n"
+        + gemma4.CHANNEL_OPEN + "thought\nLet me check.\n" + gemma4.CHANNEL_CLOSE + "\n"
+        + gemma4.TOOL_OPEN + "call:get_weather{location:Oslo}" + gemma4.TOOL_CLOSE + "\n"
+    )
+    token_ids = tokenizer.encode(text).input_ids.data.tolist()[0]
+    for i in range(0, len(token_ids), 3):
+        streamer.write(token_ids[i : i + 3])
+    streamer.end()
+
+    items = []
+    while not streamer.text_queue.empty():
+        items.append(streamer.text_queue.get_nowait())
+    assert items, "Streamer produced no queue items"
+    assert items[-1] is None
+
+    deltas: List[Dict[str, Any]] = []
+    for item in items[:-1]:
+        assert "chat_delta" in item, f"Unexpected queue item: {item!r}"
+        deltas.extend(item["chat_delta"])
+
+    reasoning = "".join(d.get("reasoning_content", "") for d in deltas)
+    assert "Let me check." in reasoning
+
+    content = "".join(d.get("content", "") for d in deltas)
+    assert "Checking the weather." in content
+    assert "<|channel>" not in content and "thought" not in content.split("Checking")[0]
 
     tool_frags = [f for d in deltas for f in d.get("tool_calls", [])]
     args = "".join(

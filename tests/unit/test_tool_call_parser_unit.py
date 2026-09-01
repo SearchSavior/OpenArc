@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 
 import src.server.routes.openai as openai_routes
-from src.engine.ov_genai.tool_parse import hermes, qwen35
+from src.engine.ov_genai.tool_parse import gemma4, hermes, qwen35
 from src.server.schemas.requests_openai import OpenAIChatCompletionRequest
 from src.server.utils.chat import flatten_messages, normalize_tool_calls_for_template
 
@@ -820,3 +820,425 @@ async def test_streaming_passthrough_without_parser(monkeypatch: pytest.MonkeyPa
     )
     assert content == "chunk one. chunk two."
     assert payloads[-1]["choices"][0]["finish_reason"] == "stop"
+
+
+# ---- gemma4 tool-call parser ----
+
+
+GEMMA_TOOLS = [{
+    "type": "function",
+    "function": {
+        "name": "get_weather",
+        "description": "Get current weather for a city.",
+        "parameters": {
+            "type": "object",
+            "properties": {"city": {"type": "string", "description": "City name"}},
+            "required": ["city"],
+        },
+    },
+}]
+
+
+def _feed_gemma(spec, **parser_kwargs):
+    """Drive Gemma4ToolCallParser with driver-contract deltas.
+
+    spec: sequence of (delta_text, delta_tokens) pairs; text deltas never
+    carry protocol ids (the streamer flushes text before boundary tokens).
+    """
+    parser = gemma4.Gemma4ToolCallParser(**parser_kwargs)
+    content: List[str] = []
+    for text, ids in spec:
+        content.append(parser.parse({}, text, ids))
+    return parser, "".join(content)
+
+
+def test_gemma_boundary_requires_token_id() -> None:
+    # Payload text without the open-boundary ID is plain content.
+    parser, content = _feed_gemma([("call:get_weather{city:Paris}", None)])
+    assert content == "call:get_weather{city:Paris}"
+    assert parser.completed_calls == []
+
+
+def test_gemma_boundary_fires_on_token_id() -> None:
+    parser, content = _feed_gemma([
+        ("", [gemma4.TOOL_OPEN_ID]),
+        ("call:get_weather{city:Paris}", None),
+        ("", [gemma4.TOOL_CLOSE_ID]),
+    ])
+    assert content == ""
+    assert len(parser.completed_calls) == 1
+    assert json.loads(parser.completed_calls[0]["function"]["arguments"]) == {
+        "city": "Paris"
+    }
+
+
+def test_gemma_fragment_stream_shape() -> None:
+    fragments: List[Dict[str, Any]] = []
+    parser = gemma4.Gemma4ToolCallParser(on_fragment=fragments.append)
+    for text, ids in [
+        ("", [gemma4.TOOL_OPEN_ID]),
+        ("call:get_weather{", None),
+        ("city:Paris", None),
+        (", ", None),
+        ("unit:celsius", None),
+        ("}", None),
+        ("", [gemma4.TOOL_CLOSE_ID]),
+    ]:
+        parser.parse({}, text, ids)
+
+    assert fragments[0]["function"] == {"name": "", "arguments": ""}
+    assert fragments[0]["id"].startswith("call_")
+    assert fragments[1]["function"] == {"name": "get_weather"}
+    args = "".join(
+        f["function"]["arguments"]
+        for f in fragments
+        if "arguments" in f.get("function", {})
+    )
+    assert json.loads(args) == {"city": "Paris", "unit": "celsius"}
+    assert [f["index"] for f in fragments] == [0] * len(fragments)
+
+
+def test_gemma_sequential_parallel_calls_allowed_by_default() -> None:
+    parser, content = _feed_gemma([
+        ("", [gemma4.TOOL_OPEN_ID]),
+        ("call:get_weather{city:Tokyo}", None),
+        ("", [gemma4.TOOL_CLOSE_ID]),
+        ("\n\n", None),
+        ("", [gemma4.TOOL_OPEN_ID]),
+        ("call:get_weather{city:Paris}", None),
+        ("", [gemma4.TOOL_CLOSE_ID]),
+    ])
+    assert parser.status == gemma4.StreamingStatus.RUNNING
+    assert [c["function"]["name"] for c in parser.completed_calls] == [
+        "get_weather", "get_weather",
+    ]
+    assert json.loads(parser.completed_calls[0]["function"]["arguments"]) == {"city": "Tokyo"}
+    assert json.loads(parser.completed_calls[1]["function"]["arguments"]) == {"city": "Paris"}
+    assert content == ""
+
+
+def test_gemma_ramble_after_call_sets_tool_call_stop() -> None:
+    parser, content = _feed_gemma([
+        ("", [gemma4.TOOL_OPEN_ID]),
+        ("call:get_weather{city:Paris}", None),
+        ("", [gemma4.TOOL_CLOSE_ID]),
+        (" oops extra text", None),
+    ])
+    assert parser.status == gemma4.StreamingStatus.TOOL_CALL_STOP
+    assert parser.get_status() == gemma4.StreamingStatus.TOOL_CALL_STOP
+    assert "oops" not in content
+
+
+def test_gemma_stop_after_tool_call_stops_first_call() -> None:
+    parser, _ = _feed_gemma([
+        ("", [gemma4.TOOL_OPEN_ID]),
+        ("call:first{a:1}", None),
+        ("", [gemma4.TOOL_CLOSE_ID]),
+        ("", [gemma4.TOOL_OPEN_ID]),
+        ("call:second{b:2}", None),
+        ("", [gemma4.TOOL_CLOSE_ID]),
+    ], stop_after_tool_call=True)
+    assert [c["function"]["name"] for c in parser.completed_calls] == ["first"]
+    assert parser.status == gemma4.StreamingStatus.TOOL_CALL_STOP
+
+
+def test_gemma_malformed_payload_records_error_and_valid_args() -> None:
+    parser, _ = _feed_gemma([
+        ("", [gemma4.TOOL_OPEN_ID]),
+        ("garbage here", None),
+        ("", [gemma4.TOOL_CLOSE_ID]),
+    ])
+    assert any("expected 'call:'" in e for e in parser.errors)
+    assert parser.completed_calls[0]["function"]["arguments"] == "{}"
+
+
+def test_gemma_finalize_force_closes_unterminated_call() -> None:
+    parser, _ = _feed_gemma([
+        ("", [gemma4.TOOL_OPEN_ID]),
+        ("call:get_weather{city:Oslo", None),
+    ])
+    parser.finalize()
+    assert any("unterminated" in e for e in parser.errors)
+    assert json.loads(parser.completed_calls[0]["function"]["arguments"]) == {
+        "city": "Oslo"
+    }
+
+
+def test_gemma_parse_mutates_msg_with_index_keyed_calls() -> None:
+    parser = gemma4.Gemma4ToolCallParser()
+    msg: Dict[str, Any] = {}
+    for text, ids in [
+        ("", [gemma4.TOOL_OPEN_ID]),
+        ("call:get_weather{city:Tokyo}", None),
+        ("", [gemma4.TOOL_CLOSE_ID]),
+        ("", [gemma4.TOOL_OPEN_ID]),
+        ("call:set_alarm{when:7am}", None),
+        ("", [gemma4.TOOL_CLOSE_ID]),
+    ]:
+        parser.parse(msg, text, ids)
+    assert msg["tool_calls"]["0"]["function"]["name"] == "get_weather"
+    assert msg["tool_calls"]["1"]["function"]["name"] == "set_alarm"
+
+
+def test_gemma_nested_brace_value_and_zero_args() -> None:
+    parser, _ = _feed_gemma([
+        ("", [gemma4.TOOL_OPEN_ID]),
+        ("call:foo{opts:{a:1, b:{c:2}}, note:hi}", None),
+        ("", [gemma4.TOOL_CLOSE_ID]),
+        ("", [gemma4.TOOL_OPEN_ID]),
+        ("call:noargs{}", None),
+        ("", [gemma4.TOOL_CLOSE_ID]),
+    ])
+    assert json.loads(parser.completed_calls[0]["function"]["arguments"]) == {
+        "opts": "{a:1, b:{c:2}}",
+        "note": "hi",
+    }
+    assert parser.completed_calls[1]["function"]["arguments"] == "{}"
+
+
+def test_gemma_channel_splitter_thought_channel() -> None:
+    splitter = gemma4.Gemma4ChannelSplitter()
+    deltas = [
+        ("Hello ", []),
+        ("", [gemma4.CHANNEL_OPEN_ID]),
+        ("thought\nLet me think.\nMore thought.\n", []),
+        ("", [gemma4.CHANNEL_CLOSE_ID]),
+        ("Final answer", []),
+    ]
+    reason, content = "", ""
+    for text, ids in deltas:
+        r, c, passthrough = splitter.feed(text, ids)
+        reason += r
+        content += c
+        assert passthrough == [] or all(i not in (100, 101) for i in passthrough)
+    assert reason == "Let me think.\nMore thought."
+    assert content == "Hello Final answer"
+
+
+def test_gemma_channel_splitter_opaque_channel_passthrough() -> None:
+    splitter = gemma4.Gemma4ChannelSplitter()
+    deltas = [
+        ("", [gemma4.CHANNEL_OPEN_ID]),
+        ("summary\nstuff\n", []),
+        ("", [gemma4.CHANNEL_CLOSE_ID]),
+        ("tail", []),
+    ]
+    reason, content = "", ""
+    for text, ids in deltas:
+        r, c, _ = splitter.feed(text, ids)
+        reason += r
+        content += c
+    assert reason == ""
+    assert content == "summary\nstuff\ntail"
+
+
+def test_gemma_channel_splitter_header_across_deltas() -> None:
+    splitter = gemma4.Gemma4ChannelSplitter()
+    r1, c1, _ = splitter.feed("", [gemma4.CHANNEL_OPEN_ID])
+    r2, c2, _ = splitter.feed("thou", [])          # header split mid-name
+    r3, c3, _ = splitter.feed("ght\nbody", [])
+    r4, c4, _ = splitter.feed("", [gemma4.CHANNEL_CLOSE_ID])
+    assert "".join([r1, r2, r3, r4]) == "body"
+    assert "".join([c1, c2, c3, c4]) == ""
+
+
+def test_gemma_parse_generation_reasoning_and_parallel_calls() -> None:
+    raw = (
+        "<|channel>thought\nstep one\nstep two\n\n<channel|>\nHello\n\n"
+        "<|tool_call>call:get_weather{city:Tokyo}<tool_call|>\n"
+        "<|tool_call>call:get_weather{city:Paris, when:today}<tool_call|><turn|>"
+    )
+    reasoning, content, calls = gemma4.parse_generation(raw)
+    assert reasoning == "step one\nstep two"
+    assert content == "Hello"
+    assert [c["function"]["name"] for c in calls] == ["get_weather", "get_weather"]
+    assert json.loads(calls[0]["function"]["arguments"]) == {"city": "Tokyo"}
+    assert json.loads(calls[1]["function"]["arguments"]) == {"city": "Paris", "when": "today"}
+    assert all(c["id"].startswith("call_") for c in calls)
+
+
+def test_gemma_parse_generation_passthrough_without_tags() -> None:
+    assert gemma4.parse_generation("plain answer") == ("", "plain answer", None)
+
+
+def test_gemma_parse_generation_unterminated_tool_block() -> None:
+    raw = "Intro <|tool_call>call:get_weather{city:Oslo}"
+    reasoning, content, calls = gemma4.parse_generation(raw)
+    assert reasoning == ""
+    assert calls is None
+    assert "call:get_weather{city:Oslo}" in content
+
+
+def test_gemma_wants_engine_stream() -> None:
+    assert gemma4.wants_engine_stream([{"type": "function"}], False) is True
+    assert gemma4.wants_engine_stream(None, True) is True
+    assert gemma4.wants_engine_stream(None, False) is False
+
+
+def test_select_streamer_gemma4_engine_stream(monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.engine.ov_genai import streamers as streamers_mod
+
+    class _FakeGemmaStreamer:
+        def __init__(self, tokenizer, gen_config):
+            self.args = (tokenizer, gen_config)
+
+    class _FakeChunkStreamer:
+        def __init__(self, tokenizer, gen_config):
+            self.args = (tokenizer, gen_config)
+
+    monkeypatch.setattr(streamers_mod, "ChunkStreamer", _FakeChunkStreamer)
+    monkeypatch.setattr(
+        streamers_mod.gemma4_tool_parse, "Gemma4ToolCallStreamer", _FakeGemmaStreamer
+    )
+
+    tokenizer = object()
+    # Tools present -> engine streamer even with thinking off.
+    tools_cfg = SimpleNamespace(
+        tools=[{"type": "function"}],
+        tool_call_parser="gemma4",
+        chat_template_kwargs={"enable_thinking": False},
+    )
+    assert isinstance(
+        streamers_mod.select_streamer(tokenizer, tools_cfg), _FakeGemmaStreamer
+    )
+
+    # Thinking on, no tools -> engine streamer (channel tags are ID-only).
+    think_cfg = SimpleNamespace(
+        tools=None,
+        tool_call_parser="gemma4",
+        chat_template_kwargs={"enable_thinking": True},
+    )
+    assert isinstance(
+        streamers_mod.select_streamer(tokenizer, think_cfg), _FakeGemmaStreamer
+    )
+
+    # Default (no chat_template_kwargs) counts as thinking enabled.
+    default_cfg = SimpleNamespace(
+        tools=None, tool_call_parser="gemma4", chat_template_kwargs={}
+    )
+    assert isinstance(
+        streamers_mod.select_streamer(tokenizer, default_cfg), _FakeGemmaStreamer
+    )
+
+    # Thinking explicitly off, no tools -> plain ChunkStreamer.
+    off_cfg = SimpleNamespace(
+        tools=None,
+        tool_call_parser="gemma4",
+        chat_template_kwargs={"enable_thinking": False},
+    )
+    assert isinstance(
+        streamers_mod.select_streamer(tokenizer, off_cfg), _FakeChunkStreamer
+    )
+
+
+# ---- gemma4 routes ----
+
+
+@pytest.mark.asyncio
+async def test_openai_chat_completions_non_streaming_gemma4(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw = (
+        "<|channel>thought\npondering\n<channel|>\n"
+        "<|tool_call>call:get_weather{city:Warsaw}<tool_call|><turn|>"
+    )
+
+    class _Workers:
+        async def generate(self, model_name: str, generation_config: Any) -> Dict[str, Any]:
+            return {
+                "text": raw,
+                "metrics": {"input_token": 4, "new_token": 6, "total_token": 10},
+            }
+
+    monkeypatch.setattr(openai_routes, "_workers", _Workers())
+    monkeypatch.setattr(openai_routes, "_registry", _FakeRegistry("gemma4"))
+
+    request = OpenAIChatCompletionRequest(
+        model="demo-model",
+        messages=[{"role": "user", "content": "Weather in Warsaw?"}],
+        tools=GEMMA_TOOLS,
+        stream=False,
+    )
+
+    response = await openai_routes.openai_chat_completions(request, _DummyRequest())
+    choice = response["choices"][0]
+    assert choice["finish_reason"] == "tool_calls"
+    assert choice["message"]["tool_calls"][0]["function"]["name"] == "get_weather"
+    assert json.loads(choice["message"]["tool_calls"][0]["function"]["arguments"]) == {
+        "city": "Warsaw"
+    }
+    assert choice["message"].get("reasoning_content") == "pondering"
+    assert choice["message"].get("content") in (None, "")
+
+
+@pytest.mark.asyncio
+async def test_openai_chat_completions_streaming_gemma4_engine_stream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Tools + gemma4 parser -> the engine streams parsed deltas via chat_delta.
+    seen_configs: List[Any] = []
+
+    class _Workers:
+        async def stream_generate(self, model_name: str, generation_config: Any) -> AsyncIterator[Any]:
+            seen_configs.append(generation_config)
+            yield {"chat_delta": [{"reasoning_content": "pondering"}]}
+            yield {
+                "chat_delta": [
+                    {
+                        "tool_calls": [
+                            {
+                                "index": 0,
+                                "id": "call_abc123",
+                                "type": "function",
+                                "function": {"name": "", "arguments": ""},
+                            }
+                        ]
+                    },
+                    {"tool_calls": [{"index": 0, "function": {"name": "get_weather"}}]},
+                    {
+                        "tool_calls": [
+                            {"index": 0, "function": {"arguments": '{"city": "'}},
+                            {"index": 0, "function": {"arguments": 'Warsaw"}'}},
+                        ]
+                    },
+                ]
+            }
+            yield {"metrics": {"input_token": 2, "new_token": 3, "total_token": 5}}
+
+        async def infer_cancel(self, request_id: str) -> None:
+            return None
+
+    monkeypatch.setattr(openai_routes, "_workers", _Workers())
+    monkeypatch.setattr(openai_routes, "_registry", _FakeRegistry("gemma4"))
+
+    request = OpenAIChatCompletionRequest(
+        model="demo-model",
+        messages=[{"role": "user", "content": "Weather in Warsaw?"}],
+        tools=GEMMA_TOOLS,
+        stream=True,
+    )
+
+    response = await openai_routes.openai_chat_completions(request, _DummyRequest())
+    chunks: List[bytes] = []
+    async for chunk in response.body_iterator:
+        chunks.append(chunk)
+
+    assert seen_configs and seen_configs[0].tool_call_parser == "gemma4"
+
+    payloads = [json.loads(p) for p in _extract_sse_payloads(chunks) if p != "[DONE]"]
+    reasoning = "".join(
+        p["choices"][0]["delta"].get("reasoning_content", "") for p in payloads
+    )
+    assert reasoning == "pondering"
+    names = []
+    args = ""
+    for payload in payloads:
+        for frag in payload["choices"][0]["delta"].get("tool_calls") or []:
+            fn = frag.get("function") or {}
+            if fn.get("name"):
+                names.append(fn["name"])
+            if fn.get("arguments"):
+                args += fn["arguments"]
+    assert "get_weather" in names
+    assert json.loads(args) == {"city": "Warsaw"}
+    assert payloads[-1]["choices"][0]["finish_reason"] == "tool_calls"

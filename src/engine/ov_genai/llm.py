@@ -16,7 +16,7 @@ from transformers import AutoTokenizer, BatchEncoding
 from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_GenConfig
 from src.server.model_registry import ModelRegistry
 from src.server.schemas.registration import ModelLoadConfig
-from src.engine.ov_genai.streamers import select_streamer
+from src.engine.ov_genai.streamers import ensure_tool_call_parser, select_streamer
 from src.server.utils.chat import flatten_messages
 
 logger = logging.getLogger(__name__)
@@ -83,6 +83,7 @@ class OVGenAI_LLM:
         Async non-streaming text generation.
         Yields in order: metrics (dict), new_text (str).
         """
+        ensure_tool_call_parser(gen_config, self.load_config)
         generation_kwargs = self.create_generation_config(gen_config)
 
         # Support pre-encoded input_ids, raw prompts, and chat messages
@@ -101,7 +102,13 @@ class OVGenAI_LLM:
         
         perf_metrics = result.perf_metrics
         decoder_tokenizer = self.model.get_tokenizer()
-        text = decoder_tokenizer.decode(result.tokens)[0] if getattr(result, "tokens", None) else ""
+        # gemma4 protocol tags are special=True: keep them in the decoded text
+        # so the route-level parse_generation can split reasoning/tool calls.
+        keep_special = getattr(gen_config, "tool_call_parser", None) == "gemma4"
+        text = (
+            decoder_tokenizer.decode(result.tokens, skip_special_tokens=not keep_special)[0]
+            if getattr(result, "tokens", None) else ""
+        )
 
         metrics_dict = self.collect_metrics(gen_config, perf_metrics)
         yield metrics_dict
@@ -112,7 +119,7 @@ class OVGenAI_LLM:
         Async streaming text generation.
         Yields token chunks (str) as they arrive, then metrics (dict), then final new_text (str).
         """
-
+        ensure_tool_call_parser(gen_config, self.load_config)
         generation_kwargs = self.create_generation_config(gen_config)
         decoder_tokenizer = self.model.get_tokenizer()
         streamer = select_streamer(decoder_tokenizer, gen_config)

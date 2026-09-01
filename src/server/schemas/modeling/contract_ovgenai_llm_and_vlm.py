@@ -72,7 +72,9 @@ class OVGenAI_GenConfig(BaseModel):
             "(e.g. 'qwen35'). Set by /v1/chat/completions; when tools are present "
             "and the parser is qwen35, the engine streams with the token-ID "
             "Qwen35ToolCallStreamer instead of ChunkStreamer (stream_chunk_tokens "
-            "does not apply to that path)."
+            "does not apply to that path). gemma4 requests use the token-ID "
+            "Gemma4ToolCallStreamer whenever tools are present or thinking is "
+            "enabled (its protocol tags are special=True, invisible to text)."
         ),
     )
     request_id: Optional[str] = Field(
