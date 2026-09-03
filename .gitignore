@@ -31,4 +31,5 @@ build/
 dist/
 /models/**/*
 /.scratchpad/
+.scratchpad/
 .plans/
