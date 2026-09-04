@@ -62,8 +62,13 @@ from ..utils import validate_model_path
     default=None,
     type=float,
     help='Confidence threshold for accepting draft tokens.')
+@click.option('--tool-call-parser',
+    type=click.Choice(['qwen35', 'hermes', 'gemma4']),
+    required=False,
+    default=None,
+    help='Tool-call output format for this model (qwen35 XML, hermes JSON, or gemma4 call syntax). llm/vlm only; required for tool calling.')
 @click.pass_context
-def add(ctx, model_path, model_name, engine, model_type, device, runtime_config, scheduler_config, cache_dir, draft_model_path, draft_device, num_assistant_tokens, assistant_confidence_threshold):
+def add(ctx, model_path, model_name, engine, model_type, device, runtime_config, scheduler_config, cache_dir, draft_model_path, draft_device, num_assistant_tokens, assistant_confidence_threshold, tool_call_parser):
     """- Add a model configuration to the config file."""
 
     # Validate model path
@@ -128,6 +133,8 @@ def add(ctx, model_path, model_name, engine, model_type, device, runtime_config,
         load_config["num_assistant_tokens"] = num_assistant_tokens
     if assistant_confidence_threshold is not None:
         load_config["assistant_confidence_threshold"] = assistant_confidence_threshold
+    if tool_call_parser:
+        load_config["tool_call_parser"] = tool_call_parser
 
     ctx.obj.server_config.save_model_config(model_name, load_config)
     console.print(f"[green]Model configuration saved:[/green] {model_name}")
