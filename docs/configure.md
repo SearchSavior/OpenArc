@@ -1,4 +1,4 @@
-runtime_config
+## runtime_config
 
 
 runtime_config is an OpenArc entrypoint to the *properties* way of configuring openvino runtime. These settings allow users to tune the behavior of openivno runtime without needing to change application logic and are meant to be "portable", requring no code changes. Since OpenArc 
