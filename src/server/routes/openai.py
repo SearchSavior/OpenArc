@@ -31,7 +31,7 @@ from src.server.schemas.requests_openai import (
     OpenArcASRConfig,
     RerankRequest,
 )
-from src.engine.ov_genai.tool_parse import gemma4, hermes, qwen35
+from src.engine.ov_genai.tool_parse import gemma4, hermes, museglimmer, qwen35
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +43,7 @@ _TOOL_PARSERS = {
     "qwen35": qwen35,
     "hermes": hermes,
     "gemma4": gemma4,
+    "museglimmer": museglimmer,
 }
 
 
@@ -150,7 +151,7 @@ async def openai_chat_completions(
         if tool_parser_name is None and request.tools:
             raise ValueError(
                 f"Model '{request.model}' has no tool_call_parser configured; "
-                "set one in the model config (e.g. 'openarc add --tool-call-parser qwen35|hermes|gemma4')"
+                "set one in the model config (e.g. 'openarc add --tool-call-parser qwen35|hermes|gemma4|museglimmer')"
             )
         parser_module = _TOOL_PARSERS.get(tool_parser_name) if tool_parser_name else None
 
@@ -203,16 +204,19 @@ async def openai_chat_completions(
                 tool_call_sent = False
                 cancel_request_id = None
                 stream_parser = None
-                # qwen35 tool requests and gemma4 requests (tools or thinking;
-                # gemma4 thought-channel tags are token-ID-only) stream through
-                # the engine's tool streamers (parsed deltas on the worker
-                # queue); the text-delta facade only handles no-tool qwen35
-                # requests.
+                # qwen35 tool requests and gemma4/museglimmer requests (all
+                # museglimmer traffic; gemma4 when tools or thinking) stream
+                # through the engine's tool streamers (parsed deltas on the
+                # worker queue); the text-delta facade only handles no-tool
+                # qwen35 requests.
                 engine_tool_stream = (
                     parser_module is qwen35 and bool(tools)
                 ) or (
                     parser_module is gemma4
                     and gemma4.wants_engine_stream(tools, thinking_enabled)
+                ) or (
+                    parser_module is museglimmer
+                    and museglimmer.wants_engine_stream(tools, thinking_enabled)
                 )
                 if parser_module is qwen35 and not engine_tool_stream:
                     stream_parser = qwen35.Qwen35StreamParser(

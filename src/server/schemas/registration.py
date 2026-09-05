@@ -66,11 +66,14 @@ class ToolCallParser(str, Enum):
     Options:
     - qwen35: Qwen3.5 XML format (<tool_call><function=NAME><parameter=KEY>...)
     - hermes: Hermes JSON format (<tool_call>{"name": ..., "arguments": {...}}</tool_call>)
-    - gemma4: Gemma 4 call syntax (<|tool_call>call:NAME{KEY:VALUE, ...}<tool_call|>)"""
+    - gemma4: Gemma 4 call syntax (<|tool_call>call:NAME{KEY:VALUE, ...}<tool_call|>)
+    - museglimmer: Muse-Glimmer Harmony 'to=' channels with atem XML payloads
+      (<|start|>assistant to=NAME<|message|><atem:function_calls>...)"""
 
     HERMES_PARSER = "hermes"
     QWEN35_PARSER = "qwen35"
     GEMMA4_PARSER = "gemma4"
+    MUSEGLIMMER_PARSER = "museglimmer"
 
 
 class ModelLoadConfig(BaseModel):

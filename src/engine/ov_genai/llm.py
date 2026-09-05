@@ -102,9 +102,12 @@ class OVGenAI_LLM:
         
         perf_metrics = result.perf_metrics
         decoder_tokenizer = self.model.get_tokenizer()
-        # gemma4 protocol tags are special=True: keep them in the decoded text
-        # so the route-level parse_generation can split reasoning/tool calls.
-        keep_special = getattr(gen_config, "tool_call_parser", None) == "gemma4"
+        # gemma4/museglimmer protocol tags are special=True: keep them in the
+        # decoded text so the route-level parse_generation can split
+        # reasoning/tool calls.
+        keep_special = getattr(gen_config, "tool_call_parser", None) in (
+            "gemma4", "museglimmer",
+        )
         text = (
             decoder_tokenizer.decode(result.tokens, skip_special_tokens=not keep_special)[0]
             if getattr(result, "tokens", None) else ""
