@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 
 import src.server.routes.openai as openai_routes
-from src.engine.ov_genai.tool_parse import gemma4, hermes, qwen35
+from src.engine.ov_genai.tool_parse import gemma4, hermes, museglimmer, qwen35
 from src.server.schemas.requests_openai import OpenAIChatCompletionRequest
 from src.server.utils.chat import flatten_messages, normalize_tool_calls_for_template
 
@@ -1240,5 +1240,211 @@ async def test_openai_chat_completions_streaming_gemma4_engine_stream(
             if fn.get("arguments"):
                 args += fn["arguments"]
     assert "get_weather" in names
+    assert json.loads(args) == {"city": "Warsaw"}
+    assert payloads[-1]["choices"][0]["finish_reason"] == "tool_calls"
+
+# ---- museglimmer parser ----
+
+MUSE_TOOLS = [{
+    "type": "function",
+    "function": {
+        "name": "get_weather",
+        "description": "Get current weather for a city.",
+        "parameters": {
+            "type": "object",
+            "properties": {"city": {"type": "string", "description": "City name"}},
+            "required": ["city"],
+        },
+    },
+}]
+
+
+def test_museglimmer_parse_generation_reasoning_and_calls() -> None:
+    raw = (
+        " to=self<|message|>Pondering the forecast.<|eom|>"
+        "<|start|>assistant to=get_weather<|message|>"
+        '<atem:function_calls>\n<atem:invoke name="get_weather">\n'
+        '<atem:parameter name="city">Warsaw</atem:parameter>\n'
+        "</atem:invoke>\n</atem:function_calls><|eom|>"
+        "<|start|>assistant to=user<|message|>Checking now.<|eot|>"
+    )
+    reasoning, content, calls = museglimmer.parse_generation(raw, tools=MUSE_TOOLS)
+    assert reasoning == "Pondering the forecast."
+    assert content == "Checking now."
+    assert calls is not None and len(calls) == 1
+    assert calls[0]["function"]["name"] == "get_weather"
+    assert json.loads(calls[0]["function"]["arguments"]) == {"city": "Warsaw"}
+    assert calls[0]["id"].startswith("call_")
+
+
+def test_museglimmer_parse_generation_normalizes_namespace() -> None:
+    raw = (
+        " to=tools.get_weather<|message|>"
+        '<atem:function_calls>\n<atem:invoke name="tools.get_weather">\n'
+        '<atem:parameter name="city">Oslo</atem:parameter>\n'
+        "</atem:invoke>\n</atem:function_calls><|eot|>"
+    )
+    _, _, calls = museglimmer.parse_generation(raw, tools=MUSE_TOOLS)
+    assert calls is not None
+    assert calls[0]["function"]["name"] == "get_weather"
+
+
+def test_museglimmer_parse_generation_passthrough_without_tokens() -> None:
+    assert museglimmer.parse_generation("plain answer") == ("", "plain answer", None)
+
+
+def test_museglimmer_wants_engine_stream() -> None:
+    # Header routing is token-ID-only: every museglimmer request needs the
+    # engine streamer, tools or not.
+    assert museglimmer.wants_engine_stream(None, False) is True
+    assert museglimmer.wants_engine_stream([{"type": "function"}], False) is True
+    assert museglimmer.wants_engine_stream(None, True) is True
+
+
+def test_select_streamer_museglimmer_always_engine_stream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.engine.ov_genai import streamers as streamers_mod
+
+    class _FakeMuseStreamer:
+        def __init__(self, tokenizer, gen_config):
+            self.args = (tokenizer, gen_config)
+
+    class _FakeChunkStreamer:
+        def __init__(self, tokenizer, gen_config):
+            self.args = (tokenizer, gen_config)
+
+    monkeypatch.setattr(streamers_mod, "ChunkStreamer", _FakeChunkStreamer)
+    monkeypatch.setattr(
+        streamers_mod.museglimmer_tool_parse,
+        "MuseGlimmerToolCallStreamer",
+        _FakeMuseStreamer,
+    )
+
+    tokenizer = object()
+    for kwargs in (
+        {"tools": MUSE_TOOLS, "chat_template_kwargs": {}},
+        {"tools": None, "chat_template_kwargs": {"enable_thinking": False}},
+        {"tools": None, "chat_template_kwargs": {"enable_thinking": True}},
+    ):
+        cfg = SimpleNamespace(tool_call_parser="museglimmer", **kwargs)
+        assert isinstance(
+            streamers_mod.select_streamer(tokenizer, cfg), _FakeMuseStreamer
+        )
+
+
+@pytest.mark.asyncio
+async def test_openai_chat_completions_non_streaming_museglimmer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw = (
+        " to=self<|message|>pondering<|eom|>"
+        "<|start|>assistant to=get_weather<|message|>"
+        '<atem:function_calls>\n<atem:invoke name="get_weather">\n'
+        '<atem:parameter name="city">Warsaw</atem:parameter>\n'
+        "</atem:invoke>\n</atem:function_calls><|eot|>"
+    )
+
+    class _Workers:
+        async def generate(self, model_name: str, generation_config: Any) -> Dict[str, Any]:
+            return {
+                "text": raw,
+                "metrics": {"input_token": 4, "new_token": 6, "total_token": 10},
+            }
+
+    monkeypatch.setattr(openai_routes, "_workers", _Workers())
+    monkeypatch.setattr(openai_routes, "_registry", _FakeRegistry("museglimmer"))
+
+    request = OpenAIChatCompletionRequest(
+        model="demo-model",
+        messages=[{"role": "user", "content": "Weather in Warsaw?"}],
+        tools=MUSE_TOOLS,
+        stream=False,
+    )
+
+    response = await openai_routes.openai_chat_completions(request, _DummyRequest())
+    choice = response["choices"][0]
+    assert choice["finish_reason"] == "tool_calls"
+    assert choice["message"]["tool_calls"][0]["function"]["name"] == "get_weather"
+    assert json.loads(choice["message"]["tool_calls"][0]["function"]["arguments"]) == {
+        "city": "Warsaw"
+    }
+    assert choice["message"].get("reasoning_content") == "pondering"
+    assert choice["message"].get("content") in (None, "")
+
+
+@pytest.mark.asyncio
+async def test_openai_chat_completions_streaming_museglimmer_engine_stream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # All museglimmer requests stream parsed deltas via chat_delta.
+    seen_configs: List[Any] = []
+
+    class _Workers:
+        async def stream_generate(self, model_name: str, generation_config: Any) -> AsyncIterator[Any]:
+            seen_configs.append(generation_config)
+            yield {"chat_delta": [{"reasoning_content": "pondering"}]}
+            yield {"chat_delta": [{"content": "Checking "}, {"content": "now."}]}
+            yield {
+                "chat_delta": [
+                    {
+                        "tool_calls": [
+                            {
+                                "index": 0,
+                                "id": "call_abc123",
+                                "type": "function",
+                                "function": {"name": "get_weather", "arguments": ""},
+                            }
+                        ]
+                    },
+                    {
+                        "tool_calls": [
+                            {"index": 0, "function": {"arguments": '{"city": "'}},
+                            {"index": 0, "function": {"arguments": 'Warsaw"}'}},
+                        ]
+                    },
+                ]
+            }
+            yield {"metrics": {"input_token": 2, "new_token": 3, "total_token": 5}}
+
+        async def infer_cancel(self, request_id: str) -> None:
+            return None
+
+    monkeypatch.setattr(openai_routes, "_workers", _Workers())
+    monkeypatch.setattr(openai_routes, "_registry", _FakeRegistry("museglimmer"))
+
+    request = OpenAIChatCompletionRequest(
+        model="demo-model",
+        messages=[{"role": "user", "content": "Weather in Warsaw?"}],
+        tools=MUSE_TOOLS,
+        stream=True,
+    )
+
+    response = await openai_routes.openai_chat_completions(request, _DummyRequest())
+    chunks: List[bytes] = []
+    async for chunk in response.body_iterator:
+        chunks.append(chunk)
+
+    assert seen_configs and seen_configs[0].tool_call_parser == "museglimmer"
+
+    payloads = [json.loads(p) for p in _extract_sse_payloads(chunks) if p != "[DONE]"]
+    reasoning = "".join(
+        p["choices"][0]["delta"].get("reasoning_content", "") for p in payloads
+    )
+    content = "".join(
+        p["choices"][0]["delta"].get("content", "") for p in payloads
+    )
+    assert reasoning == "pondering"
+    assert content == "Checking now."
+    names = []
+    args = ""
+    for payload in payloads:
+        for frag in payload["choices"][0]["delta"].get("tool_calls") or []:
+            fn = frag.get("function") or {}
+            if fn.get("name"):
+                names.append(fn["name"])
+            if fn.get("arguments"):
+                args += fn["arguments"]
+    assert names == ["get_weather"]
     assert json.loads(args) == {"city": "Warsaw"}
     assert payloads[-1]["choices"][0]["finish_reason"] == "tool_calls"

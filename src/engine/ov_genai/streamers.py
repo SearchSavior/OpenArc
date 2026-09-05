@@ -5,6 +5,7 @@ import asyncio
 from openvino_genai import StreamerBase
 from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_GenConfig
 from src.engine.ov_genai.tool_parse import gemma4 as gemma4_tool_parse
+from src.engine.ov_genai.tool_parse import museglimmer as museglimmer_tool_parse
 from src.engine.ov_genai.tool_parse import qwen35 as qwen35_tool_parse
 
 
@@ -101,7 +102,10 @@ def select_streamer(tokenizer, gen_config: OVGenAI_GenConfig) -> StreamerBase:
     (token-ID block boundaries, parsed OpenAI deltas). gemma4 requests use
     Gemma4ToolCallStreamer whenever tools are requested OR thinking is enabled
     (its thought-channel tags are special=True, so the plain text path cannot
-    split reasoning); everything else uses ChunkStreamer. All of them enqueue
+    split reasoning). museglimmer requests ALWAYS use MuseGlimmerToolCallStreamer:
+    its Harmony 'to=' channel routing is token-ID-only, so even a plain content
+    response opens with ' to=user<|message|>' header text that only the engine
+    streamer can strip. Everything else uses ChunkStreamer. All of them enqueue
     on .text_queue, so consumers are unaffected.
     """
     parser_name = getattr(gen_config, "tool_call_parser", None)
@@ -113,4 +117,6 @@ def select_streamer(tokenizer, gen_config: OVGenAI_GenConfig) -> StreamerBase:
             thinking = bool(gen_config.chat_template_kwargs.get("enable_thinking", True))
         if gen_config.tools or thinking:
             return gemma4_tool_parse.Gemma4ToolCallStreamer(tokenizer, gen_config)
+    if parser_name == "museglimmer":
+        return museglimmer_tool_parse.MuseGlimmerToolCallStreamer(tokenizer, gen_config)
     return ChunkStreamer(tokenizer, gen_config)

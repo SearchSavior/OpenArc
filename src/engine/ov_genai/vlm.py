@@ -24,6 +24,7 @@ from src.server.model_registry import ModelRegistry
 from src.server.schemas.registration import ModelLoadConfig
 from src.engine.ov_genai.streamers import ensure_tool_call_parser, select_streamer
 from src.engine.ov_genai.tool_parse.gemma4 import Gemma4ToolCallStreamer
+from src.engine.ov_genai.tool_parse.museglimmer import MuseGlimmerToolCallStreamer
 
 logger = logging.getLogger(__name__)
 
@@ -166,15 +167,20 @@ class OVGenAI_VLM:
 
             prompt, ov_images = self._resolve_prompt_and_images(gen_config)
 
-            # gemma4 non-streaming: generate through the token-ID streamer and
-            # reconstruct the raw tagged output. Gemma 4 protocol tags are
-            # special=True and the VLM decode always strips them, so the plain
-            # result text cannot be parsed for reasoning/tool calls.
-            gemma4_stream = getattr(gen_config, "tool_call_parser", None) == "gemma4"
-            streamer = (
-                Gemma4ToolCallStreamer(self.model_path.get_tokenizer(), gen_config)
-                if gemma4_stream else None
-            )
+            # gemma4/museglimmer non-streaming: generate through the token-ID
+            # streamer and reconstruct the raw tagged output. Their protocol
+            # tags are special=True and the VLM decode always strips them, so
+            # the plain result text cannot be parsed for reasoning/tool calls.
+            parser_name = getattr(gen_config, "tool_call_parser", None)
+            streamer = None
+            if parser_name == "gemma4":
+                streamer = Gemma4ToolCallStreamer(
+                    self.model_path.get_tokenizer(), gen_config
+                )
+            elif parser_name == "museglimmer":
+                streamer = MuseGlimmerToolCallStreamer(
+                    self.model_path.get_tokenizer(), gen_config
+                )
 
             result = await asyncio.to_thread(
                 self.model_path.generate,
@@ -186,7 +192,7 @@ class OVGenAI_VLM:
 
             perf_metrics = result.perf_metrics
 
-            if gemma4_stream:
+            if streamer is not None:
                 text = streamer.raw_text
             else:
                 text = result.texts[0] if getattr(result, "texts", None) else ""

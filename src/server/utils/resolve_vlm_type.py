@@ -10,6 +10,7 @@ QWEN3_5_ARCHITECTURES: set[str] = {
 
 
 ARCHITECTURE_VISION_TOKENS = {
+    "MuseGlimmerForConditionalGeneration": "<|patch|>",
     "Gemma4ForConditionalGeneration": "<|image><|image|><image|>",
     "Gemma3ForConditionalGeneration": "<start_of_image>",
     "Qwen3_5ForConditionalGeneration": "<|vision_start|><|image_pad|><|vision_end|>",

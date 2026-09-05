@@ -7,7 +7,7 @@ import pytest  # type: ignore[import]
 from test_model_path import model_path
 from src.engine.ov_genai.llm import OVGenAI_LLM
 from src.engine.ov_genai.vlm import OVGenAI_VLM
-from src.engine.ov_genai.tool_parse import gemma4, hermes, qwen35
+from src.engine.ov_genai.tool_parse import gemma4, hermes, museglimmer, qwen35
 from src.server.schemas.registration import (
     EngineType,
     ModelLoadConfig,
@@ -18,6 +18,7 @@ from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_Gen
 
 HERMES_MODEL_PATH = model_path("OpenVINO/Qwen3-0.6B-int8_asym-ov")
 QWEN35_MODEL_PATH = model_path("OpenVINO/Qwen3.5-2B-int4_sym-ov")
+MUSEGLIMMER_MODEL_PATH = model_path("OpenVINO/Muse-Glimmer-30B-int4-ov")
 
 TOOLS = [
     {
@@ -48,7 +49,8 @@ class _DummyRegistry:
 
 
 async def _generate_text(model_dir, model_name: str, tool_call_parser: ToolCallParser,
-                         engine_cls, model_type: ModelType) -> str:
+                         engine_cls, model_type: ModelType,
+                         max_tokens: int = 256) -> str:
     if not model_dir.exists():
         pytest.skip(f"Model path not found: {model_dir}")
 
@@ -59,6 +61,7 @@ async def _generate_text(model_dir, model_name: str, tool_call_parser: ToolCallP
         engine=EngineType.OV_GENAI,
         device=os.getenv("OPENARC_TEST_DEVICE", "CPU"),
         runtime_config={},
+        cache_dir=os.getenv("OPENARC_TEST_CACHE_DIR") or None,
         tool_call_parser=tool_call_parser,
     )
     llm = engine_cls(load_config)
@@ -68,7 +71,7 @@ async def _generate_text(model_dir, model_name: str, tool_call_parser: ToolCallP
         gen_config = OVGenAI_GenConfig(
             messages=MESSAGES,
             tools=TOOLS,
-            max_tokens=256,
+            max_tokens=max_tokens,
             temperature=0.1,
             top_k=1,
             top_p=1.0,
@@ -124,7 +127,9 @@ async def test_qwen35_tool_call_integration() -> None:
 
 
 async def _collect_streamed_deltas(model_dir, model_name: str, tool_call_parser: ToolCallParser,
-                                   engine_cls, model_type: ModelType) -> List[Dict[str, Any]]:
+                                   engine_cls, model_type: ModelType,
+                                   parser_value: str = "qwen35",
+                                   max_tokens: int = 256) -> List[Dict[str, Any]]:
     """Stream a tool request through the engine and return parsed chat deltas."""
     if not model_dir.exists():
         pytest.skip(f"Model path not found: {model_dir}")
@@ -136,6 +141,7 @@ async def _collect_streamed_deltas(model_dir, model_name: str, tool_call_parser:
         engine=EngineType.OV_GENAI,
         device=os.getenv("OPENARC_TEST_DEVICE", "CPU"),
         runtime_config={},
+        cache_dir=os.getenv("OPENARC_TEST_CACHE_DIR") or None,
         tool_call_parser=tool_call_parser,
     )
     engine = engine_cls(load_config)
@@ -145,13 +151,13 @@ async def _collect_streamed_deltas(model_dir, model_name: str, tool_call_parser:
         gen_config = OVGenAI_GenConfig(
             messages=MESSAGES,
             tools=TOOLS,
-            max_tokens=256,
+            max_tokens=max_tokens,
             temperature=0.1,
             top_k=1,
             top_p=1.0,
             stream=True,
             chat_template_kwargs={"enable_thinking": False},
-            tool_call_parser="qwen35",
+            tool_call_parser=parser_value,
         )
         deltas: List[Dict[str, Any]] = []
         async for item in engine.generate_stream(gen_config):
@@ -315,3 +321,112 @@ def test_gemma4_streamer_offline_write_tokens() -> None:
     )
     assert json.loads(args) == {"location": "Oslo"}
     assert tool_frags[0]["id"].startswith("call_")
+
+
+def _muse_assemble(deltas):
+    """Accumulate chat deltas into (reasoning, content, calls) like the route."""
+    reasoning = "".join(d.get("reasoning_content", "") for d in deltas)
+    content = "".join(d.get("content", "") for d in deltas)
+    calls: Dict[str, Dict[str, Any]] = {}
+    order = []
+    for d in deltas:
+        for f in d.get("tool_calls", []):
+            i = str(f["index"])
+            if i not in calls:
+                calls[i] = {"id": None, "type": None, "function": {"name": "", "arguments": ""}}
+                order.append(i)
+            if f.get("id"):
+                calls[i]["id"] = f["id"]
+            if f.get("type"):
+                calls[i]["type"] = f["type"]
+            fn = f.get("function", {})
+            if fn.get("name"):
+                calls[i]["function"]["name"] = fn["name"]
+            if "arguments" in fn:
+                calls[i]["function"]["arguments"] += fn["arguments"]
+    final = [calls[i] for i in order]
+    for c in final:
+        c["function"]["arguments"] = json.loads(c["function"]["arguments"])
+    return reasoning, content, final
+
+
+@pytest.mark.asyncio
+async def test_museglimmer_tool_call_integration() -> None:
+    text = await _generate_text(
+        MUSEGLIMMER_MODEL_PATH, "integration-museglimmer",
+        ToolCallParser.MUSEGLIMMER_PARSER,
+        OVGenAI_VLM, ModelType.VLM,
+        max_tokens=1024,
+    )
+
+    _, content, tool_calls = museglimmer.parse_generation(text, TOOLS)
+
+    assert tool_calls, f"Expected museglimmer tool calls in output: {text!r}"
+    assert tool_calls[0]["type"] == "function"
+    assert tool_calls[0]["function"]["name"] == "get_weather"
+
+    arguments = json.loads(tool_calls[0]["function"]["arguments"])
+    assert "location" in arguments
+    assert "atem" not in content
+
+
+@pytest.mark.asyncio
+async def test_museglimmer_tool_call_streaming_integration() -> None:
+    deltas = await _collect_streamed_deltas(
+        MUSEGLIMMER_MODEL_PATH, "integration-museglimmer-stream",
+        ToolCallParser.MUSEGLIMMER_PARSER,
+        OVGenAI_VLM, ModelType.VLM,
+        parser_value="museglimmer",
+        max_tokens=1024,
+    )
+
+    reasoning, content, calls = _muse_assemble(deltas)
+    assert calls, f"Expected streamed tool-call fragments: {deltas!r}"
+    assert calls[0]["function"]["name"] == "get_weather"
+    assert "location" in calls[0]["function"]["arguments"]
+    assert calls[0]["id"] and calls[0]["id"].startswith("call_")
+    # ' to=...' header text and atem tags must never leak into content
+    assert "to=" not in content and "atem" not in content
+
+
+def test_museglimmer_streamer_offline_write_tokens() -> None:
+    """Drive MuseGlimmerToolCallStreamer.write() with token chunks from the
+    real tokenizer (no model, no GPU): locks in the BOS-stripped encode
+    lookup, ID interception, and decode contract."""
+    if not MUSEGLIMMER_MODEL_PATH.exists():
+        pytest.skip(f"Model path not found: {MUSEGLIMMER_MODEL_PATH}")
+
+    import openvino_genai as ov
+
+    tokenizer = ov.Tokenizer(str(MUSEGLIMMER_MODEL_PATH))
+    gen_config = OVGenAI_GenConfig(tools=TOOLS)
+    streamer = museglimmer.MuseGlimmerToolCallStreamer(tokenizer, gen_config)
+
+    text = (
+        " to=self<|message|>Checking the weather.<|eom|>"
+        "<|start|>assistant to=get_weather<|message|>"
+        "<atem:function_calls>\n<atem:invoke name=\"get_weather\">\n"
+        "<atem:parameter name=\"location\">Warsaw</atem:parameter>\n"
+        "</atem:invoke>\n</atem:function_calls><|eot|>"
+    )
+    token_ids = tokenizer.encode(text).input_ids.data.tolist()[0]
+    for i in range(0, len(token_ids), 3):
+        streamer.write(token_ids[i : i + 3])
+    streamer.end()
+
+    deltas: List[Dict[str, Any]] = []
+    while not streamer.text_queue.empty():
+        item = streamer.text_queue.get_nowait()
+        if item is None:
+            break
+        assert isinstance(item, dict) and "chat_delta" in item, item
+        deltas.extend(item["chat_delta"])
+
+    reasoning, content, calls = _muse_assemble(deltas)
+    assert reasoning == "Checking the weather.", repr(reasoning)
+    assert content == "", repr(content)
+    assert len(calls) == 1
+    assert calls[0]["function"]["name"] == "get_weather"
+    assert calls[0]["function"]["arguments"] == {"location": "Warsaw"}
+    assert streamer.tool_parser.errors == []
+    assert streamer.raw_text == text
