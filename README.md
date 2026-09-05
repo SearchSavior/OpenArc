@@ -11,7 +11,7 @@
 
 **OpenArc** is an inference engine for Intel devices. 
 
-Serve LLMs, VLMs, Whisper, Kokoro-TTS, Qwen-TTS, Qwen-ASR, Embedding and Reranker models over OpenAI compatible endpoints, powered by OpenVINO on your device. Local, private, open source AI.  
+Serve LLMs, VLMs, Whisper, Kokoro-TTS, Qwen-TTS, Qwen-ASR, Embedding and Reranker models over OpenAI compatible endpoints, powered by OpenVINO on your device. Local, private, open source AI. OpenArc enables you to host speech to text, text to speech and an LLM on the same server, at the same time. 
 
 OpenArc is a community-driven effort to make acceleration from OpenVINO easier to access, deploy and leverage for our usecases.
 
@@ -31,6 +31,8 @@ Thanks to everyone on Discord for their continued support!
 
 ## Features
 
+  - 
+  - Support for openvino genai `scheduler_config`
   - NEW! Containerization with Docker #60 by @meatposes
   - NEW! Speculative decoding support for LLMs #57 by @meatposes
   - NEW! Streaming cancellation support for LLMs and VLMs
@@ -46,8 +48,7 @@ Thanks to everyone on Discord for their continued support!
       - `/v1/embeddings`: `qwen3-embedding` #33 by @mwrothbe
       - `/v1/rerank`: `qwen3-reranker` #39 by @mwrothbe
   - `jinja` templating with `AutoTokenizers`
-  - OpenAI Compatible tool calls with streaming and paralell 
-    - tool call parser currently reads "name", "argument" 
+  - OpenAI Compatible tool and reasoning parsing
   - Fully async multi engine, multi task architecture
   - Model concurrency: load and infer multiple models at once
   - Automatic unload on inference failure
@@ -66,7 +67,7 @@ Thanks to everyone on Discord for their continued support!
   
 
 > [!NOTE] 
-> Interested in contributing? Please open an issue before submitting a PR!
+> Interested in contributing? Please discuss with us on discord or open an issue before submitting a PR!
 
 
 ## Acknowledgments

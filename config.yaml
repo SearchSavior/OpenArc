@@ -11,7 +11,7 @@ startup_models : ${OPENRARC_AUTOLOAD_MODELS}
 models:
   qwen35-08b:
     engine: ovgenai
-    model_type: llm
+    model_type: vlm
     model_path: /mnt/Ironwolf-4TB/Models/OpenVINO/Qwen3.5/Qwen3.5-0.8B-int8_asym-ov/
     device: CPU
     tool_call_parser: qwen35
@@ -107,10 +107,26 @@ models:
       stream_chunk_frames:
       stream_left_context:
 
-
   qwen3_tts_oscar:
     model_type: qwen3_tts_voice_clone
     model_path:
     engine: openvino
     device: GPU.0
     qwen3_tts_voice_clone_options:
+      ref_text:
+      x_vector_only:
+      instruct:
+        qwen3_tts_options:
+      max_new_tokens:
+      do_sample:
+      top_k:
+      top_p:
+      temperature:
+      repetition_penalty:
+      subtalker_do_sample:
+      subtalker_top_k:
+      subtalker_top_p:
+      subtalker_temperature:
+      stream: 
+      stream_chunk_frames:
+      stream_left_context:

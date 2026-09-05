@@ -13,7 +13,6 @@ icon: lucide/chess-rook
 
 Welcome to the OpenArc documentation! 
 
-
 ## Installation
 
 - [Linux](install.md#linux)
@@ -32,6 +31,18 @@ OpenArc includes a command line tool for controlling the server.
 - [openarc bench](commands.md#bench) — Benchmarking tool for LLMs.
 - [openarc tool](commands.md#tool) — OpenVINO utilities.
 
+## Configuration
+
+>Under construction!
+
+- [Advanced openvino properties](configure.md#runtime_config)
+
+
+## Concepts
+
+- [Tool and Reasoning Parsing](tool_use.md#tool-and-reasoning-parsing)
+
+
 ## Models
 
 Models to get you started and where to find more!
@@ -40,7 +51,7 @@ OpenArc is deeply integrated with the Huggingface Ecosytem and has been written 
 
 We are working on improving this process with experimental GGUF support coming, as well as a new frontend application similar to LM-Studio!
 
-Below are some models to get started which are known to work. My hugg
+Below are some models to get started which are known to work. My huggingface has many 
 
 - [Model Sources](models.md#sources)
 - [LLMs](models.md#llms)

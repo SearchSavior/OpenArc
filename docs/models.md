@@ -100,13 +100,15 @@ If you need help converting a particular model join Discord and we can help you!
 
 ## Model-Specific Instructions
 
-### Qwen3.5/3.6
+### Tool and Reasoning Parsing
 
-**Is Qwen3.5/3.6 supported?**
 
-Qwen3.5 models has unofficial support. However, they do require you to build `openvino` and `openvino.genai` from source. You will also need to install the latest version of `optimum-intel`. 
+OpenArc now supports tool and reasoning parsing for several architectures. Our approach ensures correct openai compatible parsing using openvino genai by leveraging some useful facts about tokens. 
 
-To add a model, run the command `openarc add --model-name MODEL_NAME --model-path /path/to/model --model-type vlm --device GPU|CPU --runtime-config '{"ATTENTION_BACKEND": "SDPA"}'`. OpenArc resolves the VLM vision token from the model's `config.json`. Intel is currently working on adding support for Qwen3.5 to utilize the PA attention backend but it has not been merged yet. This currently appears to be much more performant. If you have built `openvino.genai` with the support included, you may change the runtime config parameter to use PA instead.
+Since Autoregressive language models emit tokens in a continuous stream one by one, we can visualize it this way
+- streaming decoded tokens to a buff
+
+
 
 **How do I control thinking?**
 
