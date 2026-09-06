@@ -11,7 +11,9 @@
 
 > [!NOTE]
 > OpenArc currently requires nightly wheels to run the latest models. 
-> `uv pip install --pre -U openvino-genai --extra-index-url https://storage.openvinotoolkit.org/simple/wheels/nightly`
+> ```
+> uv pip install --pre -U openvino-genai --extra-index-url https://storage.openvinotoolkit.org/simple/wheels/nightly
+> ```
 
 **OpenArc** is an inference engine for Intel devices. 
 
