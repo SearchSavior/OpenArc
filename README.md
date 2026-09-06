@@ -9,6 +9,10 @@
 > [!NOTE]
 > OpenArc is under active development.
 
+> [!NOTE]
+> OpenArc currently requires nightly wheels to run the latest models. 
+> `uv pip install --pre -U openvino-genai --extra-index-url https://storage.openvinotoolkit.org/simple/wheels/nightly`
+
 **OpenArc** is an inference engine for Intel devices. 
 
 Serve LLMs, VLMs, Whisper, Kokoro-TTS, Qwen-TTS, Qwen-ASR, Embedding and Reranker models over OpenAI compatible endpoints, powered by OpenVINO on your device. Local, private, open source AI. OpenArc enables you to host speech to text, text to speech and an LLM on the same server, at the same time. 
