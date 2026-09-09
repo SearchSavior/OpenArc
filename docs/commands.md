@@ -22,6 +22,7 @@ This page contains example commands to help you choose models and configure Open
           --engine <engine> \
           --model-type <model-type> \
           --device <target-device>
+          --tool-call-parser <hermes/qwen35/gemma4>
         ```
 
         To see what options you have for `--device`, use `openarc tool device-detect`.
@@ -36,6 +37,7 @@ This page contains example commands to help you choose models and configure Open
           --engine <engine> \
           --model-type llm \
           --device <target-device>
+          --tool-call-parser <hermes> # text only models currently supported use hermes style in most cases
         ```
     
     === "VLM"
@@ -47,6 +49,7 @@ This page contains example commands to help you choose models and configure Open
           --engine <engine> \
           --model-type vlm \
           --device <target-device>
+          --tool-call-parser <hermes/qwen35/gemma4>
         ```
     
     === "Whisper"
