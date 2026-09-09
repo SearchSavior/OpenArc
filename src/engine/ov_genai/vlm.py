@@ -133,6 +133,36 @@ class OVGenAI_VLM:
 
         return tokenized_messages, ov_images
 
+    def _strip_stray_vision_tokens(self, prompt: str, ov_images: List[ov.Tensor]) -> str:
+        """
+        Enforce the vision-tag / image count invariant that OpenVINO's
+        inputs_embedder checks (vision_sequence.size() == n_visions).
+
+        prepare_inputs inserts exactly one native vision token per decoded
+        image, so a mismatch can only appear when the prompt *text* itself
+        carries a stray vision placeholder while no image is supplied. That is
+        exactly what happens when a VLM is driven with plain text whose
+        conversation mentions the model's own vision token (e.g. the model is
+        asked to read/analyze source code that references its own token). When
+        no image is provided we strip every stray token so the native vision
+        tag count (0) matches the provided image count (0); otherwise OpenVINO
+        aborts with "The number of native vision tags must match the number of
+        provided images/videos". Idempotent: a no-op when images exist or the
+        token is absent.
+        """
+        if ov_images or not self.vision_token:
+            return prompt
+        token_str = self._vision_token_for_index(0)
+        if not token_str or token_str not in prompt:
+            return prompt
+        stray_count = prompt.count(token_str)
+        logger.warning(
+            f"[{self.load_config.model_name}] prompt contains "
+            f"{stray_count} native vision token(s) but no image was provided; "
+            "stripping the token(s) to satisfy the vision-tag/image count invariant."
+        )
+        return prompt.replace(token_str, " ")
+
     def _resolve_prompt_and_images(
         self, gen_config: OVGenAI_GenConfig
     ) -> Tuple[str, List[ov.Tensor]]:
@@ -141,10 +171,13 @@ class OVGenAI_VLM:
         """
         if gen_config.input_ids:
             prompt = self.tokenizer.decode(gen_config.input_ids, skip_special_tokens=False)
-            return prompt, []
-        if gen_config.prompt:
-            return gen_config.prompt, []
-        return self.prepare_inputs(gen_config.messages, gen_config.tools, gen_config.chat_template_kwargs)
+            images: List[ov.Tensor] = []
+        elif gen_config.prompt:
+            prompt = gen_config.prompt
+            images = []
+        else:
+            prompt, images = self.prepare_inputs(gen_config.messages, gen_config.tools, gen_config.chat_template_kwargs)
+        return self._strip_stray_vision_tokens(prompt, images), images
 
     def generate_type(self, gen_config: OVGenAI_GenConfig):
         """
@@ -224,13 +257,24 @@ class OVGenAI_VLM:
         prompt, ov_images = self._resolve_prompt_and_images(gen_config)
 
         async def _run_generation():
-            return await asyncio.to_thread(
-                self.model_path.generate,
-                prompt=prompt,
-                **({'images': ov_images} if len(ov_images) > 0 else {}),
-                generation_config=generation_kwargs,
-                streamer=streamer,
-            )
+            try:
+                return await asyncio.to_thread(
+                    self.model_path.generate,
+                    prompt=prompt,
+                    **({'images': ov_images} if len(ov_images) > 0 else {}),
+                    generation_config=generation_kwargs,
+                    streamer=streamer,
+                )
+            except Exception:
+                # The streamer's end() (the thing that enqueues the None EOF
+                # sentinel) is only invoked on a *successful* finish. A generation
+                # that raises -- e.g. OpenVINO's "native vision tag count must
+                # match image count" check, which fires during input embedding
+                # before any token is emitted -- therefore enqueues no EOF. Push
+                # one here so the drain loop in generate_stream terminates and
+                # can surface the error instead of waiting on the queue forever.
+                streamer.text_queue.put_nowait(None)
+                raise
 
         gen_task = asyncio.create_task(_run_generation())
 
@@ -240,15 +284,22 @@ class OVGenAI_VLM:
                 if chunk is None:
                     break
                 yield chunk
+            # Stream fully drained: now await the generation task so that any
+            # error it raised is re-raised to the caller. Previously this await
+            # lived in the `finally` block, where a failing task masked the
+            # exception (and the trailing `yield metrics` never ran), leaving
+            # the HTTP client waiting for a stream that would never end.
+            result = await gen_task
         finally:
             # Clear active request tracking
             self._active_request_id = None
             self._active_streamer = None
-            
-            result = await gen_task
-            perf_metrics = result.perf_metrics
-            metrics = self.collect_metrics(gen_config, perf_metrics)
-            yield metrics
+
+        # Reached only on the happy path: the stream drained and generation
+        # succeeded. Emit the metrics last.
+        perf_metrics = result.perf_metrics
+        metrics = self.collect_metrics(gen_config, perf_metrics)
+        yield metrics
 
     async def cancel(self, request_id: str) -> bool:
         """

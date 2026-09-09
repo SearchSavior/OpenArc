@@ -208,3 +208,48 @@ def test_unload_model_resets_state(monkeypatch: pytest.MonkeyPatch, load_config:
     assert vlm.vision_token is None
     registry.register_unload.assert_called_once_with("model-name")
     gc_mock.assert_called_once()
+
+
+def test_strip_stray_vision_token_no_image(load_config: ModelLoadConfig) -> None:
+    # Regression (vision-issue.log): a VLM driven with plain text whose
+    # conversation contains the model's own native vision token (e.g. being
+    # asked to "analyze the code" of a model that mentions its own token) must
+    # not trip OpenVINO's "vision_sequence.size() == n_visions" invariant.
+    vlm = OVGenAI_VLM(load_config)
+    vlm.vision_token = "<" + "img" + ">"
+    tok = vlm.vision_token
+
+    stripped = vlm._strip_stray_vision_tokens("A " + tok + " B", [])
+    assert tok not in stripped
+    assert vlm._strip_stray_vision_tokens(stripped, []) == stripped  # idempotent
+
+
+def test_strip_stray_vision_token_kept_when_image_present(load_config: ModelLoadConfig) -> None:
+    # When an image is actually provided, the tag is expected and must stay.
+    vlm = OVGenAI_VLM(load_config)
+    vlm.vision_token = "<" + "img" + ">"
+    tok = vlm.vision_token
+    assert vlm._strip_stray_vision_tokens(tok, [object()]) == tok
+
+
+def test_resolve_prompt_strips_stray_token_for_text_only_chat(
+    load_config: ModelLoadConfig,
+) -> None:
+    # Text-only messages -> no images -> any stray token in the templated
+    # prompt is removed before it reaches the pipeline.
+    vlm = OVGenAI_VLM(load_config)
+    vlm.vision_token = "<" + "img" + ">"
+    tok = vlm.vision_token
+
+    templated_prompt = "system text " + tok + " user asks to analyze the code"
+    tokenizer_mock = MagicMock()
+    tokenizer_mock.apply_chat_template.return_value = templated_prompt
+    vlm.tokenizer = tokenizer_mock
+
+    config = OVGenAI_GenConfig(
+        messages=[{"role": "user", "content": "analyze the code"}],
+        stream=True,
+    )
+    prompt, images = vlm._resolve_prompt_and_images(config)
+    assert images == []
+    assert tok not in prompt
