@@ -159,7 +159,7 @@ class OVGenAI_VLM:
         logger.warning(
             f"[{self.load_config.model_name}] prompt contains "
             f"{stray_count} native vision token(s) but no image was provided; "
-            "stripping the token(s) to satisfy the vision-tag/image count invariant."
+            "stripping token(s) from the input, solves bug found in PR #169"
         )
         return prompt.replace(token_str, " ")
 
