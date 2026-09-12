@@ -27,20 +27,48 @@ models:
       enable_prefix_caching:
       use_cache_eviction:
       use_sparse_attention:
-    samplers:
+    sampler_config:
       temperature: 0.7
       top_k: 40
       top_p: 0.95
       repetition_penalty: 1.05
       max_tokens: 1024
 
+  qwen3-8b-spec:
+    load_config:
+      engine: ovgenai
+      model_type: vlm
+      model_path: /mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Qwen3-8B-ShiningValiant3-int4-asym-ov
+      device: GPU.0
+      tool_call_parser: hermes
+      draft_model_path: "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Qwen3-pruned-6L-from-0.6B-int8-ov"
+      draft_device: "CPU"
+      num_assistant_tokens: 5
+    runtime_config:
+      PERFORMANCE_HINT: LATENCY
+    scheduler_config:
+      max_num_batched_tokens: 
+      num_kv_blocks:
+      cache_size:
+      num_linear_attention_blocks:
+      cache_interval_multiplier:
+      dynamic_split_fuse:
+      enable_prefix_caching:
+      use_cache_eviction:
+      use_sparse_attention:
+    sampler_config:
+      temperature: 0.7
+      top_k: 40
+      top_p: 0.95
+      repetition_penalty: 1.05
+      max_tokens: 1024
 
   kokoro:
     engine: openvino
     model_type: kokoro
     model_path:
     device: CPU
-    kokoro_options:
+    kokoro_config:
       voice: af_sarah
       voice_blend: af_heart:0.7,af_nicole:0.3 
       lang_code:
@@ -52,7 +80,7 @@ models:
     model_type: qwen3_asr
     model_path: 
     device: CPU
-    qwen3_asr_options:
+    qwen3_asr_config:
       language:
       max_tokens:
       max_chunk_sec:
@@ -65,11 +93,11 @@ models:
     model_path:
     engine: openvino
     device: GPU.0
-    qwen3_tts_custom_voice_options:
+    qwen3_tts_custom_voice_config:
       language:
       speaker: 
       instruct:
-    qwen3_tts_options:
+    qwen3_tts_config:
       max_new_tokens:
       do_sample:
       top_k:
@@ -90,9 +118,9 @@ models:
     model_path:
     engine: openvino
     device: GPU.0
-    qwen3_tts_voice_design_options:
+    qwen3_tts_voice_design_config:
       voice_description:
-    qwen3_tts_options:
+    qwen3_tts_config:
       max_new_tokens:
       do_sample:
       top_k:
@@ -112,11 +140,11 @@ models:
     model_path:
     engine: openvino
     device: GPU.0
-    qwen3_tts_voice_clone_options:
+    qwen3_tts_voice_clone_config:
       ref_text:
       x_vector_only:
       instruct:
-        qwen3_tts_options:
+    qwen3_tts_config:
       max_new_tokens:
       do_sample:
       top_k:
