@@ -310,7 +310,7 @@ def test_infer_qwen3_asr_handles_error() -> None:
     assert packet.segments is None
 
 
-def test_commit_treats_error_field_not_error_prefix() -> None:
+def test_commit_resolves_error_without_unloading_the_model() -> None:
     class DummyRegistry:
         def __init__(self):
             self.unloaded = []
@@ -342,11 +342,14 @@ def test_commit_treats_error_field_not_error_prefix() -> None:
             result_future=err_future,
             error=RuntimeError("gpu oom"),
         )
-        assert worker_module._commit_completed_packet(err, err, "m", registry) is True
+        # On error the worker resolves the caller's future and keeps the model loaded;
+        # unloading here runs the pipeline destructor, which can SIGABRT the process if
+        # the device context is corrupted (see queue_worker_llm docstring).
+        assert worker_module._commit_completed_packet(err, err, "m", registry) is False
         with pytest.raises(RuntimeError, match="gpu oom"):
             err_future.result()
         await asyncio.sleep(0)
-        assert registry.unloaded == ["m"]
+        assert registry.unloaded == []
 
     asyncio.run(_run())
 
