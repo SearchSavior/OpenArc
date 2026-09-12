@@ -19,6 +19,7 @@ docker-compose.override.yaml
 .mypy_cache/
 .venv/
 .vscode/
+.idea/
 .builds/
 .cursor/
 openarc_bench.db
