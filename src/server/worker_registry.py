@@ -97,13 +97,13 @@ def _commit_completed_packet(
 ) -> bool:
     """Complete the request future. Return True if the worker should exit."""
     if completed.error is not None:
-        logger.error(
-            f"[{model_name}] Inference failed, triggering model unload..."
-        )
+        # Resolve the caller and keep the worker/model alive; unloading here runs the
+        # pipeline destructor, which can touch a corrupted device context after certain
+        # errors and SIGABRT the whole process, taking every other loaded model with it.
+        logger.error(f"[{model_name}] Inference failed: {completed.error}")
         if packet.result_future is not None and not packet.result_future.done():
             packet.result_future.set_exception(completed.error)
-        asyncio.create_task(registry.register_unload(model_name))
-        return True
+        return False
     if packet.result_future is not None and not packet.result_future.done():
         packet.result_future.set_result(completed)
     return False
