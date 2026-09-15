@@ -243,12 +243,10 @@ class InferWorker:
         then converts to bytes for response.
         """
         audio_chunks = []
-        chunk_texts = []
 
         try:
             async for chunk in kokoro_model.chunk_forward_pass(packet.gen_config):
                 audio_chunks.append(chunk.audio)
-                chunk_texts.append(chunk.chunk_text)
 
             if audio_chunks:
                 # Concatenate all audio chunks
@@ -268,7 +266,6 @@ class InferWorker:
             # Add some basic metrics
             packet.metrics = {
                 "chunks_processed": len(audio_chunks),
-                "chunk_texts": chunk_texts,
                 "total_samples": sum(len(chunk) for chunk in audio_chunks) if audio_chunks else 0
             }
         except Exception as e:
