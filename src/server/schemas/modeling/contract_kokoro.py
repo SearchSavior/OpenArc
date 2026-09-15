@@ -103,7 +103,7 @@ class OV_KokoroGenConfig(BaseModel):
     )
     lang_code: KokoroLanguage = Field(KokoroLanguage.AMERICAN_ENGLISH, description="Language code for the voice")
     speed: float = Field(1.0, description="Speech speed multiplier")
-    character_count_chunk: int = Field(100, description="Max characters per chunk")
+    character_count_chunk: int = Field(400, description="Max characters per chunk")
     response_format: str = Field("wav", description="Output format")
 
     @field_validator("voice_blend")

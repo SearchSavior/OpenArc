@@ -151,6 +151,109 @@ def test_chunk_forward_pass_yields_chunks(monkeypatch: pytest.MonkeyPatch, load_
     assert pipeline_calls[1][0] == "call"
 
 
+def test_make_chunks_splits_overlong_sentence_after_flush(load_config: ModelLoadConfig) -> None:
+    """Regression: an oversized sentence arriving right after a buffer flush
+    must still be split, not passed through whole."""
+    kokoro = OV_Kokoro(load_config)
+
+    short = "Short one."
+    long_sentence = "word " * 30 + "end"  # 154 chars, no punctuation
+    text = f"{short} {long_sentence}"
+    chunks = kokoro.make_chunks(text, chunk_size=50)
+
+    assert all(len(chunk) <= 50 for chunk in chunks)
+    joined = " ".join(chunks)
+    assert "end" in joined
+    assert joined.split().count("word") == 30
+
+
+def test_make_chunks_size_and_lossless_invariants(load_config: ModelLoadConfig) -> None:
+    """Every chunk respects the size limit and no word is ever dropped."""
+    kokoro = OV_Kokoro(load_config)
+
+    text = (
+        "First sentence here! Followed by a question? And one more, with a "
+        "clause, to split on; plus a colon: like this. " * 8
+    )
+    chunks = kokoro.make_chunks(text, chunk_size=120)
+
+    assert len(chunks) > 1
+    assert all(len(chunk) <= 120 for chunk in chunks)
+    assert " ".join(chunks).split() == text.split()
+
+
+def test_make_chunks_prefers_clause_boundary(load_config: ModelLoadConfig) -> None:
+    """Mid-sentence splits should land on clause punctuation when available."""
+    kokoro = OV_Kokoro(load_config)
+
+    text = "before the comma there are words, after it there are more words and yet more and more words"
+    chunks = kokoro.make_chunks(text, chunk_size=40)
+
+    assert len(chunks) >= 2
+    assert chunks[0].endswith(",")
+    assert all(len(chunk) <= 40 for chunk in chunks)
+
+
+def test_make_chunks_handles_newlines_and_empty(load_config: ModelLoadConfig) -> None:
+    kokoro = OV_Kokoro(load_config)
+
+    assert kokoro.make_chunks("", 100) == []
+    assert kokoro.make_chunks("   \n  ", 100) == []
+
+    chunks = kokoro.make_chunks("Para one is short.\n\nPara two is also short.", 100)
+    assert len(chunks) == 2
+
+
+def test_chunk_forward_pass_concatenates_multi_bucket_results(
+    monkeypatch: pytest.MonkeyPatch, load_config: ModelLoadConfig
+) -> None:
+    """Regression: when KPipeline yields multiple buckets for one text chunk,
+    all audio must be concatenated — taking only the first drops speech."""
+    import torch
+
+    kokoro = OV_Kokoro(load_config)
+    kokoro.model = object()
+    kokoro.make_chunks = MagicMock(return_value=["Only chunk"])  # type: ignore[assignment]
+
+    async def immediate_to_thread(func, *args, **kwargs):  # type: ignore[override]
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(kokoro_module.asyncio, "to_thread", immediate_to_thread)
+
+    class DummyResult:
+        def __init__(self, audio) -> None:
+            self.audio = audio
+
+    class DummyPipeline:
+        def __init__(self, model, lang_code):
+            pass
+
+        def __call__(self, text, voice, speed):
+            yield DummyResult(torch.zeros(10))
+            yield DummyResult(torch.ones(10))
+
+    monkeypatch.setattr("kokoro.pipeline.KPipeline", DummyPipeline)
+
+    config = OV_KokoroGenConfig(
+        input="ignored",
+        voice=KokoroVoice.AF_SARAH,
+        lang_code=KokoroLanguage.AMERICAN_ENGLISH,
+        speed=1.0,
+        character_count_chunk=50,
+        response_format="wav",
+    )
+
+    async def _run_test():
+        return [item async for item in kokoro.chunk_forward_pass(config)]
+
+    chunks = asyncio.run(_run_test())
+
+    assert len(chunks) == 1
+    assert chunks[0].audio.shape[0] == 20
+    assert int(chunks[0].audio[:10].sum()) == 0
+    assert int(chunks[0].audio[10:].sum()) == 10
+
+
 def test_unload_model_resets_state(monkeypatch: pytest.MonkeyPatch, load_config: ModelLoadConfig) -> None:
     kokoro = OV_Kokoro(load_config)
     kokoro.model = object()

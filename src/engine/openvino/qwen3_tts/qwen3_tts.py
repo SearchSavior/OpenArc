@@ -134,7 +134,7 @@ class OVQwen3TTS:
         self._text_model_c = core.compile_model(str(p / "text_model.xml"), device, _hint)
         self._codec_emb_c = core.compile_model(str(p / "codec_embedding.xml"), device, _hint)
         # Code predictor: many tiny inferences per frame; CPU avoids GPU launch/transfer overhead.
-        self._cp_codec_emb_c = core.compile_model(str(p / "cp_codec_embedding.xml"), "CPU", _hint)
+        self._cp_codec_emb_c = core.compile_model(str(p / "cp_codec_embedding.xml"), "GPU.0", _hint)
         # Speech decoder: single-shot vocoding; CPU fits typical sequence lengths without GPU overhead.
         self._decoder_c = core.compile_model(
             str(p / "speech_tokenizer" / "speech_decoder.xml"), "CPU", _hint,
@@ -143,7 +143,7 @@ class OVQwen3TTS:
 
         talker_c = core.compile_model(str(p / "talker.xml"), device, _hint)
         self._talker_req = talker_c.create_infer_request()
-        cp_c = core.compile_model(str(p / "code_predictor.xml"), "CPU", _hint)
+        cp_c = core.compile_model(str(p / "code_predictor.xml"), "GPU.0", _hint)
         self._cp_req = cp_c.create_infer_request()
         if "GPU" in device:
             logger.info(

@@ -82,46 +82,76 @@ class OV_Kokoro(KModel):
         return removed
 
 
+    # Sentence end: .!? (optionally followed by quotes/brackets), then whitespace.
+    _SENTENCE_RE = re.compile(r'(?<=[.!?…])["\')\]]*\s+')
+    # Clause punctuation worth pausing on when a mid-sentence split is needed.
+    _CLAUSE_PUNCT = ",;:\u2014\u2013-"
+    # Prefer clause splits at least this far into the chunk to avoid
+    # degenerate tiny heads (e.g. a comma at position 4).
+    _MIN_CLAUSE_FRACTION = 0.3
+
+    @staticmethod
+    def _split_head(text: str, limit: int) -> tuple[str, str]:
+        """Split off a head of at most `limit` chars, preferring a clause
+        boundary, then a word boundary, then a hard cut. Keeps punctuation
+        on the head so the model still hears the pause."""
+        head = text[:limit]
+        cut = -1
+        best = max(head.rfind(p) for p in OV_Kokoro._CLAUSE_PUNCT)
+        if best >= int(limit * OV_Kokoro._MIN_CLAUSE_FRACTION):
+            cut = best + 1
+        else:
+            cut = head.rfind(" ")
+            if cut <= 0:
+                cut = limit
+        return text[:cut].strip(), text[cut:].strip()
+
     def make_chunks(self, text: str, chunk_size: int) -> list[str]:
         """
-        Split text into chunks up to `chunk_size` characters,
-        preferring sentence boundaries.
+        Split text into chunks of at most `chunk_size` characters.
+
+        Boundary preference: paragraph (blank line) -> sentence -> clause
+        (comma/semicolon/colon/dash) -> word -> hard cut. Guaranteed: every
+        returned chunk respects the size limit and no character is ever
+        dropped (concatenation reproduces the input modulo whitespace).
         """
-        if len(text) <= chunk_size:
-            return [text]
+        if not text or not text.strip():
+            return []
+        if len(text.strip()) <= chunk_size:
+            return [text.strip()]
 
-        chunks = []
-        current_chunk = ""
-
-        # Regex: split after ., !, ? followed by space
-        sentences = re.split(r'(?<=[.!?]) +', text)
-
-        for sentence in sentences:
-            sentence = sentence.strip()
-            if not sentence:
+        # Paragraph breaks are hard boundaries; sentences within paragraphs.
+        segments: list[str] = []
+        for paragraph in re.split(r'\n\s*\n+|\n', text):
+            paragraph = paragraph.strip()
+            if not paragraph:
                 continue
+            segments.extend(s for s in self._SENTENCE_RE.split(paragraph) if s.strip())
 
-            if len(current_chunk) + len(sentence) > chunk_size:
-                if current_chunk:
-                    chunks.append(current_chunk.strip())
-                    current_chunk = sentence
-                else:
-                    # sentence itself longer than chunk_size -> word splitting
-                    words = sentence.split()
-                    temp = ""
-                    for word in words:
-                        if len(temp) + len(word) + 1 > chunk_size:
-                            if temp:
-                                chunks.append(temp.strip())
-                            temp = word
-                        else:
-                            temp += (" " if temp else "") + word
-                    current_chunk = temp
+        chunks: list[str] = []
+        current = ""
+
+        for seg in segments:
+            if len(seg) > chunk_size:
+                # Oversized segment: flush buffer, then carve off heads until
+                # the remainder fits. The tail becomes the new buffer so it
+                # can merge with the next sentence.
+                if current:
+                    chunks.append(current)
+                    current = ""
+                while len(seg) > chunk_size:
+                    head, seg = self._split_head(seg, chunk_size)
+                    chunks.append(head)
+            if not current:
+                current = seg
+            elif len(current) + 1 + len(seg) <= chunk_size:
+                current = f"{current} {seg}"
             else:
-                current_chunk += (" " if current_chunk else "") + sentence
+                chunks.append(current)
+                current = seg
 
-        if current_chunk:
-            chunks.append(current_chunk.strip())
+        if current:
+            chunks.append(current)
 
         return chunks
 
@@ -149,14 +179,23 @@ class OV_Kokoro(KModel):
                 """Blocking inference run in background thread."""
                 with torch.no_grad():
                     infer = pipeline(chunk_text, voice=voice_arg, speed=config.speed)
-                    result = next(infer) if hasattr(infer, "__iter__") else infer
-                    return result
+                    if not hasattr(infer, "__iter__"):
+                        return torch.as_tensor(infer.audio)
+                    # KPipeline packs text into <=context_length phoneme
+                    # buckets and yields one result per bucket. Consume ALL
+                    # of them; taking only the first silently drops audio.
+                    parts = [torch.as_tensor(r.audio) for r in infer]
+                    if not parts:
+                        return None
+                    return parts[0] if len(parts) == 1 else torch.cat(parts, dim=-1)
 
             # Run blocking inference off the main loop
-            result = await asyncio.to_thread(infer_on_chunk)
+            audio = await asyncio.to_thread(infer_on_chunk)
+            if audio is None:
+                continue
 
             yield StreamChunk(
-                audio=result.audio,
+                audio=audio,
                 chunk_text=chunk_text,
                 chunk_index=idx,
                 total_chunks=total_chunks,
