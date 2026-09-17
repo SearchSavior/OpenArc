@@ -11,9 +11,14 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from src.server.deps import _registry, _workers, verify_api_key
-from src.server.schemas.modeling.contract_kokoro import KokoroLanguage, KokoroVoice
+from src.server.schemas.modeling.contract_kokoro import (
+    KokoroLanguage,
+    KokoroVoice,
+    OV_KokoroGenConfig,
+)
 from src.server.schemas.modeling.contract_optimum_emb import PreTrainedTokenizerConfig
 from src.server.schemas.modeling.contract_optimum_rerank import RerankerConfig
+from src.server.schemas.modeling.contract_qwen3asr import OV_Qwen3ASRGenConfig
 from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_GenConfig
 from src.server.schemas.modeling.contract_qwen3tts import (
     OV_Qwen3TTSCustomVoice,
@@ -31,6 +36,7 @@ from src.server.schemas.requests_openai import (
     OpenArcASRConfig,
     RerankRequest,
 )
+from src.server.utils.merge import build_config, defaults_for_record
 from src.engine.ov_genai.tool_parse import gemma4, hermes, museglimmer, qwen35
 
 logger = logging.getLogger(__name__)
@@ -45,6 +51,26 @@ _TOOL_PARSERS = {
     "gemma4": gemma4,
     "museglimmer": museglimmer,
 }
+
+
+def _get_record(model_name: str):
+    """Return the loaded ModelRecord for a model_name, or None.
+
+    Caller must not hold _registry._lock (this takes it). The returned record's
+    plain-dict config blocks are safe to read outside the lock.
+    """
+    for record in list(_registry._models.values()):
+        if record.model_name == model_name:
+            return record
+    return None
+
+
+def _record_defaults(model_name: str) -> Dict[str, Any]:
+    """Resolve the config.yaml defaults that apply to a loaded model."""
+    record = _get_record(model_name)
+    if record is None:
+        return {}
+    return defaults_for_record(record)
 
 
 def _prepend_system_instruction(messages: Any, instruction: str) -> Any:
@@ -145,7 +171,10 @@ async def openai_chat_completions(
         async with _registry._lock:
             for record in _registry._models.values():
                 if record.model_name == request.model:
-                    tool_parser_name = record.tool_call_parser
+                    # record.tool_call_parser is a ToolCallParser enum; the
+                    # parser registry below is keyed by its string value.
+                    parser_enum = record.tool_call_parser
+                    tool_parser_name = parser_enum.value if parser_enum else None
                     break
 
         if tool_parser_name is None and request.tools:
@@ -166,7 +195,6 @@ async def openai_chat_completions(
             chat_template_kwargs.setdefault("enable_thinking", False)
 
         config_kwargs = {
-            "messages": messages,
             "temperature": request.temperature,
             "max_tokens": request.max_tokens,
             "top_p": request.top_p,
@@ -174,18 +202,23 @@ async def openai_chat_completions(
             "repetition_penalty": request.repetition_penalty,
             "do_sample": request.do_sample,
             "num_return_sequences": request.num_return_sequences,
-            "stream": request.stream,
-            "tools": tools,
             "seed": request.seed,
             "frequency_penalty": request.frequency_penalty,
             "presence_penalty": request.presence_penalty,
-            "chat_template_kwargs": chat_template_kwargs,
         }
         if parser_module is not None:
             config_kwargs["tool_call_parser"] = tool_parser_name
-        config_kwargs = {k: v for k, v in config_kwargs.items() if v is not None}
 
-        generation_config = OVGenAI_GenConfig(**config_kwargs)
+        # Layer the model's config.yaml sampler defaults under the request.
+        # Precedence: request-time > config.yaml > engine default.
+        generation_config = build_config(
+            OVGenAI_GenConfig,
+            request={**config_kwargs, "chat_template_kwargs": chat_template_kwargs},
+            defaults=_record_defaults(request.model),
+            messages=messages,
+            tools=tools,
+            stream=request.stream,
+        )
 
         model_name = request.model
         created_ts = int(time.time())
@@ -373,7 +406,6 @@ async def openai_completions(request: OpenAICompletionRequest, raw_request: Requ
         )
 
         config_kwargs = {
-            "prompt": prompt,
             "temperature": request.temperature,
             "max_tokens": request.max_tokens,
             "top_p": request.top_p,
@@ -381,11 +413,16 @@ async def openai_completions(request: OpenAICompletionRequest, raw_request: Requ
             "repetition_penalty": request.repetition_penalty,
             "do_sample": request.do_sample,
             "num_return_sequences": request.num_return_sequences,
-            "stream": request.stream,
         }
-        config_kwargs = {k: v for k, v in config_kwargs.items() if v is not None}
 
-        generation_config = OVGenAI_GenConfig(**config_kwargs)
+        # Layer the model's config.yaml sampler defaults under the request.
+        generation_config = build_config(
+            OVGenAI_GenConfig,
+            request=config_kwargs,
+            defaults=_record_defaults(request.model),
+            prompt=prompt,
+            stream=request.stream,
+        )
 
         model_name = request.model
         created_ts = int(time.time())
@@ -548,14 +585,23 @@ async def openai_audio_transcriptions(
             if not payload.get("qwen3_asr"):
                 # Fall back to defaults if qwen3_asr config is not provided
                 payload["qwen3_asr"] = {}
-            
+
             cfg = OpenArcASRConfig.model_validate(payload)
-            update = {"audio_base64": audio_base64}
-            if language:
+            # Layer the model's config.yaml qwen3_asr_config under the request.
+            # The original handler used model_copy(update=...), which skips
+            # validation; passing through build_config re-validates, so only
+            # real values (not unset FastAPI Form sentinels) may be injected.
+            request_fields = cfg.qwen3_asr.model_dump(exclude_unset=True)
+            request_fields["audio_base64"] = audio_base64
+            if isinstance(language, str) and language:
                 # Whisper-style top-level `language` takes precedence; otherwise
                 # fall back to openarc_asr.qwen3_asr.language (current behavior).
-                update["language"] = language
-            gen_config = cfg.qwen3_asr.model_copy(update=update)
+                request_fields["language"] = language
+            gen_config = build_config(
+                OV_Qwen3ASRGenConfig,
+                request=request_fields,
+                defaults=_record_defaults(model),
+            )
             result = await _workers.transcribe_qwen3_asr(model, gen_config)
         else:
             gen_config = OVGenAI_WhisperGenConfig(audio_base64=audio_base64)
@@ -607,6 +653,7 @@ async def openai_audio_speech(request: OpenAISpeechRequest):
             raise ValueError(f"Model '{request.model}' is not loaded")
 
         normalized = ModelType(selected_model_type)
+        tts_defaults = _record_defaults(request.model)
 
         if normalized in (
             ModelType.QWEN3_TTS_CUSTOM_VOICE,
@@ -620,10 +667,23 @@ async def openai_audio_speech(request: OpenAISpeechRequest):
                 ModelType.QWEN3_TTS_VOICE_DESIGN: "qwen3_tts_voice_design",
                 ModelType.QWEN3_TTS_VOICE_CLONE: "qwen3_tts_voice_clone",
             }[normalized]
-            gen_config = getattr(request.openarc_tts, _qwen3_tts_field)
-            if gen_config is None:
+            _contract = {
+                ModelType.QWEN3_TTS_CUSTOM_VOICE: OV_Qwen3TTSCustomVoice,
+                ModelType.QWEN3_TTS_VOICE_DESIGN: OV_Qwen3TTSVoiceDesign,
+                ModelType.QWEN3_TTS_VOICE_CLONE: OV_Qwen3TTSVoiceClone,
+            }[normalized]
+            supplied = getattr(request.openarc_tts, _qwen3_tts_field)
+            if supplied is None:
                 raise ValueError(f"openarc_tts.{_qwen3_tts_field} required for {normalized.value} models")
-            gen_config.input = request.input
+            # Seed the contract from config.yaml, letting explicitly supplied
+            # request fields win. Anything neither layer sets stays unset, so
+            # the guards below still see "not provided by the caller".
+            gen_config = build_config(
+                _contract,
+                request=supplied.model_dump(exclude_unset=True),
+                defaults=tts_defaults,
+                input=request.input,
+            )
             if request.language is not None and "language" not in gen_config.model_fields_set:
                 gen_config.language = request.language
             if (
@@ -649,8 +709,12 @@ async def openai_audio_speech(request: OpenAISpeechRequest):
         else:
             if not request.openarc_tts or not request.openarc_tts.kokoro:
                 raise ValueError("openarc_tts.kokoro required for Kokoro models")
-            gen_config = request.openarc_tts.kokoro
-            gen_config.input = request.input
+            gen_config = build_config(
+                OV_KokoroGenConfig,
+                request=request.openarc_tts.kokoro.model_dump(exclude_unset=True),
+                defaults=tts_defaults,
+                input=request.input,
+            )
             if request.voice is not None and "voice" not in gen_config.model_fields_set:
                 try:
                     gen_config.voice = KokoroVoice(request.voice)

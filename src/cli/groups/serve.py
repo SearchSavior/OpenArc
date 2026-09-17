@@ -48,9 +48,9 @@ def start(ctx, host, port, load_models, use_api_key, verbose, startup_models):
     """
     from ..modules.launch_server import start_server
 
-    # Save server configuration for other CLI commands to use
-    config_path = ctx.obj.server_config.save_server_config(host, port)
-    console.print(f"[dim]Configuration saved to: {config_path}[/dim]")
+    # config.yaml is never rewritten here: it is hand-authored and may carry
+    # comments and ${VAR} references that a YAML round-trip would destroy.
+    console.print(f"[dim]Using configuration: {ctx.obj.server_config.config_file}[/dim]")
 
     # Handle startup models
     models_to_load = []

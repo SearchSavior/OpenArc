@@ -1,7 +1,6 @@
 # The first implementation of the OpenAI-like API was contributed by @gapeleon.
 # They are one hero among many future heroes working to make OpenArc better.
 
-import json
 import logging
 import os
 import time
@@ -12,11 +11,9 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from src.cli.utils import get_config_file_path
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.server.deps import _registry
-from src.server.schemas.registration import ModelLoadConfig
 from src.server.routes.openai import router as openai_router
 from src.server.routes.openarc import router as openarc_router
 
@@ -52,39 +49,45 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Let OPENARC_STARTUP_MODELS (exported by `openarc serve start`) win over the
+    # config file's startup_models key.
     models = os.getenv("OPENARC_STARTUP_MODELS", "").strip()
+    if not models:
+        from src.cli.modules.server_config import ServerConfig
+
+        configured = ServerConfig().load_config().get("startup_models") or ""
+        models = configured.strip() if isinstance(configured, str) else ""
+
     if models:
         from pathlib import Path
 
-        config_file = get_config_file_path()
-        if config_file.exists():
-            with open(config_file) as f:
-                config = json.load(f)
+        from src.cli.modules.server_config import ServerConfig
 
-            for name in models.split(","):
-                name = name.strip()
-                model_config = config.get("models", {}).get(name)
-                if not model_config:
-                    logger.warning(f"Startup: model '{name}' not in config, skipping")
-                    continue
-                
-                model_path = model_config.get("model_path")
-                if model_path and not Path(model_path).is_absolute():
-                    model_config["model_path"] = str((config_file.parent / model_path).resolve())
+        # All config parsing, env interpolation and relative-path resolution
+        # happens inside ServerConfig so startup and the CLI share one loader.
+        server_config = ServerConfig()
 
-                cache_dir = model_config.get("cache_dir")
-                if cache_dir and not Path(cache_dir).is_absolute():
-                    cache_dir = str((config_file.parent / cache_dir).resolve())
-                    model_config["cache_dir"] = cache_dir
+        for name in (m.strip() for m in models.split(",")):
+            if not name:
+                continue
+            try:
+                model_config = server_config.get_model_load_config(name)
+            except Exception as e:
+                logger.error(f"Startup: invalid config for '{name}': {e}")
+                continue
 
-                try:
-                    if cache_dir:
-                        # Create the cache directory at startup if it doesn't exist.
-                        Path(cache_dir).mkdir(parents=True, exist_ok=True)
-                    await _registry.register_load(ModelLoadConfig(**model_config))
-                    logger.info(f"Startup: loaded '{name}'")
-                except Exception as e:
-                    logger.error(f"Startup: failed to load '{name}': {e}")
+            if model_config is None:
+                logger.warning(f"Startup: model '{name}' not in config, skipping")
+                continue
+
+            try:
+                if model_config.cache_dir:
+                    # Create the cache directory at startup if it doesn't exist.
+                    Path(model_config.cache_dir).mkdir(parents=True, exist_ok=True)
+                await _registry.register_load(model_config)
+                logger.info(f"Startup: loaded '{name}'")
+            except Exception as e:
+                logger.error(f"Startup: failed to load '{name}': {e}")
 
     yield
 

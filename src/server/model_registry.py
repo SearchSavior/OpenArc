@@ -14,6 +14,7 @@ from src.server.schemas.registration import (
     ModelLoadConfig,
     ModelStatus,
     ModelType,
+    ToolCallParser,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,25 +32,40 @@ class ModelRecord:
     # Public fields
     model_path: str = ""
     model_name: str = ""
-    model_type: str = ""
-    engine: str = ""
+    model_type: ModelType = ModelType.LLM
+    engine: EngineType = EngineType.OV_GENAI
     device: str = ""
     runtime_config: Dict[str, Any] = field(default_factory=dict)
-    tool_call_parser: Optional[str] = None
+    tool_call_parser: Optional[ToolCallParser] = None
 
+    # Model-level request defaults surfaced from config.yaml. Stored as plain
+    # dicts (already validated by ModelLoadConfig) and used to seed per-request
+    # configs; an explicit request value always wins over these.
+    # Model-level request defaults from config.yaml, keyed by block name
+    # (e.g. 'sampler_config', 'kokoro_config'). Each value is a dict of only the
+    # keys the author wrote and is merged under the per-request config.
+    model_config_blocks: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+
+    def block(self, name: str) -> Dict[str, Any]:
+        """Return a named config block (e.g. 'kokoro_config'), or {} if unset."""
+        return self.model_config_blocks.get(name) or {}
 
     def registered_models(self) -> dict:
         """Return only public fields as JSON-serializable dict."""
         result = {
             "model_name": self.model_name,
-            "model_type": self.model_type,
-            "engine": self.engine,
+            "model_type": self.model_type.value,
+            "engine": self.engine.value,
             "device": self.device,
             "runtime_config": self.runtime_config,
-            "tool_call_parser": self.tool_call_parser,
+            "tool_call_parser": (
+                self.tool_call_parser.value if self.tool_call_parser else None
+            ),
             "status": self.status.value,
             "time_loaded": self.time_loaded.isoformat(),
         }
+        if self.model_config_blocks:
+            result["model_config_blocks"] = self.model_config_blocks
         if self.error_message:
             result["error_message"] = self.error_message
         return result
@@ -90,6 +106,10 @@ class ModelRegistry:
                     logger.info(f"Load failed! model_name '{loader.model_name}' already exists")
                     raise ValueError(f"model_name '{loader.model_name}' already registered")
 
+        # Reject config blocks that don't match this model's model_type before
+        # anything is loaded, so a mismatched config.yaml fails fast.
+        loader.validate_config_blocks()
+
         # Create a model record with LOADING status
         record = ModelRecord(
             model_path=loader.model_path,
@@ -98,9 +118,8 @@ class ModelRegistry:
             engine=loader.engine,
             device=loader.device,
             runtime_config=loader.runtime_config,
-            tool_call_parser=(
-                loader.tool_call_parser.value if loader.tool_call_parser else None
-            ),
+            tool_call_parser=loader.tool_call_parser,
+            model_config_blocks=dict(loader.model_config_blocks or {}),
             status=ModelStatus.LOADING,
         )
 

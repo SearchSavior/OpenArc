@@ -6,6 +6,7 @@ import json
 import click
 from pydantic import ValidationError
 
+from src.server.schemas.modeling.config_blocks import validate_block
 from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import SchedulerConfigSchema
 
 from ..main import cli, console
@@ -40,6 +41,9 @@ from ..utils import validate_model_path
 @click.option("--scheduler-config", "-sc",
     default=None,
     help='OpenVINO runtime scheduler configuration as JSON string (e.g., \'{"use_sparse_attention": true}\').')
+@click.option("--sampler-config", "--smc",
+    default=None,
+    help='Default sampler settings for llm/vlm models as JSON string (e.g., \'{"temperature": 0.7, "top_k": 40}\'). Overridden per request.')
 @click.option('--cache-dir', '--cd',
     required=False,
     default=None,
@@ -68,7 +72,7 @@ from ..utils import validate_model_path
     default=None,
     help='Tool-call output format for this model (qwen35 XML, hermes JSON, gemma4 call syntax, or museglimmer Harmony atem). llm/vlm only; required for tool calling.')
 @click.pass_context
-def add(ctx, model_path, model_name, engine, model_type, device, runtime_config, scheduler_config, cache_dir, draft_model_path, draft_device, num_assistant_tokens, assistant_confidence_threshold, tool_call_parser):
+def add(ctx, model_path, model_name, engine, model_type, device, runtime_config, scheduler_config, sampler_config, cache_dir, draft_model_path, draft_device, num_assistant_tokens, assistant_confidence_threshold, tool_call_parser):
     """- Add a model configuration to the config file."""
 
     # Validate model path
@@ -106,36 +110,59 @@ def add(ctx, model_path, model_name, engine, model_type, device, runtime_config,
                 console.print(e)
                 ctx.exit(1)
 
-    # Legacy configs may still contain vlm_type, but new configs resolve VLM tokens from config.json.
-    load_config = {
-        "model_name": model_name,
-        "model_path": model_path,
-        "model_type": model_type,
-        "engine": engine,
-        "device": device,
-        "runtime_config": parsed_runtime_config,
-        "scheduler_config": parsed_scheduler_config,
+    # Validate against the contract that backs the block, so an invalid default
+    # is caught here rather than at model load time.
+    parsed_sampler_config = {}
+    if sampler_config:
+        try:
+            parsed_sampler_config = json.loads(sampler_config)
+            if not isinstance(parsed_sampler_config, dict):
+                console.print(f"[red]Error: sampler_config must be a JSON object (dictionary), got {type(parsed_sampler_config).__name__}[/red]")
+                console.print('[yellow]Example format: \'{"temperature": 0.7, "top_k": 40}\'[/yellow]')
+                ctx.exit(1)
+            validate_block("sampler_config", parsed_sampler_config, model_type)
+        except (json.JSONDecodeError, ValidationError) as e:
+            console.print("[red]Error: Failed validating sampler_config:[/red]")
+            console.print('[yellow]Example format: \'{"temperature": 0.7, "top_k": 40}\'[/yellow]')
+            console.print('')
+            console.print('[yellow]Error:[/yellow]')
+            console.print(e)
+            ctx.exit(1)
+
+    # Model-level request defaults are stored as siblings of load_config.
+    entry = {
+        "load_config": {
+            "model_name": model_name,
+            "model_path": model_path,
+            "model_type": model_type,
+            "engine": engine,
+            "device": device,
+            "runtime_config": parsed_runtime_config,
+            "scheduler_config": parsed_scheduler_config,
+        }
     }
+    if parsed_sampler_config:
+        entry["sampler_config"] = parsed_sampler_config
 
     # Store the cache directory (resolved relative to the config file at load time)
     if cache_dir:
-        load_config["cache_dir"] = cache_dir
+        entry["load_config"]["cache_dir"] = cache_dir
 
     # Add speculative decoding options if provided
     if draft_model_path:
         if not validate_model_path(draft_model_path):
             console.print(f"[red]Model file check failed! {draft_model_path} does not contain openvino model files OR your chosen path is malformed. Verify chosen path is correct and acquired model files match source on the hub, or the destination of converted model.[/red]")
             ctx.exit(1)
-        load_config["draft_model_path"] = draft_model_path
+        entry["load_config"]["draft_model_path"] = draft_model_path
     if draft_device:
-        load_config["draft_device"] = draft_device
+        entry["load_config"]["draft_device"] = draft_device
     if num_assistant_tokens is not None:
-        load_config["num_assistant_tokens"] = num_assistant_tokens
+        entry["load_config"]["num_assistant_tokens"] = num_assistant_tokens
     if assistant_confidence_threshold is not None:
-        load_config["assistant_confidence_threshold"] = assistant_confidence_threshold
+        entry["load_config"]["assistant_confidence_threshold"] = assistant_confidence_threshold
     if tool_call_parser:
-        load_config["tool_call_parser"] = tool_call_parser
+        entry["load_config"]["tool_call_parser"] = tool_call_parser
 
-    ctx.obj.server_config.save_model_config(model_name, load_config)
+    ctx.obj.server_config.save_model_entry(model_name, entry)
     console.print(f"[green]Model configuration saved:[/green] {model_name}")
     console.print(f"[dim]Use 'openarc load {model_name}' to load this model.[/dim]")
