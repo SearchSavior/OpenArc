@@ -32,7 +32,7 @@ models:
       use_cache_eviction:
       use_sparse_attention:
     sampler_config:
-      temperature: 0.7
+      tempeature: 0.7
       top_k: 40
       top_p: 0.95
       repetition_penalty: 1.05
@@ -41,7 +41,7 @@ models:
   qwen3-8b-spec:
     load_config:
       engine: ovgenai
-      model_type: vlm
+      model_type: llm
       model_path: /mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Qwen3-8B-ShiningValiant3-int4-asym-ov
       device: GPU.0
       tool_call_parser: hermes
@@ -50,16 +50,6 @@ models:
       num_assistant_tokens: 5
     runtime_config:
       PERFORMANCE_HINT: LATENCY
-    scheduler_config:
-      max_num_batched_tokens:
-      num_kv_blocks:
-      cache_size:
-      num_linear_attention_blocks:
-      cache_interval_multiplier:
-      dynamic_split_fuse:
-      enable_prefix_caching:
-      use_cache_eviction:
-      use_sparse_attention:
     sampler_config:
       temperature: 0.7
       top_k: 40
@@ -91,8 +81,9 @@ models:
     runtime_config:
       ATTENTION_BACKEND: PA
       CACHE_DIR: /mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Ornith-1.5-9B/Ornith-1.5-9B-int4_asym-awq-se256-ov/model_cache
-#######################################################################################################
-#######################################################################################################
+# ====
+# LLM
+# qwen38-27b-davidau
 #######################################################################################################
   qwen38-27b-davidau:
     load_config:
