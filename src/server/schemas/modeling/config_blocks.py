@@ -56,14 +56,17 @@ REQUEST_ONLY_FIELDS = frozenset(
         "prompt",
         "input_ids",
         "tools",
-        "tool_call_parser",
         "request_id",
-        "chat_template_kwargs",
         "input",
         "audio_base64",
         "ref_audio_b64",
     }
 )
+
+# Fields that belong under load_config, not in a request-defaults block. They
+# exist in the request contract as transport/dispatch plumbing, so they pass
+# the unknown-key check; rejecting them here points the author at load_config.
+LOAD_CONFIG_FIELDS = frozenset({"tool_call_parser"})
 
 
 def contract_for(block_name: str) -> Optional[Type[BaseModel]]:
@@ -130,6 +133,13 @@ def validate_block(block_name: str, payload: Any, model_type: str) -> Dict[str, 
     if request_only:
         raise ValueError(
             f"{block_name} cannot set request-only field(s): {', '.join(request_only)}"
+        )
+
+    load_config = sorted(set(payload) & LOAD_CONFIG_FIELDS)
+    if load_config:
+        raise ValueError(
+            f"{block_name} cannot set load-time field(s): {', '.join(load_config)}. "
+            "Move them under load_config"
         )
 
     # Coerce/validate values against the contract so a bad type or an invalid

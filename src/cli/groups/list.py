@@ -70,7 +70,7 @@ def list(ctx, model_name, verbose, remove):
 
     if not models:
         console.print("[yellow]No model configurations found.[/yellow]")
-        console.print("[dim]Use 'openarc add --help' to see how to save configurations.[/dim]")
+        console.print("[dim]Add a model entry to config.yaml to get started.[/dim]")
         return
 
     # Reserved command mode: openarc list prune

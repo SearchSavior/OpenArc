@@ -154,6 +154,23 @@ def test_validate_block_rejects_request_only_field() -> None:
         validate_block("sampler_config", {"messages": [{"role": "user"}]}, "llm")
 
 
+def test_validate_block_accepts_chat_template_kwargs_default() -> None:
+    # Thinking behavior is a reusable model default, so chat_template_kwargs
+    # is a legitimate sampler_config block key.
+    assert validate_block(
+        "sampler_config",
+        {"chat_template_kwargs": {"enable_thinking": False}},
+        "llm",
+    ) == {"chat_template_kwargs": {"enable_thinking": False}}
+
+
+def test_validate_block_rejects_load_config_field() -> None:
+    # tool_call_parser is selected at load time; authoring it in a block should
+    # point the author at load_config.
+    with pytest.raises(ValueError, match="load-time field"):
+        validate_block("sampler_config", {"tool_call_parser": "qwen35"}, "llm")
+
+
 # ---- defaults_for_record ----
 
 

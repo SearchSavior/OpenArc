@@ -180,7 +180,7 @@ async def openai_chat_completions(
         if tool_parser_name is None and request.tools:
             raise ValueError(
                 f"Model '{request.model}' has no tool_call_parser configured; "
-                "set one in the model config (e.g. 'openarc add --tool-call-parser qwen35|hermes|gemma4|museglimmer')"
+                "set one under load_config in config.yaml (tool_call_parser: qwen35|hermes|gemma4|museglimmer')"
             )
         parser_module = _TOOL_PARSERS.get(tool_parser_name) if tool_parser_name else None
 
