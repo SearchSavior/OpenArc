@@ -2,7 +2,7 @@
 from enum import Enum
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import SchedulerConfigSchema
 
@@ -77,6 +77,10 @@ class ToolCallParser(str, Enum):
 
 
 class ModelLoadConfig(BaseModel):
+    # Strict: an unrecognized key is a config error, not something to silently
+    # drop. Typos in hand-written config.yaml fail loudly at load time.
+    model_config = ConfigDict(extra="forbid")
+
     model_path: str = Field(
         description="""
         Top level path to directory containing OpenVINO IR converted model.
@@ -90,10 +94,6 @@ class ModelLoadConfig(BaseModel):
         """
     )
     model_type: ModelType = Field(...)
-    vlm_type: Optional[str] = Field(
-        default=None,
-        description="Deprecated legacy VLM token type. VLM tokens are resolved from config.json."
-    )
     engine: EngineType = Field(...)
     device: str = Field(
         ...,
@@ -143,6 +143,47 @@ class ModelLoadConfig(BaseModel):
         with 400.""",
     )
 
+    # --- Model-level request defaults, authored in config.yaml ---
+    # Each entry is a plain dict of only the keys the author wrote, keyed by
+    # block name (e.g. 'sampler_config', 'kokoro_config'). Validated against the
+    # matching request contract by validate_config_blocks().
+    # These seed per-request configs; anything the client sends wins.
+    # Precedence: request > config.yaml block > contract default.
+    model_config_blocks: Dict[str, Dict[str, Any]] = Field(
+        default_factory=dict,
+        description=(
+            "Model-level request defaults keyed by block name. Each block is "
+            "validated against the request contract it configures."
+        ),
+    )
+
+    def validate_config_blocks(self) -> None:
+        """Validate every supplied config block against its contract.
+
+        Checks that each block name is known, applies to this model's
+        model_type, and contains no key the contract does not define. Unknown
+        keys are an error so a typo fails loudly instead of being ignored.
+
+        Also normalizes each block, dropping unset (None) values so that
+        "not authored" stays distinct from "authored as the contract default".
+
+        Raises:
+            ValueError: If any block is unknown, mismatched, or has bad keys.
+        """
+        from src.server.schemas.modeling.config_blocks import validate_block
+
+        model_type = self.model_type.value
+        validated: Dict[str, Dict[str, Any]] = {}
+
+        for block_name, payload in (self.model_config_blocks or {}).items():
+            try:
+                resolved = validate_block(block_name, payload, model_type)
+            except ValueError as exc:
+                raise ValueError(f"'{self.model_name}': {exc}") from exc
+            if resolved:
+                validated[block_name] = resolved
+
+        self.model_config_blocks = validated
 
 class ModelUnloadConfig(BaseModel):
     model_name: str = Field(..., description="Name of the model to unload")

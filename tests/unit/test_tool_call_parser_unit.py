@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 
 import src.server.routes.openai as openai_routes
 from src.engine.ov_genai.tool_parse import gemma4, hermes, museglimmer, qwen35
+from src.server.schemas.registration import ModelType, ToolCallParser
 from src.server.schemas.requests_openai import OpenAIChatCompletionRequest
 from src.server.utils.chat import flatten_messages, normalize_tool_calls_for_template
 
@@ -67,7 +68,12 @@ class _DummyRequest:
 class _FakeRegistry:
     """Minimal registry stand-in: one record with a configurable parser."""
 
-    def __init__(self, tool_call_parser: Optional[str]) -> None:
+    def __init__(
+        self,
+        tool_call_parser: Optional[str],
+        model_config_blocks: Optional[Dict[str, Dict[str, Any]]] = None,
+        model_type: str = "llm",
+    ) -> None:
         class _Lock:
             async def __aenter__(self) -> "_Lock":
                 return self
@@ -76,10 +82,16 @@ class _FakeRegistry:
                 return False
 
         self._lock = _Lock()
+        # ModelRecord stores tool_call_parser as a ToolCallParser enum (that is
+        # what streamers.ensure_tool_call_parser expects); the fake mirrors it.
         self._models = {
             "fake-id": SimpleNamespace(
                 model_name="demo-model",
-                tool_call_parser=tool_call_parser,
+                model_type=ModelType(model_type),
+                tool_call_parser=(
+                    ToolCallParser(tool_call_parser) if tool_call_parser else None
+                ),
+                model_config_blocks=model_config_blocks or {},
             )
         }
 

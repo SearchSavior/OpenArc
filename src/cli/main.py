@@ -126,7 +126,7 @@ def cli(ctx):
 
 
 # Import command groups to register them with the CLI
-from .groups import add, bench, list, load, serve, status, tool, unload  # noqa: E402, F401
+from .groups import bench, list, load, serve, status, tool, unload  # noqa: E402, F401
 
 
 if __name__ == "__main__":

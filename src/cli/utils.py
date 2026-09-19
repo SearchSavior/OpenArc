@@ -50,11 +50,11 @@ def validate_model_path(model_path):
 def get_config_file_path():
     """
     Get the path to the config file, checking the OPENARC_CONFIG_FILE environment variable first,
-    then defaulting to openarc_config.json in the project root.
+    then defaulting to config.yaml in the project root.
     """
     env_path = os.environ.get("OPENARC_CONFIG_FILE")
     if env_path:
         return Path(env_path)
     else:
         project_root = Path(__file__).parent.parent.parent
-        return project_root / "openarc_config.json"
+        return project_root / "config.yaml"

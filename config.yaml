@@ -1,6 +1,5 @@
 server:
-port:
-
+  port:
 
 # comma seperated list of model_name to load on startup
 
@@ -9,16 +8,21 @@ startup_models : ${OPENRARC_AUTOLOAD_MODELS}
 
 
 models:
+  # Each model entry nests its load-time fields under `load_config`. Model-level
+  # request defaults (sampler_config and the per-model_type *_config blocks) are
+  # siblings of load_config and are overridden per request:
+  #     request-time  >  config.yaml  >  engine default
   qwen35-08b:
-    engine: ovgenai
-    model_type: vlm
-    model_path: /mnt/Ironwolf-4TB/Models/OpenVINO/Qwen3.5/Qwen3.5-0.8B-int8_asym-ov/
-    device: CPU
-    tool_call_parser: qwen35
+    load_config:
+      engine: ovgenai
+      model_type: vlm
+      model_path: /mnt/Ironwolf-4TB/Models/OpenVINO/Qwen3.5/Qwen3.5-0.8B-int8_asym-ov/
+      device: CPU
+      tool_call_parser: qwen35
     runtime_config:
       PERFORMANCE_HINT: LATENCY
     scheduler_config:
-      max_num_batched_tokens: 
+      max_num_batched_tokens:
       num_kv_blocks:
       cache_size:
       num_linear_attention_blocks:
@@ -28,7 +32,7 @@ models:
       use_cache_eviction:
       use_sparse_attention:
     sampler_config:
-      temperature: 0.7
+      tempeature: 0.7
       top_k: 40
       top_p: 0.95
       repetition_penalty: 1.05
@@ -37,7 +41,7 @@ models:
   qwen3-8b-spec:
     load_config:
       engine: ovgenai
-      model_type: vlm
+      model_type: llm
       model_path: /mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Qwen3-8B-ShiningValiant3-int4-asym-ov
       device: GPU.0
       tool_call_parser: hermes
@@ -46,115 +50,166 @@ models:
       num_assistant_tokens: 5
     runtime_config:
       PERFORMANCE_HINT: LATENCY
-    scheduler_config:
-      max_num_batched_tokens: 
-      num_kv_blocks:
-      cache_size:
-      num_linear_attention_blocks:
-      cache_interval_multiplier:
-      dynamic_split_fuse:
-      enable_prefix_caching:
-      use_cache_eviction:
-      use_sparse_attention:
     sampler_config:
       temperature: 0.7
       top_k: 40
       top_p: 0.95
       repetition_penalty: 1.05
       max_tokens: 1024
+#######################################################################################################
+#######################################################################################################
+#######################################################################################################
+  orion-v1:
+    load_config:
+      engine: ovgenai
+      model_type: vlm
+      model_path: /mnt/Ironwolf-4TB/Models/OpenVINO/Orion-26B-A4B-v1-int4-ov/
+      device: GPU.1
+      tool_call_parser: gemma4
+    runtime_config:
+      ATTENTION_BACKEND: PA
+      CACHE_DIR: /mnt/Ironwolf-4TB/Models/OpenVINO/Orion-26B-A4B-v1-int4-ov/model_cache
+#######################################################################################################
+#######################################################################################################
+#######################################################################################################
+  ornith-9b:
+    load_config:
+      engine: ovgenai
+      model_type: vlm
+      model_path: /mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Ornith-1.5-9B/Ornith-1.5-9B-int4_asym-awq-se256-ov
+      device: GPU.0
+    runtime_config:
+      ATTENTION_BACKEND: PA
+      CACHE_DIR: /mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Ornith-1.5-9B/Ornith-1.5-9B-int4_asym-awq-se256-ov/model_cache
+# ====
+# LLM
+# qwen38-27b-davidau
+#######################################################################################################
+  qwen38-27b-davidau:
+    load_config:
+      engine: ovgenai
+      model_type: vlm
+      model_path: /mnt/Ironwolf-4TB/Models/OpenVINO/Huihui-Qwen3.8-27B-abliterated-int4-awq
+      device: GPU.0
+      tool_call_parser: qwen35
+    runtime_config:
+      ATTENTION_BACKEND: PA
+      CACHE_DIR: /mnt/Ironwolf-4TB/Models/OpenVINO/Huihui-Qwen3.8-27B-abliterated-int4-awq/model_cache
+    scheduler_config:
+      cache_interval_multiplier: 128
+      max_num_batched_tokens: 2048
+      enable_prefix_caching: true
+      use_sparse_attention: true
+      max_num_seqs: 1
+      num_linear_attention_blocks: 0
+# ===========================
+# LLMs 
+# ===========================
+  qwen38-27b:
+    load_config:
+      engine: ovgenai
+      model_type: vlm
+      model_path: /mnt/Ironwolf-4TB/Models/OpenVINO/Qwen3.5/Qwen3.8-27B-int4-ov/
+      device: GPU.0
+      tool_call_parser: qwen35
+    runtime_config:
+      ATTENTION_BACKEND: PA
+      CACHE_DIR: /mnt/Ironwolf-4TB/Models/OpenVINO/Qwen3.5/Qwen3.8-27B-int4-ov/model_cache
+    scheduler_config:
+      cache_interval_multiplier: 128
+      max_num_batched_tokens: 2048
+      enable_prefix_caching: true
+      use_sparse_attention: true
+      max_num_seqs: 1
+      num_linear_attention_blocks: 0
 
   kokoro:
-    engine: openvino
-    model_type: kokoro
-    model_path:
-    device: CPU
+    load_config:
+      engine: openvino
+      model_type: kokoro
+      model_path: /mnt/Ironwolf-4TB/Models/OpenVINO/Kokoro-82M-FP16-OpenVINO
+      device: CPU
     kokoro_config:
-      voice: af_sarah
-      voice_blend: af_heart:0.7,af_nicole:0.3 
-      lang_code:
-      speed: 1.0
-      chracter_count_chunk: 100
+      voice_blend: af_heart:0.7,af_nicole:0.3
 
-  qwen3asr:
-    engine: openvino
-    model_type: qwen3_asr
-    model_path: 
-    device: CPU
-    qwen3_asr_config:
-      language:
-      max_tokens:
-      max_chunk_sec:
-      search_expand_sec:
-      min_window_ms:
+  whisper:
+    load_config:
+      engine: ovgenai
+      model_type: whisper
+      model_path: /mnt/Ironwolf-4TB/Models/OpenVINO/Whisper/distil-whisper-large-v3-int8-ov
+      device: GPU.0
 
-  
-  qwen3_tts_elmo:
-    model_type: qwen3_tts_voice_clone
-    model_path:
-    engine: openvino
-    device: GPU.0
-    qwen3_tts_custom_voice_config:
-      language:
-      speaker: 
-      instruct:
-    qwen3_tts_config:
-      max_new_tokens:
-      do_sample:
-      top_k:
-      top_p:
-      temperature:
-      repetition_penalty:
-      subtalker_do_sample:
-      subtalker_top_k:
-      subtalker_top_p:
-      subtalker_temperature:
-      stream: 
-      stream_chunk_frames:
-      stream_left_context:
+  # --- Incomplete examples: fill in model_path to enable these. ---
+  # kokoro:
+  #   load_config:
+  #     engine: openvino
+  #     model_type: kokoro
+  #     model_path:
+  #     device: CPU
+  #   kokoro_config:
+  #     voice: af_sarah
+  #     voice_blend: af_heart:0.7,af_nicole:0.3
+  #     lang_code:
+  #     speed: 1.0
+  #     character_count_chunk: 100
 
+  # qwen3asr:
+  #   load_config:
+  #     engine: openvino
+  #     model_type: qwen3_asr
+  #     model_path:
+  #     device: CPU
+  #   qwen3_asr_config:
+  #     language:
+  #     max_tokens:
+  #     max_chunk_sec:
+  #     search_expand_sec:
+  #     min_window_ms:
 
-  qwen3_tts_oscar:
-    model_type: qwen3_tts_voice_design
-    model_path:
-    engine: openvino
-    device: GPU.0
-    qwen3_tts_voice_design_config:
-      voice_description:
-    qwen3_tts_config:
-      max_new_tokens:
-      do_sample:
-      top_k:
-      top_p:
-      temperature:
-      repetition_penalty:
-      subtalker_do_sample:
-      subtalker_top_k:
-      subtalker_top_p:
-      subtalker_temperature:
-      stream: 
-      stream_chunk_frames:
-      stream_left_context:
+  # qwen3_tts_oscar:
+  #   load_config:
+  #     model_type: qwen3_tts_voice_design
+  #     model_path:
+  #     engine: openvino
+  #     device: GPU.0
+  #   qwen3_tts_voice_design_config:
+  #     voice_description:
+  #   qwen3_tts_config:
+  #     max_new_tokens:
+  #     do_sample:
+  #     top_k:
+  #     top_p:
+  #     temperature:
+  #     repetition_penalty:
+  #     subtalker_do_sample:
+  #     subtalker_top_k:
+  #     subtalker_top_p:
+  #     subtalker_temperature:
+  #     stream:
+  #     stream_chunk_frames:
+  #     stream_left_context:
 
-  qwen3_tts_oscar:
-    model_type: qwen3_tts_voice_clone
-    model_path:
-    engine: openvino
-    device: GPU.0
-    qwen3_tts_voice_clone_config:
-      ref_text:
-      x_vector_only:
-      instruct:
-    qwen3_tts_config:
-      max_new_tokens:
-      do_sample:
-      top_k:
-      top_p:
-      temperature:
-      repetition_penalty:
-      subtalker_do_sample:
-      subtalker_top_k:
-      subtalker_top_p:
-      subtalker_temperature:
-      stream: 
-      stream_chunk_frames:
-      stream_left_context:
+  # qwen3_tts_elmo:
+  #   load_config:
+  #     model_type: qwen3_tts_voice_clone
+  #     model_path:
+  #     engine: openvino
+  #     device: GPU.0
+  #   qwen3_tts_voice_clone_config:
+  #     ref_text:
+  #     x_vector_only:
+  #     instruct:
+  #   qwen3_tts_config:
+  #     max_new_tokens:
+  #     do_sample:
+  #     top_k:
+  #     top_p:
+  #     temperature:
+  #     repetition_penalty:
+  #     subtalker_do_sample:
+  #     subtalker_top_k:
+  #     subtalker_top_p:
+  #     subtalker_temperature:
+  #     stream:
+  #     stream_chunk_frames:
+  #     stream_left_context:
