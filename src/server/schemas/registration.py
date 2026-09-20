@@ -159,9 +159,12 @@ class ModelLoadConfig(BaseModel):
 
         When set to a positive integer it overrides automatic discovery and is
         used as-is. When None (or <= 0) the value is discovered from the model's
-        config.json, using the first present key of
+        config.json -- searched at the top level first, and (because multimodal
+        models nest their language config under ``text_config`` / ``language_config``
+        / ``llm_config`` / ...) then inside those nested per-modality sections --
+        using the first present key of
         max_position_embeddings / n_positions / seq_len / seq_length / n_ctx /
-        sliding_window -- and that discovered value is likewise used as the
+        sliding_window; that discovered value is likewise used as the
         compiled max content window.
         """,
     )

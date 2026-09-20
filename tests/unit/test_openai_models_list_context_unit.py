@@ -151,3 +151,39 @@ def test_list_models_mixed_models(
     assert entries["known"]["meta"] == {"n_ctx": 6000}
     assert "context_window" not in entries["unknown"]
     assert "meta" not in entries["unknown"]
+
+
+def test_list_models_discovers_nested_text_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The reported symptom, end to end: a multimodal / VLM config.json nests the
+    # window under ``text_config`` (and carries a decoy top-level sliding_window).
+    # A flat top-level scan would advertise nothing; the section-aware scan must
+    # surface the real window in BOTH fields clients read.
+    model_path = _write_model_dir(
+        tmp_path,
+        "qwen25vl",
+        {
+            "architectures": ["Qwen2_5_VLForConditionalGeneration"],
+            "model_type": "qwen2_5_vl",
+            "sliding_window": 512,  # top-level decoy (lower priority)
+            "text_config": {
+                "model_type": "qwen2_5_vl_text",
+                "max_position_embeddings": 32768,
+            },
+            "vision_config": {"model_type": "qwen2_5_vl"},
+        },
+    )
+    registry = ModelRegistry()
+    _register(monkeypatch, registry, _load_config("qwen25vl", model_path))
+    monkeypatch.setattr(openai_module, "_registry", registry)
+
+    async def _run():
+        return await openai_module.openai_list_models()
+
+    response = asyncio.run(_run())
+    entry = response["data"][0]
+    assert entry["id"] == "qwen25vl"
+    # Both advertised fields surface the nested (text_config) value, not the decoy.
+    assert entry["context_window"] == 32768
+    assert entry["meta"] == {"n_ctx": 32768}

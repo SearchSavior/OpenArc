@@ -71,7 +71,7 @@ from ..utils import validate_model_path
     type=int,
     required=False,
     default=None,
-    help='Context window (tokens) for this model. Used in TWO places: (1) it becomes the compiled model\'s MAX CONTENT WINDOW (openvino.genai SchedulerConfig.max_num_batched_tokens), capping a running sequence at inference time; (2) it is advertised in /v1/models. When omitted the value is discovered from the model\'s config.json (first present of max_position_embeddings / n_positions / seq_len / seq_length / n_ctx / sliding_window). An explicit operator-set max_num_batched_tokens in scheduler_config takes precedence for the compiled window.')
+    help='Context window (tokens) for this model. Becomes the compiled model\'s MAX CONTENT WINDOW (openvino.genai SchedulerConfig.max_num_batched_tokens) and is advertised in /v1/models. When omitted, the value is discovered from the model\'s config.json')
 @click.pass_context
 def add(ctx, model_path, model_name, engine, model_type, device, runtime_config, scheduler_config, cache_dir, draft_model_path, draft_device, num_assistant_tokens, assistant_confidence_threshold, tool_call_parser, context_window):
     """- Add a model configuration to the config file."""

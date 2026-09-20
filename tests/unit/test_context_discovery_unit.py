@@ -145,3 +145,130 @@ def test_explicit_negative_falls_through_to_derivation(tmp_path) -> None:
 def test_explicit_none_falls_through_to_derivation(tmp_path) -> None:
     path = _write_config(tmp_path, {"n_ctx": 40960})
     assert resolve_context_window(path, explicit=None) == 40960
+
+
+# --- nested per-modality sections (multimodal / VLM configs) -----------------
+#
+# A flat, top-level-only scan is the bug this fix closes: Qwen2-VL / Qwen2.5-VL
+# / Qwen3-VL / Qwen3.5 / Gemma3 / Mistral-Small nest max_position_embeddings
+# inside text_config / language_config instead of at the top level.
+
+
+def test_nested_text_config_discovered(tmp_path) -> None:
+    # The realistic Qwen2.5-VL shape: the window lives under `text_config`,
+    # while the (decoy) top level / vision_config carry nothing usable.
+    path = _write_config(
+        tmp_path,
+        {
+            "architectures": ["Qwen2_5_VLForConditionalGeneration"],
+            "model_type": "qwen2_5_vl",
+            "text_config": {
+                "model_type": "qwen2_5_vl_text",
+                "architectures": ["Qwen2_5_VLForCausalLM"],
+                "max_position_embeddings": 32768,
+                "hidden_size": 4096,
+            },
+            "vision_config": {
+                "model_type": "qwen2_5_vl",
+                "architectures": ["Qwen2_5_VisionTransformer"],
+            },
+        },
+    )
+    assert read_context_window_from_config(path) == 32768
+
+
+def test_nested_section_beats_top_level_lower_priority(tmp_path) -> None:
+    # The exact "wrong section" trap: a lower-priority key at the TOP level
+    # (sliding_window) would win for a flat scan, but the higher-priority key
+    # nested in text_config (max_position_embeddings) must win instead.
+    path = _write_config(
+        tmp_path,
+        {
+            "architectures": ["Qwen3_5ForConditionalGeneration"],
+            "model_type": "qwen3_5",
+            "sliding_window": 512,  # top-level, lower priority
+            "text_config": {
+                "model_type": "qwen3_5_text",
+                "architectures": ["Qwen3_5ForCausalLM"],
+                "max_position_embeddings": 32768,
+            },
+        },
+    )
+    assert read_context_window_from_config(path) == 32768
+
+
+def test_language_config_section_fallback(tmp_path) -> None:
+    # Some families (Gemma3 / Mistral-Small 3.2) nest under `language_config`.
+    path = _write_config(
+        tmp_path,
+        {
+            "model_type": "gemma3",
+            "language_config": {"max_position_embeddings": 131072},
+            "vision_config": {"sliding_window": 512},
+        },
+    )
+    assert read_context_window_from_config(path) == 131072
+
+
+def test_named_section_preferred_over_arbitrary_nested(tmp_path) -> None:
+    # With multiple nested dicts carrying the key, the named language section
+    # wins over an arbitrary nested section -- deterministic regardless of the
+    # order the keys happen to appear in the file.
+    path = _write_config(
+        tmp_path,
+        {
+            "something": {"max_position_embeddings": 111},  # arbitrary, appears first
+            "text_config": {"max_position_embeddings": 888},  # named, must win
+        },
+    )
+    assert read_context_window_from_config(path) == 888
+
+
+def test_priority_within_nested_section_still_applies(tmp_path) -> None:
+    # Inside a section the field priority still holds: max_position_embeddings is
+    # absent, so the section's n_ctx is used (not a spurious value elsewhere).
+    path = _write_config(
+        tmp_path,
+        {
+            "model_type": "gemma3",
+            "language_config": {"n_ctx": 8192},
+            "vision_config": {"sliding_window": 512},
+        },
+    )
+    assert read_context_window_from_config(path) == 8192
+
+
+def test_deeply_nested_section_reached_by_fallback(tmp_path) -> None:
+    # A section nested one level deeper than the named list is still reached by the
+    # generic recursive fallback (so the window is never lost to extra nesting).
+    path = _write_config(
+        tmp_path,
+        {
+            "model": {"text_config": {"max_position_embeddings": 5555}},
+        },
+    )
+    assert read_context_window_from_config(path) == 5555
+
+
+def test_explicit_override_wins_over_nested_discovery(tmp_path) -> None:
+    # An explicit value still short-circuits discovery, even when the discovered
+    # value lives in a nested section.
+    path = _write_config(
+        tmp_path,
+        {"text_config": {"max_position_embeddings": 131072}},
+    )
+    assert resolve_context_window(path, explicit=5000) == 5000
+
+
+def test_nested_section_no_keys_returns_none(tmp_path) -> None:
+    # A multimodal config where neither the top level nor any nested section
+    # carries any of the candidate keys -> None (nothing advertised / enforced).
+    path = _write_config(
+        tmp_path,
+        {
+            "model_type": "qwen3_5",
+            "text_config": {"hidden_size": 4096, "num_attention_heads": 32},
+            "vision_config": {"initializer_range": 0.02},
+        },
+    )
+    assert read_context_window_from_config(path) is None

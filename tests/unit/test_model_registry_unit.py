@@ -306,3 +306,63 @@ def test_register_load_propagates_resolved_window_to_engine_loader(
     assert seen["config"].model_name == load_config.model_name
     assert seen["config"].context_window == 65536
 
+
+def test_register_load_discovers_nested_text_config_window(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The reported symptom: the window is nested under ``text_config`` (the
+    realistic VLM / multimodal shape), so a flat top-level scan would yield
+    nothing. Discovery must still find it, and it must reach BOTH the advertised
+    record AND the loader handed to the engine.
+
+    The top-level ``sliding_window`` here is a decoy for the old flat-scan bug:
+    the higher-priority nested ``max_position_embeddings`` must win instead.
+    """
+    model_path = _write_model_dir(
+        tmp_path,
+        "ctx-nested",
+        {
+            "architectures": ["Qwen2_5_VLForConditionalGeneration"],
+            "model_type": "qwen2_5_vl",
+            "sliding_window": 512,  # top-level decoy (lower priority)
+            "text_config": {
+                "model_type": "qwen2_5_vl_text",
+                "max_position_embeddings": 131072,
+            },
+            "vision_config": {"model_type": "qwen2_5_vl"},
+        },
+    )
+    load_config = ModelLoadConfig(
+        model_path=model_path,
+        model_name="ctx-nested",
+        model_type=ModelType.LLM,
+        engine=EngineType.OV_GENAI,
+        device="CPU",
+        runtime_config={},
+    )
+    registry = ModelRegistry()
+
+    seen = {"config": None}
+
+    async def _noop_unload(*_args, **_kwargs):
+        return None
+
+    async def fake_create(config):  # capture the loader the engine receives
+        seen["config"] = config
+        return SimpleNamespace(unload_model=_noop_unload)
+
+    monkeypatch.setattr(registry_module, "create_model_instance", fake_create)
+
+    async def _run():
+        await registry.register_load(load_config)
+        return await registry.status()
+
+    status = asyncio.run(_run())
+
+    # Advertised in the registered record ...
+    assert status["models"][0]["model_name"] == "ctx-nested"
+    assert status["models"][0]["context_window"] == 131072
+    # ... and enforced: the same resolved window rides the engine loader.
+    assert seen["config"].model_name == "ctx-nested"
+    assert seen["config"].context_window == 131072
+
