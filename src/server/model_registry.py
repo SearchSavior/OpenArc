@@ -15,6 +15,7 @@ from src.server.schemas.registration import (
     ModelStatus,
     ModelType,
 )
+from src.server.utils.context import resolve_context_window
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,9 @@ class ModelRecord:
     device: str = ""
     runtime_config: Dict[str, Any] = field(default_factory=dict)
     tool_call_parser: Optional[str] = None
+    # Context window (tokens) advertised in /v1/models. Discovered from the model's
+    # config.json at load time, or set explicitly via the load config.
+    context_window: Optional[int] = None
 
 
     def registered_models(self) -> dict:
@@ -47,6 +51,7 @@ class ModelRecord:
             "device": self.device,
             "runtime_config": self.runtime_config,
             "tool_call_parser": self.tool_call_parser,
+            "context_window": self.context_window,
             "status": self.status.value,
             "time_loaded": self.time_loaded.isoformat(),
         }
@@ -90,6 +95,25 @@ class ModelRegistry:
                     logger.info(f"Load failed! model_name '{loader.model_name}' already exists")
                     raise ValueError(f"model_name '{loader.model_name}' already registered")
 
+        # Resolve the effective context window. An explicit value on the load config
+        # (e.g. `openarc add --context-window`, or the `context_window` key in
+        # config.yaml) wins; otherwise it is discovered from the model's config.json.
+        # Running it off the event loop keeps discovery (a small file read) from
+        # stalling the loop.
+        context_window = await asyncio.to_thread(
+            resolve_context_window, loader.model_path, loader.context_window
+        )
+
+        # The inference engine only ever sees `loader` (via create_model_instance ->
+        # OVGenAI_LLM/OVGenAI_VLM.load_model -> extract_scheduler_config_from_loader),
+        # where the window becomes the compiled pipeline's MAX CONTENT WINDOW
+        # (SchedulerConfig.max_num_batched_tokens, which openvino.genai uses to bound a
+        # running sequence's KV-cache growth). Propagate the *resolved* value onto the
+        # loader so a --context-window override actually bites at inference time, not
+        # merely shows up in /v1/models. The record keeps the same resolved value so
+        # what is advertised matches what is enforced.
+        loader = loader.model_copy(update={"context_window": context_window})
+
         # Create a model record with LOADING status
         record = ModelRecord(
             model_path=loader.model_path,
@@ -101,6 +125,7 @@ class ModelRegistry:
             tool_call_parser=(
                 loader.tool_call_parser.value if loader.tool_call_parser else None
             ),
+            context_window=context_window,
             status=ModelStatus.LOADING,
         )
 

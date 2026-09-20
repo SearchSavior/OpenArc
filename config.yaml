@@ -15,6 +15,11 @@ models:
     model_path: /mnt/Ironwolf-4TB/Models/OpenVINO/Qwen3.5/Qwen3.5-0.8B-int8_asym-ov/
     device: CPU
     tool_call_parser: qwen35
+    # context_window: # optional; becomes the compiled model's MAX CONTENT WINDOW
+    #                 # (applied at load, not only advertised). Auto-derived from
+    #                 # config.json when omitted (first present wins among
+    #                 # max_position_embeddings / n_positions / seq_len /
+    #                 # seq_length / n_ctx / sliding_window).
     runtime_config:
       PERFORMANCE_HINT: LATENCY
     scheduler_config:
@@ -41,6 +46,8 @@ models:
       model_path: /mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Qwen3-8B-ShiningValiant3-int4-asym-ov
       device: GPU.0
       tool_call_parser: hermes
+      # context_window: # optional; becomes the compiled model's MAX CONTENT WINDOW;
+      #                 # auto-derived from config.json when omitted.
       draft_model_path: "/mnt/Ironwolf-4TB/Models/OpenVINO/Qwen/Qwen3-pruned-6L-from-0.6B-int8-ov"
       draft_device: "CPU"
       num_assistant_tokens: 5

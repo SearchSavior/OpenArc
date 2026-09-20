@@ -142,6 +142,29 @@ class ModelLoadConfig(BaseModel):
         When unset, /chat/completions requests containing tools are rejected
         with 400.""",
     )
+    context_window: Optional[int] = Field(
+        default=None,
+        description="""
+        Context window (in tokens) for this model. It is used in two places that
+        must agree, both driven by this single value:
+
+        * The compiled pipeline's **max content window** -- fed to the engine and
+          written to openvino.genai's ``SchedulerConfig.max_num_batched_tokens``,
+          which bounds a running sequence's KV-cache growth at inference time.
+          An operator-set ``scheduler_config.max_num_batched_tokens`` must be the
+          same value (or is left unset) so advertisement and enforcement match.
+        * Advertised in ``/v1/models`` (both as the OpenAI-standard
+          ``context_window`` field and as ``meta.n_ctx`` so goose can
+          auto-compact against it).
+
+        When set to a positive integer it overrides automatic discovery and is
+        used as-is. When None (or <= 0) the value is discovered from the model's
+        config.json, using the first present key of
+        max_position_embeddings / n_positions / seq_len / seq_length / n_ctx /
+        sliding_window -- and that discovered value is likewise used as the
+        compiled max content window.
+        """,
+    )
 
 
 class ModelUnloadConfig(BaseModel):
