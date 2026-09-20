@@ -36,7 +36,9 @@ def test_register_load_sets_status_loaded(monkeypatch: pytest.MonkeyPatch) -> No
     dummy_model = SimpleNamespace(unload_model=_noop_unload)
 
     async def fake_create(config):  # type: ignore[override]
-        assert config is load_config
+        # register_load() passes a model_copy() of load_config (with the resolved
+        # context_window injected for the engine), so assert on content not identity.
+        assert config.model_name == load_config.model_name
         return dummy_model
 
     monkeypatch.setattr(registry_module, "create_model_instance", fake_create)
@@ -260,4 +262,47 @@ def test_registered_models_exposes_context_window_key() -> None:
     )
     assert record.registered_models()["context_window"] == 1234
     assert ModelRecord().registered_models()["context_window"] is None
+
+
+def test_register_load_propagates_resolved_window_to_engine_loader(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The RESOLVED window (config.json-derived here) is written onto the loader that
+    is *actually handed to the engine* — the point being that an advertised value also
+    reaches the compiled pipeline, not only /v1/models.
+
+    Light by design: this only exercises the resolver + registry; the loader ->
+    compiled-pipeline step (context_window -> SchedulerConfig.max_num_batched_tokens)
+    is covered in test_ov_genai_scheduler_config_unit.py.
+    """
+    model_path = _write_model_dir(
+        tmp_path, "ctx-prop", {"max_position_embeddings": 65536}
+    )
+    load_config = ModelLoadConfig(
+        model_path=model_path,
+        model_name="ctx-prop",
+        model_type=ModelType.LLM,
+        engine=EngineType.OV_GENAI,
+        device="CPU",
+        runtime_config={},
+    )
+    registry = ModelRegistry()
+
+    seen = {"config": None}
+
+    async def _noop_unload(*_args, **_kwargs):
+        return None
+
+    async def fake_create(config):  # capture the loader the engine receives
+        seen["config"] = config
+        return SimpleNamespace(unload_model=_noop_unload)
+
+    monkeypatch.setattr(registry_module, "create_model_instance", fake_create)
+
+    asyncio.run(registry.register_load(load_config))
+
+    # A model_copy() is a new object; model_name is preserved and the resolved
+    # (discovered) window now travels on it into the engine.
+    assert seen["config"].model_name == load_config.model_name
+    assert seen["config"].context_window == 65536
 
