@@ -141,17 +141,30 @@ def _apply_tool_choice(
 async def openai_list_models():
     try:
         registry_status = await _registry.status()
+        created = int(datetime.datetime.now().timestamp())
 
         models = []
-        for model_name in registry_status["openai_model_names"]:
-            models.append(
-                {
-                    "id": model_name,
-                    "object": "model",
-                    "created": int(datetime.datetime.now().timestamp()),
-                    "owned_by": "OpenArc",
-                }
-            )
+        for entry in registry_status["models"]:
+            model_name = entry["model_name"]
+            context_window = entry.get("context_window")
+
+            item: Dict[str, Any] = {
+                "id": model_name,
+                "object": "model",
+                "created": created,
+                "owned_by": "OpenArc",
+            }
+
+            # Propagate the model's context window so OpenAI-compatible
+            # clients can size their conversation (e.g. for auto-compaction).
+            # `context_window` is the OpenAI-standard field; but some clients
+            # read the non-standard `meta.n_ctx` (llama.cpp / Ollama convention)
+            # from /v1/models, so both are emitted from the same resolved value.
+            if isinstance(context_window, int) and context_window > 0:
+                item["context_window"] = context_window
+                item["meta"] = {"n_ctx": context_window}
+
+            models.append(item)
 
         return {"object": "list", "data": models}
     except Exception as exc:

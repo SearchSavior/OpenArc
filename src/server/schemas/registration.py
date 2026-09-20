@@ -9,7 +9,7 @@ from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import SchedulerCo
 
 class ModelStatus(str, Enum):
     """loading status.
-    
+
     Options:
     - LOADING: Model is currently being loaded in the background
     - LOADED: Model has been successfully loaded and is ready for inference
@@ -23,7 +23,7 @@ class ModelStatus(str, Enum):
 class ModelType(str, Enum):
     """
     Internal routing to the correct inference pipeline.
-    
+
     Options:
     - llm: Text-to-text LLM models
     - vlm: Image-to-text VLM models
@@ -33,9 +33,9 @@ class ModelType(str, Enum):
     - qwen3_tts_custom_voice: Qwen3-TTS with predefined speaker
     - qwen3_tts_voice_design: Qwen3-TTS with free-form voice description
     - qwen3_tts_voice_clone: Qwen3-TTS cloning a reference audio
-    - emb: Text-to-vector models    
-    - rerank: Reranker models"""    
-    
+    - emb: Text-to-vector models
+    - rerank: Reranker models"""
+
     LLM = "llm"
     VLM = "vlm"
     WHISPER = "whisper"
@@ -54,7 +54,7 @@ class EngineType(str, Enum):
     Options:
     - optimum: Optimum-Intel engine
     - ovgenai: OpenVINO GenAI engine"""
-    
+
     OV_OPTIMUM = "optimum"
     OV_GENAI = "ovgenai"
     OPENVINO = "openvino"
@@ -84,7 +84,7 @@ class ModelLoadConfig(BaseModel):
     model_path: str = Field(
         description="""
         Top level path to directory containing OpenVINO IR converted model.
-        
+
         OpenArc does not support runtime conversion and cannot pull from HF.""")
     model_name: str = Field(
         ...,
@@ -141,6 +141,22 @@ class ModelLoadConfig(BaseModel):
 
         When unset, /chat/completions requests containing tools are rejected
         with 400.""",
+    )
+    context_window: Optional[int] = Field(
+        default=None,
+        description="""
+        Context window (in tokens), advertised in ``/v1/models`` (as the
+        OpenAI-standard ``context_window`` field and as ``meta.n_ctx`` so
+        agent clients can display and use it for things like auto-compaction.
+
+        When set to a positive integer it overrides automatic discovery and is
+        used as-is. When None (or <= 0) the value is discovered from the model's
+        config.json -- searched at the top level first, and (because multimodal
+        models nest their language config under ``text_config`` / ``language_config``
+        / ``llm_config`` / ...) then inside those nested per-modality sections --
+        using the first present key of
+        max_position_embeddings / n_positions / seq_len / seq_length / n_ctx / sliding_window.
+        """,
     )
 
     # --- Model-level request defaults, authored in config.yaml ---
