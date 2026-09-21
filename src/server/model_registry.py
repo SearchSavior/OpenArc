@@ -15,6 +15,7 @@ from src.server.schemas.registration import (
     ModelStatus,
     ModelType,
 )
+from src.server.utils.config_hash import check_model_config_hash
 from src.server.utils.context import resolve_context_window
 
 logger = logging.getLogger(__name__)
@@ -113,6 +114,29 @@ class ModelRegistry:
         # merely shows up in /v1/models. The record keeps the same resolved value so
         # what is advertised matches what is enforced.
         loader = loader.model_copy(update={"context_window": context_window})
+
+        # Compiled-model invalidation gate: the OpenVINO cache holds blobs
+        # compiled for THIS model's files + device, keyed without regard to the
+        # runtime/scheduler configuration. If the config entry changed since the
+        # last compile (a changed --runtime-config / --scheduler-config, a manual
+        # edit of openarc_config.json, a re-run of `openarc add`, ...), the cached
+        # blobs are stale and conflict with the new settings, so the cache is
+        # cleared and the pipeline recompiles; the hash of the config being
+        # compiled is persisted in the config file either way. Runs off the event
+        # loop (config file I/O, and the cache directory can be large).
+        current_config_hash, config_changed = await asyncio.to_thread(
+            check_model_config_hash, loader
+        )
+        if config_changed:
+            logger.warning(
+                f"[{loader.model_name}] Model config changed since the last compile; "
+                f"compiled-model cache {loader.cache_dir!r} invalidated -- the model "
+                f"will recompile with the new settings."
+            )
+        # The record (and thus the OOM auto-reload path, which re-registers from
+        # record.load_config) must carry the hash of the config it was compiled
+        # with, so a later reload does not re-trigger the invalidation.
+        loader = loader.model_copy(update={"config_hash": current_config_hash})
 
         # Create a model record with LOADING status
         record = ModelRecord(

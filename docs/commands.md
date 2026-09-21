@@ -391,6 +391,16 @@ This page contains example commands to help you choose models and configure Open
             > Due to OpenVINO limitations, unused cache files are never cleaned up and will persist until an operator removes them. The cache can grow large over time. It is recommended
             > that operators monitor the cache size and manually clean it up as needed to reduce disk usage.
 
+        === "Automatic recompile on config changes"
+
+            OpenVINO keys its cache by the model files and device -- **not** by `runtime_config` or `scheduler_config`. A cached graph compiled under the old settings conflicts with a changed configuration, so OpenArc tracks a `config_hash` of each model's (path-resolved) configuration entry in `openarc_config.json`:
+
+            * On every model load, OpenArc hashes the configuration it is about to compile and stores it as `config_hash` in the model's config entry.
+            * If the stored hash differs from the current one -- e.g. you changed `--runtime-config` / `--scheduler-config` / `--device` via `openarc add`, or edited `openarc_config.json` by hand -- OpenArc deletes the model's `--cache-dir` before loading, so the pipeline **recompiles with the new settings**, and writes the new hash back.
+            * An unchanged load is a cache hit: nothing is deleted and the fast cached start is used.
+
+            The `config_hash` field is managed by the server; you can ignore (or safely delete) it, the next load re-stores it. A re-run of `openarc add` with an unchanged configuration keeps the stored hash, so it does not needlessly trigger a recompile.
+
 
             ```
             openarc add \

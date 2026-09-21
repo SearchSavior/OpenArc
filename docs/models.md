@@ -134,4 +134,4 @@ This was a bug in the OpenVINO GPU plugin's MoE fusion pass and is fixed upstrea
 uv pip install --pre -U openvino openvino-genai openvino-tokenizers --extra-index-url https://storage.openvinotoolkit.org/simple/wheels/nightly
 ```
 
-After upgrading, clear the model cache directory (if one is configured) so the model recompiles, and restart the server if it was running before the upgrade.
+After upgrading, clear the model cache directory (if one is configured) so the model recompiles, and restart the server if it was running before the upgrade. (OpenArc does this automatically when a model's config entry changes -- see the `openarc add` "Model caching" documentation -- but a software-stack upgrade like this one does not change the config, so the cache has to be cleared manually.)

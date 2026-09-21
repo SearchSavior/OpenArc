@@ -143,6 +143,21 @@ def add(ctx, model_path, model_name, engine, model_type, device, runtime_config,
     if context_window is not None:
         load_config["context_window"] = context_window
 
+    # A re-add that does not change the configuration keeps the stored
+    # config_hash, so the next load does not needlessly recompile. Any change
+    # drops the hash (the entry is replaced), which makes the next load
+    # invalidate the compiled-model cache and recompile -- see
+    # src.server.utils.config_hash. The comparison uses the raw file entry, so
+    # the path strings compare exactly as typed.
+    previous_entry = ctx.obj.server_config.load_config().get("models", {}).get(model_name)
+    if isinstance(previous_entry, dict):
+        same_config = (
+            {k: v for k, v in previous_entry.items() if k != "config_hash"}
+            == {k: v for k, v in load_config.items() if k != "config_hash"}
+        )
+        if same_config and previous_entry.get("config_hash"):
+            load_config["config_hash"] = previous_entry["config_hash"]
+
     ctx.obj.server_config.save_model_config(model_name, load_config)
     console.print(f"[green]Model configuration saved:[/green] {model_name}")
     console.print(f"[dim]Use 'openarc load {model_name}' to load this model.[/dim]")
