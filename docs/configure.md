@@ -1,11 +1,60 @@
 OpenArc now uses a YAML based configutation system! Before we did things with a CLI tool- but now, you are free to configure defaults to your hearts content. 
 
 
+## Config Blocks
+
+There are a few different blocks in a models config that accept different parameters. Some will be common across implementations while others are specific. 
+
+### load_config
+- engine: ovgenai, openvino, optimum
+- model_type: llm, vlm, whisper, kokoro, emb, rerank, qwen3_tts_*
+- device: device for this model
+- tool_call_parser: gemma4, qwen35, hermes
+
+### scheduler_config
+
+These are knobs to directly control performance. you can read more in the documentation upstream [here](https://openvinotoolkit.github.io/openvino.genai/docs/category/optimization-techniques) 
+
+- max_num_batched_tokens:
+- num_kv_blocks:
+- cache_size:
+- num_linear_attention_blocks:
+- cache_interval_multiplier:
+- dynamic_split_fuse:
+- enable_prefix_caching:
+- use_cache_eviction:
+- use_sparse_attention:
+
+Openvino genai does a graph transformation in the pipeline, which adapts the model graph in place to choose a different codepath at runtime. The long load time on first load 
+
+### runtime_config
 
 
-# Examples
+runtime_config is an OpenArc entrypoint to the *properties* way of configuring openvino runtime. These settings allow users to tune the behavior of openivno runtime without needing to change application logic and are meant to be "portable", requring no code changes. Since OpenArc 
 
-## LLM
+OpenArc does not validate these, and OpenVINO upstream does not provide a way to check the behvaior of these settings in all cases. They can help you access hardware features not available to all devices like `SCHEDULING_CORE_TYPE` for more recent Intel CPUs, debug numeircal precision issues with `INFERENCE_PRECISION_HINT` or control `KV_CACHE_PRECISION`.
+
+*properties* have the worst documentation in all of OpenVINO ecosystem, yet they are used everywhere in the openvino_notebooks, PRs and sometimes are even hardcoded depending on the needs of OpenVINO team. In that way, poking at these settings can drastically change performance but have less knobs than users of projects like `llama.cpp`, `vllm`, `sglang` are used to tinkering with.
+
+
+
+
+- OFFLOAD_RATIO      "0-100" CPU offload
+- ATTENTION_BACKEND     "SDPA", "PA"
+- KV_CACHE_PRECISION   "u4", "u8", "f16", "f32"
+- PERFORMANCE_HINT     "LATNENCY", "THROUGHPUT"
+- EXECUTION_MODE_HINT   "ACCURACY", "PERFORMANCE"
+- INFERENCE_PRECISION_HINT "f16", "f32"
+- MODEL_DISTRIBUTION_POLICY      "TENSOR_PARALLEL", "PIPELINE_PARALLEL"
+- ACTIVATIONS_SCALING_FACTOR: 
+- DYNAMIC_QUANTIZATION_GROUP_SIZE:  integer
+- ENABLE_HYPER_THREADING:        bool, defaults to true
+- SCHEDULING_CORE_TYPE:   "ANY_CORE", "ECORE_ONLY", "PCORE_ONLY"
+- LOG_LEVEL:      "ERR", "WARN", "INFO", "DEBUG", "TRACE" # might require building openvino
+
+## Example Configs
+
+### LLM
 
 ```yaml
 models:
@@ -19,8 +68,8 @@ models:
     runtime_config:
       PERFORMANCE_HINT: LATENCY
     scheduler_config:
-      max_num_batched_tokens:
-      num_kv_blocks:
+      max_num_batched_tokens: 2048
+      num_kv_blocks: 
       cache_size:
       num_linear_attention_blocks:
       cache_interval_multiplier:
@@ -38,7 +87,7 @@ models:
         enable_thinking: true
 ```
 
-## VLM
+### VLM
 
 ```yaml
 models:
@@ -69,7 +118,7 @@ models:
       max_tokens: 1024
 ```
 
-## Kokoro
+### Kokoro
 
 OpenArc supports kokoro! Support in openvino has improved since I first implemented this model, so its possible we should look into review.
 
@@ -90,7 +139,7 @@ models:
       response_format: wav
 ```
 
-## Qwen3-ASR
+### Qwen3-ASR
 
 Another great model for ASR task. THe below settings around chunking have model-specific audio chunking logic which adapt and improve on what Qwen-Team released at launch- we study the energy of audio to choose when to slice up to `max_chunk_sec`, so you rarely hit `30` seconds. Therefore `max_chunk_sec` is a unit of inference, and performance should be judged by how long it takes to process a window.
 
@@ -113,7 +162,7 @@ models:
       min_window_ms: 100.0            # energy window, ms
 ```
 
-## Whisper
+### Whisper
 
 Whisper has no config block; audio arrives per request, so only load-time options apply.
 
@@ -130,7 +179,7 @@ models:
 ```
 
 
-## Qwen3-TTS
+### Qwen3-TTS
 
 All 3 flavors of qwen3-tts are supported, with a rich set of configuration options. PRs to improve performance or other enhancements are welcome
 
@@ -167,7 +216,7 @@ models:
       stream_left_context: 25
 ```
 
-### Voice Clone
+#### Voice Clone
 
 ```yaml
     qwen3_tts_voice_clone_config:
@@ -176,12 +225,12 @@ models:
       instruct: "Speak slowly."
 ```
 
-### Voice Design
+#### Voice Design
 ```yaml
     qwen3_tts_voice_design_config:
       voice_description: "A red furry muppet with an orange nose."
 ```
-### Custom Voice
+#### Custom Voice
 
 ```yaml
     qwen3_tts_custom_voice_config:
@@ -189,10 +238,22 @@ models:
       instruct: "Sound cheerful."
 ```
 
-## scheduler_config
 
-Scheduler properties (KV cache, prefix caching, batching) live on the [Performance](performance.md#scheduler_config) page.
 
-## runtime_config
 
-OpenVINO runtime *properties* and multi-device / speculative / caching recipes live on the [Performance](performance.md#runtime_config) page.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
