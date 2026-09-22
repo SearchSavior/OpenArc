@@ -4,6 +4,7 @@ import asyncio
 import importlib
 import inspect
 import logging
+import os
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -218,6 +219,10 @@ class ModelRegistry:
         try:
             # Load the model instance
             model_instance = await create_model_instance(load_config)
+            # Out-of-process engines (the remote VLM facade) report fatal
+            # worker failures back to the registry that loaded them.
+            if hasattr(model_instance, "_registry") and model_instance._registry is None:
+                model_instance._registry = self
 
             # Update the record with successful loading
             async with self._lock:
@@ -366,7 +371,35 @@ async def create_model_instance(load_config: ModelLoadConfig) -> Any:
     module = importlib.import_module(module_path)
     model_class = getattr(module, class_name)
 
-    # Create and load model instance
+    # Create the model instance.
     model_instance = model_class(load_config)
-    await asyncio.to_thread(model_instance.load_model, load_config)
+
+    # Lazy imports: src.engine's package __init__ imports the engine classes,
+    # and those import back into this module, so they must not be imported at
+    # module level here (circular import).
+    from src.engine.ov_genai.vlm import OVGenAI_VLM
+    from src.engine.worker.worker_client import RemoteOVGenAI_VLM
+
+    # OpenVINO GenAI VLMs run in a dedicated worker process instead of in the
+    # server process: openvino_genai pipelines share a process-wide singleton
+    # ov::Core, and a wedged GPU plugin poisons it for the life of the
+    # process -- no in-process unload/reload can ever fix that. The facade
+    # below owns a supervised subprocess, so unload = terminate (guaranteed
+    # clean), reload = fresh process (fresh Core), and a wedged worker is
+    # respawned transparently within a per-load budget. Setting
+    # OPENARC_VLM_WORKER=0 restores the historical in-process behaviour.
+    if (
+        isinstance(model_instance, OVGenAI_VLM)
+        and os.getenv("OPENARC_VLM_WORKER", "1").strip().lower() not in ("0", "false", "off", "no")
+    ):
+        model_instance = RemoteOVGenAI_VLM(load_config)
+
+    # Load the model instance: remote facades load asynchronously (they spawn
+    # a subprocess); in-process engines keep their blocking load off the
+    # event loop.
+    load_fn = model_instance.load_model
+    if inspect.iscoroutinefunction(load_fn):
+        await load_fn(load_config)
+    else:
+        await asyncio.to_thread(load_fn, load_config)
     return model_instance

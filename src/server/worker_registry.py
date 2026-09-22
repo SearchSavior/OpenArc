@@ -18,6 +18,8 @@ from src.engine.openvino.qwen3_asr.qwen3_asr import OVQwen3ASR
 from src.engine.openvino.qwen3_tts.qwen3_tts import OVQwen3TTS
 from src.engine.optimum.optimum_emb import Optimum_EMB
 from src.engine.optimum.optimum_rr import Optimum_RR
+from src.engine.worker.worker_client import RemoteOVGenAI_VLM
+from src.engine.worker.protocol import RemoteWorkerDeadError
 
 from src.server.schemas.modeling.contract_kokoro import OV_KokoroGenConfig
 from src.server.schemas.modeling.contract_qwen3asr import OV_Qwen3ASRGenConfig
@@ -104,6 +106,19 @@ def _commit_completed_packet(
             packet.result_future.set_exception(completed.request_error)
         return False
     if completed.error is not None:
+        if isinstance(completed.error, RemoteWorkerDeadError):
+            # The worker PROCESS died (crash, wedge, or it is mid-respawn).
+            # The supervisor owns recovery: it respawns a fresh process within
+            # budget, or unloads the model itself once the budget is
+            # exhausted. The registry must NOT double-act by unloading here --
+            # that would kill an in-flight respawn.
+            logger.error(
+                f"[{model_name}] Inference failed because the inference worker "
+                f"process died; the supervisor is handling recovery."
+            )
+            if packet.result_future is not None and not packet.result_future.done():
+                packet.result_future.set_exception(completed.error)
+            return False
         logger.error(
             f"[{model_name}] Inference failed, triggering model unload..."
         )
@@ -168,7 +183,7 @@ class InferWorker:
         return packet
 
     @staticmethod
-    async def infer_vlm(packet: WorkerPacket, vlm_model: OVGenAI_VLM) -> WorkerPacket:
+    async def infer_vlm(packet: WorkerPacket, vlm_model: Union[OVGenAI_VLM, RemoteOVGenAI_VLM]) -> WorkerPacket:
         """Generate text from image for a single packet using the OVGenAI_VLM pipeline"""
         metrics = None
         final_text = ""
@@ -432,7 +447,7 @@ class QueueWorker:
             model_queue.task_done()
 
     @staticmethod
-    async def queue_worker_vlm(model_name: str, model_queue: asyncio.Queue, vlm_model: OVGenAI_VLM, registry: ModelRegistry):
+    async def queue_worker_vlm(model_name: str, model_queue: asyncio.Queue, vlm_model: Union[OVGenAI_VLM, RemoteOVGenAI_VLM], registry: ModelRegistry):
         """Image model inference worker that processes packets from queue"""
         logger.info(f"[VLM Worker: {model_name}] Started, waiting for packets...")
         while True:
@@ -650,7 +665,7 @@ class WorkerRegistry:
                     task = asyncio.create_task(QueueWorker.queue_worker_llm(record.model_name, q, instance, self._model_registry))
                     self._model_tasks_llm[record.model_name] = task
 
-            elif mt == ModelType.VLM and isinstance(instance, OVGenAI_VLM):
+            elif mt == ModelType.VLM and isinstance(instance, (OVGenAI_VLM, RemoteOVGenAI_VLM)):
                 if record.model_name not in self._model_queues_vlm:
                     q: asyncio.Queue = asyncio.Queue()
                     self._model_queues_vlm[record.model_name] = q
