@@ -1,9 +1,10 @@
 """
-RemoteOVGenAI_VLM -- in-process facade for the out-of-process VLM worker.
+Remote OVGenAI facades -- in-process stand-ins for models that run in a
+supervised worker subprocess.
 
-Presents the same async surface the server calls on a VLM instance
-(load_model / generate_type / cancel / unload_model), but every OpenVINO call
-happens in a supervised child process:
+Each facade presents the same async surface the server calls on the
+corresponding in-process class (load_model / generate_type / transcribe /
+cancel / unload_model), but every OpenVINO call happens in a child process:
 
   * unload = terminate the process (no poisoned Core can be left behind)
   * reload = spawn a fresh process (fresh ov::Core)
@@ -15,13 +16,13 @@ happens in a supervised child process:
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, Optional, Union
 
 from src.engine.worker import protocol as proto
 from src.engine.worker.supervisor import EOF, WorkerSupervisor
 from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_GenConfig
+from src.server.schemas.modeling.contract_whisper import OVGenAI_WhisperGenConfig
 from src.server.schemas.registration import ModelLoadConfig
 
 if TYPE_CHECKING:
@@ -30,8 +31,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class RemoteOVGenAI_VLM:
-    """Drop-in replacement for OVGenAI_VLM that runs the pipeline in a child process."""
+class RemoteOVGenAI:
+    """Shared facade for out-of-process OpenVINO GenAI models (stage 1+2)."""
 
     def __init__(
         self,
@@ -79,13 +80,17 @@ class RemoteOVGenAI_VLM:
 
     # -- inference surface (called by WorkerRegistry) -----------------------------
     def generate_type(self, gen_config: OVGenAI_GenConfig) -> AsyncIterator[Union[Dict[str, Any], str]]:
-        """Unified generation; same yield contract as OVGenAI_VLM.generate_type."""
-        return self._generate(gen_config)
+        """Text generation (VLM/LLM); same yield contract as OVGenAI_*_generate_type."""
+        return self._run(proto.OP_GENERATE, gen_config.model_dump_json(), gen_config.request_id)
 
-    async def _generate(self, gen_config: OVGenAI_GenConfig) -> AsyncIterator[Union[Dict[str, Any], str]]:
-        queue, result = await self._supervisor.begin_generate(
-            gen_config.model_dump_json(), gen_config.request_id
-        )
+    def transcribe(self, gen_config: OVGenAI_WhisperGenConfig) -> AsyncIterator[Union[Dict[str, Any], str]]:
+        """Audio transcription (Whisper); yields metrics dict then the text."""
+        return self._run(proto.OP_TRANSCRIBE, gen_config.model_dump_json(), None)
+
+    async def _run(
+        self, op: str, gen_config_json: str, request_id: Optional[str]
+    ) -> AsyncIterator[Union[Dict[str, Any], str]]:
+        queue, result = await self._supervisor.begin_run(op, gen_config_json, request_id)
         try:
             while True:
                 item = await queue.get()
@@ -96,9 +101,9 @@ class RemoteOVGenAI_VLM:
         except GeneratorExit:
             # The consumer stopped listening (e.g. client disconnect): ask
             # the worker to stop producing instead of burning GPU for no one.
-            if gen_config.request_id is not None:
+            if request_id is not None:
                 try:
-                    await self._supervisor.request_cancel(gen_config.request_id)
+                    await self._supervisor.request_cancel(request_id)
                 except Exception:
                     pass
             raise
@@ -117,3 +122,15 @@ class RemoteOVGenAI_VLM:
     @property
     def worker_pid(self) -> Optional[int]:
         return self._supervisor.pid
+
+
+class RemoteOVGenAI_VLM(RemoteOVGenAI):
+    """Out-of-process OpenVINO GenAI VLM (stage 1)."""
+
+
+class RemoteOVGenAI_LLM(RemoteOVGenAI):
+    """Out-of-process OpenVINO GenAI LLM (stage 2)."""
+
+
+class RemoteOVGenAI_Whisper(RemoteOVGenAI):
+    """Out-of-process OpenVINO GenAI Whisper (stage 2)."""

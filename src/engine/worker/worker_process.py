@@ -15,6 +15,7 @@ process is gone" and decides whether to respawn a fresh one.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -24,9 +25,44 @@ from typing import Any, Dict, List, Optional
 
 from src.engine.worker import protocol as proto
 from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_GenConfig
-from src.server.schemas.registration import ModelLoadConfig
+from src.server.schemas.modeling.contract_whisper import OVGenAI_WhisperGenConfig
+from src.server.schemas.registration import ModelLoadConfig, ModelType
 
 logger = logging.getLogger("openarc.worker")
+
+# Engines the worker process knows how to run (stage 1+2: OpenVINO GenAI
+# VLM/LLM/Whisper). Everything else stays in the server process for now.
+_WORKER_MODEL_TYPES = (ModelType.VLM, ModelType.LLM, ModelType.WHISPER)
+
+_GEN_CONFIG_CLASSES = {
+    ModelType.LLM: OVGenAI_GenConfig,
+    ModelType.VLM: OVGenAI_GenConfig,
+    ModelType.WHISPER: OVGenAI_WhisperGenConfig,
+}
+
+
+def _make_model(load_config: ModelLoadConfig) -> Any:
+    """Build the model object inside the worker process (real or stub)."""
+    if load_config.model_type not in _WORKER_MODEL_TYPES:
+        raise ValueError(
+            f"model type {load_config.model_type.value!r} is not supported "
+            f"in the worker process (supported: {', '.join(t.value for t in _WORKER_MODEL_TYPES)})"
+        )
+    if os.environ.get("OPENARC_WORKER_STUB", "").strip().lower() in _STUB_ON:
+        return _StubModel(load_config)
+    # Imported here (and only here) so the stub path -- and unit tests in
+    # general -- never pull OpenVINO into the process.
+    if load_config.model_type == ModelType.VLM:
+        from src.engine.ov_genai.vlm import OVGenAI_VLM
+
+        return OVGenAI_VLM(load_config)
+    if load_config.model_type == ModelType.LLM:
+        from src.engine.ov_genai.llm import OVGenAI_LLM
+
+        return OVGenAI_LLM(load_config)
+    from src.engine.ov_genai.whisper import OVGenAI_Whisper
+
+    return OVGenAI_Whisper(load_config)
 
 
 def _configure_logging() -> None:
@@ -46,15 +82,17 @@ def _configure_logging() -> None:
 _STUB_ON = ("1", "true", "yes", "on")
 
 
-class _StubVLM:
+class _StubModel:
     """
-    Test double for OVGenAI_VLM, selected by OPENARC_WORKER_STUB=1 so the
-    whole spawn/IPC/respawn machinery can be exercised in unit tests without
-    OpenVINO, a GPU, or model files. It mirrors OVGenAI_VLM's yield contract:
-    non-streaming yields (metrics dict, text); streaming yields text chunks
-    then a metrics dict.
+    Test double for the OVGenAI models (VLM/LLM/Whisper), selected by
+    OPENARC_WORKER_STUB=1 so the whole spawn/IPC/respawn machinery can be
+    exercised in unit tests without OpenVINO, a GPU, or model files. It
+    mirrors the yield contracts: non-streaming generate_type yields
+    (metrics dict, text); streaming yields text chunks then a metrics dict;
+    transcribe yields (metrics dict, text).
 
-    Prompt keywords drive behaviour:
+    Prompt keywords (or, for transcribe, the decoded audio payload) drive
+    behaviour:
       CRASH -> os._exit(139)  (simulates a native crash / GPU wedge)
       FATAL -> raises a CL_OUT_OF_RESOURCES-looking error (non-recoverable:
                the worker reports MSG_FATAL and exits)
@@ -75,7 +113,14 @@ class _StubVLM:
             time.sleep(delay)
 
     @staticmethod
-    def _prompt_text(gen_config: OVGenAI_GenConfig) -> str:
+    def _payload_text(gen_config: Any) -> str:
+        """The control text: the prompt/messages for generate, the decoded
+        (text-encoded) audio payload for transcribe."""
+        if isinstance(gen_config, OVGenAI_WhisperGenConfig):
+            try:
+                return base64.b64decode(gen_config.audio_base64).decode("utf-8", "replace")
+            except Exception:
+                return ""
         if gen_config.prompt:
             return gen_config.prompt
         parts: List[str] = []
@@ -86,7 +131,7 @@ class _StubVLM:
         return " ".join(parts)
 
     async def generate_type(self, gen_config: OVGenAI_GenConfig) -> Any:
-        text = self._prompt_text(gen_config)
+        text = self._payload_text(gen_config)
         if "CRASH" in text:
             os._exit(139)
         tokens = [t for t in text.split() if t not in ("CRASH", "FATAL", "RAISE", "SLOW")] or ["ok"]
@@ -114,6 +159,19 @@ class _StubVLM:
             yield {"new_token": len(tokens), "stream": False}
             yield " ".join(tokens)
 
+    async def transcribe(self, gen_config: OVGenAI_WhisperGenConfig) -> Any:
+        text = self._payload_text(gen_config)
+        if "CRASH" in text:
+            os._exit(139)
+        if "FATAL" in text:
+            raise RuntimeError("CL_OUT_OF_RESOURCES (stub)")
+        if "RAISE" in text:
+            raise RuntimeError("stub recoverable error")
+        # Same yield contract as OVGenAI_Whisper.transcribe: metrics dict,
+        # then the transcribed text.
+        yield {"num_generated_tokens": 3, "throughput_tokens_per_sec": 1.0}
+        yield "stub transcript"
+
     async def cancel(self, request_id: str) -> bool:
         ev = self._cancel_events.get(request_id)
         if ev is not None:
@@ -133,6 +191,7 @@ class _Worker:
     def __init__(self) -> None:
         self.model: Any = None
         self.model_name = ""
+        self.model_type: Optional[ModelType] = None
         self._active_gen: Optional[asyncio.Task] = None
         self._active_request_id: Optional[str] = None
         self._send_lock = asyncio.Lock()
@@ -171,7 +230,9 @@ class _Worker:
         elif op == proto.OP_LOAD:
             asyncio.create_task(self._do_load(msg), name="ovworker-load")
         elif op == proto.OP_GENERATE:
-            await self._do_generate(msg)
+            await self._start_run(msg, "generate_type")
+        elif op == proto.OP_TRANSCRIBE:
+            await self._start_run(msg, "transcribe")
         elif op == proto.OP_CANCEL:
             ok = False
             if self.model is not None and hasattr(self.model, "cancel"):
@@ -188,14 +249,8 @@ class _Worker:
         try:
             load_config = ModelLoadConfig.model_validate_json(msg["config"])
             self.model_name = load_config.model_name
-            if os.environ.get("OPENARC_WORKER_STUB", "").strip().lower() in _STUB_ON:
-                model = _StubVLM(load_config)
-            else:
-                # Imported here (and only here) so the stub path -- and unit
-                # tests in general -- never pull OpenVINO into the process.
-                from src.engine.ov_genai.vlm import OVGenAI_VLM
-
-                model = OVGenAI_VLM(load_config)
+            self.model_type = load_config.model_type
+            model = _make_model(load_config)
             logger.info(f"[{load_config.model_name}] building pipeline on {load_config.device} ...")
             await asyncio.to_thread(model.load_model, load_config)
             self.model = model
@@ -215,7 +270,21 @@ class _Worker:
                 )
             )
 
-    async def _do_generate(self, msg: Dict[str, Any]) -> None:
+    def _validate_gen_config(self, raw: Dict[str, Any]) -> Any:
+        """Validate the gen_config payload against the loaded engine's contract."""
+        gen_config_cls = _GEN_CONFIG_CLASSES.get(self.model_type)
+        if gen_config_cls is None:
+            raise ValueError(f"no gen config contract for model type {self.model_type!r}")
+        if gen_config_cls is OVGenAI_GenConfig:
+            # The contract declares messages/input_ids as non-optional lists
+            # with a None default (pydantic skips validation of defaults), so
+            # a JSON round-trip must normalise them back to empty lists.
+            raw = dict(raw)
+            raw["messages"] = raw.get("messages") or []
+            raw["input_ids"] = raw.get("input_ids") or []
+        return gen_config_cls.model_validate(raw)
+
+    async def _start_run(self, msg: Dict[str, Any], method_name: str) -> None:
         req_id = msg["req_id"]
         if self.model is None:
             await self.send(
@@ -231,32 +300,27 @@ class _Worker:
                 proto.encode_response(
                     proto.MSG_ERROR,
                     req_id=req_id,
-                    error={"type": "Busy", "message": "a generation is already in progress"},
+                    error={"type": "Busy", "message": "an inference is already in progress"},
                 )
             )
             return
         self._active_gen = asyncio.create_task(
-            self._run_generation(msg), name=f"ovworker-gen-{req_id[:8]}"
+            self._run_inference(msg, method_name), name=f"ovworker-gen-{req_id[:8]}"
         )
 
-    async def _run_generation(self, msg: Dict[str, Any]) -> None:
+    async def _run_inference(self, msg: Dict[str, Any], method_name: str) -> None:
         req_id = msg["req_id"]
         self._active_request_id = msg.get("request_id")
         try:
-            raw = json.loads(msg["gen_config"])
-            # The contract declares messages/input_ids as non-optional lists
-            # with a None default (pydantic skips validation of defaults), so
-            # a JSON round-trip must normalise them back to empty lists.
-            raw["messages"] = raw.get("messages") or []
-            raw["input_ids"] = raw.get("input_ids") or []
-            gen_config = OVGenAI_GenConfig.model_validate(raw)
-            async for item in self.model.generate_type(gen_config):
+            gen_config = self._validate_gen_config(json.loads(msg["gen_config"]))
+            run = getattr(self.model, method_name)(gen_config)
+            async for item in run:
                 await self.send(proto.encode_response(proto.MSG_ITEM, req_id=req_id, item=item))
             await self.send(proto.encode_response(proto.MSG_DONE, req_id=req_id))
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            logger.error(f"[{self.model_name}] generation failed", exc_info=True)
+            logger.error(f"[{self.model_name}] {method_name} failed", exc_info=True)
             if proto.is_non_recoverable_error(e):
                 # Wedged device: report FATAL and take the process down so
                 # the supervisor can respawn with a fresh ov::Core.

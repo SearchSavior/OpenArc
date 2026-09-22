@@ -31,6 +31,7 @@ PROTOCOL_VERSION = 1
 # --- parent -> worker ops ---------------------------------------------------
 OP_LOAD = "LOAD"        # payload: req_id, config (ModelLoadConfig JSON)
 OP_GENERATE = "GENERATE"  # payload: req_id, request_id, gen_config (OVGenAI_GenConfig JSON)
+OP_TRANSCRIBE = "TRANSCRIBE"  # payload: req_id, gen_config (OVGenAI_WhisperGenConfig JSON)
 OP_CANCEL = "CANCEL"    # payload: req_id, request_id
 OP_PING = "PING"        # payload: req_id
 OP_UNLOAD = "UNLOAD"    # payload: req_id

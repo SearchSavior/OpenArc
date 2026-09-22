@@ -1,10 +1,10 @@
 # Out-of-Process Inference Workers
 
-OpenVINO GenAI VLMs are not loaded in the server process. Each one runs in a
-**dedicated worker subprocess** owned by a supervisor, and the server talks to
-it over the process's stdin/stdout (one JSON object per line). The worker
-builds and runs the `VLMPipeline`; the server process never touches OpenVINO
-for that model.
+OpenVINO GenAI models (VLM, LLM, Whisper) are not loaded in the server
+process. Each one runs in a **dedicated worker subprocess** owned by a
+supervisor, and the server talks to it over the process's stdin/stdout (one
+JSON object per line). The worker builds and runs the pipeline; the server
+process never touches OpenVINO for that model.
 
 ## Why a process boundary
 
@@ -38,7 +38,8 @@ responding, so a wedged-but-alive process is recovered the same way.
 
 | environment variable | effect |
 | --- | --- |
-| `OPENARC_VLM_WORKER=0` | disable the worker process for VLMs and restore the historical in-process behaviour (escape hatch for debugging) |
+| `OPENARC_OVGENAI_WORKER=0` | master switch: disable worker processes for all OpenVINO GenAI models (VLM/LLM/Whisper) and restore the historical in-process behaviour |
+| `OPENARC_VLM_WORKER=0` | additionally disable the worker process for VLMs only (stage-1 escape hatch) |
 
 Everything else (respawn budget, watchdog timings, unload timeouts) is
 configurable on `WorkerSupervisor` for now and will get config-file support in
@@ -52,12 +53,13 @@ a later stage.
 | `src/engine/worker/supervisor.py` | process lifecycle, protocol session, respawn + watchdog |
 | `src/engine/worker/worker_process.py` | child entry point; builds the pipeline inside the worker |
 | `src/engine/worker/worker_client.py` | `RemoteOVGenAI_VLM` facade (same surface as `OVGenAI_VLM`) |
-| `src/server/model_registry.py` | the factory wraps `OVGenAI_VLM` in the facade |
-| `src/server/worker_registry.py` | dispatches VLM packets to the facade; a *worker death* does not trigger a registry unload (the supervisor owns recovery) |
+| `src/server/model_registry.py` | the factory wraps `OVGenAI_VLM` / `OVGenAI_LLM` / `OVGenAI_Whisper` in a facade |
+| `src/server/worker_registry.py` | dispatches VLM/LLM/Whisper packets to the facades; a *worker death* does not trigger a registry unload (the supervisor owns recovery) |
 
-## Scope (stage 1)
+## Scope (stages 1–2 done)
 
-This is stage 1 of a larger refactor: only the OpenVINO GenAI **VLM** engine
-runs out-of-process. LLM, Whisper, and the plain-openvino engines (Kokoro,
-Qwen3-ASR/TTS) still load in-process and will join the worker pool in later
-stages. `openarc bench` also still builds its pipeline in-process.
+Stages 1 and 2 are complete: OpenVINO GenAI **VLM, LLM, and Whisper** run
+out-of-process. The plain-openvino engines (Kokoro, Qwen3-ASR, Qwen3-TTS) and
+the optimum engines (embedding, rerank) still load in-process and will join
+the worker pool in a later stage. `openarc bench` also still builds its
+pipeline in-process.

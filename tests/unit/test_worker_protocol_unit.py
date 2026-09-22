@@ -26,7 +26,7 @@ def test_encode_decode_response_roundtrip() -> None:
 
 
 def test_every_op_and_msg_roundtrips() -> None:
-    ops = [proto.OP_LOAD, proto.OP_GENERATE, proto.OP_CANCEL, proto.OP_PING, proto.OP_UNLOAD]
+    ops = [proto.OP_LOAD, proto.OP_GENERATE, proto.OP_TRANSCRIBE, proto.OP_CANCEL, proto.OP_PING, proto.OP_UNLOAD]
     msgs = [
         proto.MSG_READY,
         proto.MSG_LOAD_OK,

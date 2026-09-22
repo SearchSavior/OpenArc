@@ -1,28 +1,34 @@
 """
-End-to-end tests for the out-of-process VLM worker (stage 1):
-supervisor + protocol + RemoteOVGenAI_VLM facade, with the worker's model
+End-to-end tests for the out-of-process OVGenAI workers (stages 1+2):
+supervisor + protocol + RemoteOVGenAI_* facades, with the worker's model
 replaced by a stub (OPENARC_WORKER_STUB=1) so no OpenVINO, GPU, or model
 files are needed. Each test spawns a real child process and exercises the
-full pipe: spawn -> LOAD -> GENERATE/ITEM/DONE -> UNLOAD, plus the failure
-paths (recoverable error, FATAL+respawn, native-crash+respawn, respawn
-budget exhaustion, load failure).
+full pipe: spawn -> LOAD -> GENERATE/TRANSCRIBE/ITEM/DONE -> UNLOAD, plus
+the failure paths (recoverable error, FATAL+respawn, native-crash+respawn,
+respawn budget exhaustion, load failure) for VLM, LLM, and Whisper.
 """
 
 import asyncio
+import base64
 
 import pytest  # type: ignore[import]
 
 from src.engine.worker import protocol as proto
-from src.engine.worker.worker_client import RemoteOVGenAI_VLM
+from src.engine.worker.worker_client import (
+    RemoteOVGenAI_LLM,
+    RemoteOVGenAI_VLM,
+    RemoteOVGenAI_Whisper,
+)
 from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_GenConfig
+from src.server.schemas.modeling.contract_whisper import OVGenAI_WhisperGenConfig
 from src.server.schemas.registration import EngineType, ModelLoadConfig, ModelType
 
 
-def _load_config(tmp_path, name: str = "stub-vlm") -> ModelLoadConfig:
+def _load_config(tmp_path, name: str = "stub-vlm", model_type: ModelType = ModelType.VLM) -> ModelLoadConfig:
     return ModelLoadConfig(
         model_path=str(tmp_path),
         model_name=name,
-        model_type=ModelType.VLM,
+        model_type=model_type,
         engine=EngineType.OV_GENAI,
         device="CPU",
     )
@@ -51,8 +57,13 @@ async def _wait_for_respawn(facade: RemoteOVGenAI_VLM, first_pid: int, timeout: 
     await asyncio.wait_for(_poll(), timeout)
 
 
-async def _drain(facade: RemoteOVGenAI_VLM, gen_config: OVGenAI_GenConfig) -> list:
-    return [item async for item in facade.generate_type(gen_config)]
+async def _drain(facade, gen_config) -> list:
+    run = (
+        facade.transcribe(gen_config)
+        if isinstance(gen_config, OVGenAI_WhisperGenConfig)
+        else facade.generate_type(gen_config)
+    )
+    return [item async for item in run]
 
 
 def test_load_generate_and_unload(tmp_path, monkeypatch) -> None:
@@ -312,5 +323,191 @@ def test_registry_end_to_end_with_remote_vlm(tmp_path, monkeypatch) -> None:
                 break
             await asyncio.sleep(0.01)
         assert record.model_instance.status()["state"] == "closed"
+
+    asyncio.run(_run())
+
+
+def _whisper_config(payload: str) -> OVGenAI_WhisperGenConfig:
+    return OVGenAI_WhisperGenConfig(audio_base64=base64.b64encode(payload.encode("utf-8")).decode("ascii"))
+
+
+def test_llm_generate_and_unload(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("OPENARC_WORKER_STUB", "1")
+    config = _load_config(tmp_path, name="stub-llm", model_type=ModelType.LLM)
+
+    async def _run():
+        facade = RemoteOVGenAI_LLM(config, load_timeout=30.0)
+        await facade.load_model(config)
+        assert facade.status()["state"] == "ready"
+
+        items = await _drain(facade, _gen_config("hello world"))
+        assert isinstance(items[0], dict)
+        assert items[1] == "hello world"
+
+        await facade._supervisor.unload()
+        assert facade.status()["state"] == "closed"
+
+    asyncio.run(_run())
+
+
+def test_llm_streaming_yields_chunks_then_metrics(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("OPENARC_WORKER_STUB", "1")
+    monkeypatch.setenv("OPENARC_WORKER_STUB_TOKEN_DELAY", "0.01")
+    config = _load_config(tmp_path, name="stub-llm", model_type=ModelType.LLM)
+
+    async def _run():
+        facade = RemoteOVGenAI_LLM(config, load_timeout=30.0)
+        await facade.load_model(config)
+        items = await _drain(facade, _gen_config("a b c", stream=True))
+        assert [i for i in items if isinstance(i, str)] == ["a", "b", "c"]
+        assert items[-1] == {"new_token": 3, "stream": True}
+        await facade._supervisor.unload()
+
+    asyncio.run(_run())
+
+
+def test_llm_fatal_error_respawns_worker(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("OPENARC_WORKER_STUB", "1")
+    config = _load_config(tmp_path, name="stub-llm", model_type=ModelType.LLM)
+
+    async def _run():
+        facade = RemoteOVGenAI_LLM(config, load_timeout=30.0)
+        await facade.load_model(config)
+        first_pid = facade.worker_pid
+
+        with pytest.raises(proto.RemoteWorkerError) as exc:
+            await _drain(facade, _gen_config("FATAL please"))
+        assert "CL_OUT_OF_RESOURCES" in str(exc.value)
+
+        await _wait_for_respawn(facade, first_pid)
+        assert facade.status()["respawns"] == 1
+
+        items = await _drain(facade, _gen_config("back up"))
+        assert items[-1] == "back up"
+        await facade._supervisor.unload()
+
+    asyncio.run(_run())
+
+
+def test_whisper_transcribe(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("OPENARC_WORKER_STUB", "1")
+    config = _load_config(tmp_path, name="stub-whisper", model_type=ModelType.WHISPER)
+
+    async def _run():
+        facade = RemoteOVGenAI_Whisper(config, load_timeout=30.0)
+        await facade.load_model(config)
+        assert facade.status()["state"] == "ready"
+
+        # Same yield contract as OVGenAI_Whisper.transcribe: metrics dict,
+        # then the transcribed text.
+        items = await _drain(facade, _whisper_config("some audio"))
+        assert isinstance(items[0], dict)
+        assert items[0]["num_generated_tokens"] == 3
+        assert items[1] == "stub transcript"
+
+        await facade._supervisor.unload()
+        assert facade.status()["state"] == "closed"
+
+    asyncio.run(_run())
+
+
+def test_whisper_fatal_error_respawns_worker(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("OPENARC_WORKER_STUB", "1")
+    config = _load_config(tmp_path, name="stub-whisper", model_type=ModelType.WHISPER)
+
+    async def _run():
+        facade = RemoteOVGenAI_Whisper(config, load_timeout=30.0)
+        await facade.load_model(config)
+        first_pid = facade.worker_pid
+
+        with pytest.raises(proto.RemoteWorkerError) as exc:
+            await _drain(facade, _whisper_config("FATAL audio"))
+        assert "CL_OUT_OF_RESOURCES" in str(exc.value)
+
+        await _wait_for_respawn(facade, first_pid)
+        items = await _drain(facade, _whisper_config("audio again"))
+        assert items[1] == "stub transcript"
+        await facade._supervisor.unload()
+
+    asyncio.run(_run())
+
+
+def test_registry_end_to_end_with_remote_llm_and_whisper(tmp_path, monkeypatch) -> None:
+    """Full path for LLM + Whisper: register_load -> facade -> worker process
+    -> WorkerRegistry.generate / transcribe_whisper, including the policy
+    that a worker death must NOT trigger a registry unload."""
+    from src.server.model_registry import ModelRegistry
+    from src.server.worker_registry import WorkerRegistry
+
+    monkeypatch.setenv("OPENARC_WORKER_STUB", "1")
+    llm_config = _load_config(tmp_path, name="stub-llm", model_type=ModelType.LLM)
+    whisper_config = _load_config(tmp_path, name="stub-whisper", model_type=ModelType.WHISPER)
+
+    async def _run():
+        registry = ModelRegistry()
+        workers = WorkerRegistry(registry)
+        llm_id = await registry.register_load(llm_config)
+        whisper_id = await registry.register_load(whisper_config)
+
+        async def _facade(model_id):
+            async with registry._lock:
+                for rec in registry._models.values():
+                    if rec.model_id == model_id:
+                        return rec.model_instance
+            return None
+
+        llm_facade = await _facade(llm_id)
+        whisper_facade = await _facade(whisper_id)
+        assert isinstance(llm_facade, RemoteOVGenAI_LLM)
+        assert isinstance(whisper_facade, RemoteOVGenAI_Whisper)
+
+        # LLM generate through the full packet/worker pipeline.
+        result = await workers.generate(llm_config.model_name, _gen_config("hello world"))
+        assert result["text"] == "hello world"
+        llm_pid = llm_facade.worker_pid
+
+        # LLM fatal error: request fails, model stays loaded, respawn.
+        with pytest.raises(proto.RemoteWorkerError):
+            await workers.generate(llm_config.model_name, _gen_config("FATAL please"))
+        await _wait_for_respawn(llm_facade, llm_pid)
+        result = await workers.generate(llm_config.model_name, _gen_config("still serving"))
+        assert result["text"] == "still serving"
+
+        # Whisper transcription through the full packet/worker pipeline.
+        result = await workers.transcribe_whisper(
+            whisper_config.model_name, _whisper_config("audio data")
+        )
+        assert result["text"] == "stub transcript"
+        assert result["metrics"]["num_generated_tokens"] == 3
+        whisper_pid = whisper_facade.worker_pid
+
+        # Whisper fatal error: request fails, model stays loaded, respawn.
+        with pytest.raises(proto.RemoteWorkerError):
+            await workers.transcribe_whisper(
+                whisper_config.model_name, _whisper_config("FATAL audio")
+            )
+        await _wait_for_respawn(whisper_facade, whisper_pid)
+        result = await workers.transcribe_whisper(
+            whisper_config.model_name, _whisper_config("audio again")
+        )
+        assert result["text"] == "stub transcript"
+
+        # Both models survived their fatal errors.
+        async with registry._lock:
+            names = {r.model_name for r in registry._models.values()}
+        assert {llm_config.model_name, whisper_config.model_name} <= names
+
+        # Unload terminates both worker processes.
+        assert await registry.register_unload(llm_config.model_name) is True
+        assert await registry.register_unload(whisper_config.model_name) is True
+        for _ in range(500):
+            if (
+                llm_facade.status()["state"] == "closed"
+                and whisper_facade.status()["state"] == "closed"
+            ):
+                break
+            await asyncio.sleep(0.01)
+        assert llm_facade.status()["state"] == "closed"
+        assert whisper_facade.status()["state"] == "closed"
 
     asyncio.run(_run())

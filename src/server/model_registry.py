@@ -377,22 +377,35 @@ async def create_model_instance(load_config: ModelLoadConfig) -> Any:
     # Lazy imports: src.engine's package __init__ imports the engine classes,
     # and those import back into this module, so they must not be imported at
     # module level here (circular import).
+    from src.engine.ov_genai.llm import OVGenAI_LLM
     from src.engine.ov_genai.vlm import OVGenAI_VLM
-    from src.engine.worker.worker_client import RemoteOVGenAI_VLM
+    from src.engine.ov_genai.whisper import OVGenAI_Whisper
+    from src.engine.worker.worker_client import (
+        RemoteOVGenAI_LLM,
+        RemoteOVGenAI_VLM,
+        RemoteOVGenAI_Whisper,
+    )
 
-    # OpenVINO GenAI VLMs run in a dedicated worker process instead of in the
-    # server process: openvino_genai pipelines share a process-wide singleton
-    # ov::Core, and a wedged GPU plugin poisons it for the life of the
-    # process -- no in-process unload/reload can ever fix that. The facade
-    # below owns a supervised subprocess, so unload = terminate (guaranteed
-    # clean), reload = fresh process (fresh Core), and a wedged worker is
-    # respawned transparently within a per-load budget. Setting
-    # OPENARC_VLM_WORKER=0 restores the historical in-process behaviour.
-    if (
-        isinstance(model_instance, OVGenAI_VLM)
-        and os.getenv("OPENARC_VLM_WORKER", "1").strip().lower() not in ("0", "false", "off", "no")
-    ):
-        model_instance = RemoteOVGenAI_VLM(load_config)
+    # OpenVINO GenAI models (VLM/LLM/Whisper) run in a dedicated worker
+    # process instead of in the server process: openvino_genai pipelines
+    # share a process-wide singleton ov::Core, and a wedged GPU plugin
+    # poisons it for the life of the process -- no in-process unload/reload
+    # can ever fix that. The facade below owns a supervised subprocess, so
+    # unload = terminate (guaranteed clean), reload = fresh process (fresh
+    # Core), and a wedged worker is respawned transparently within a
+    # per-load budget. OPENARC_OVGENAI_WORKER=0 (or OPENARC_VLM_WORKER=0 for
+    # VLMs) restores the historical in-process behaviour.
+    _WORKER_FACADES = {
+        OVGenAI_VLM: RemoteOVGenAI_VLM,
+        OVGenAI_LLM: RemoteOVGenAI_LLM,
+        OVGenAI_Whisper: RemoteOVGenAI_Whisper,
+    }
+    facade_cls = next(
+        (cls for base, cls in _WORKER_FACADES.items() if isinstance(model_instance, base)),
+        None,
+    )
+    if facade_cls is not None and _ovgenai_worker_enabled(load_config.model_type):
+        model_instance = facade_cls(load_config)
 
     # Load the model instance: remote facades load asynchronously (they spawn
     # a subprocess); in-process engines keep their blocking load off the
@@ -403,3 +416,16 @@ async def create_model_instance(load_config: ModelLoadConfig) -> Any:
     else:
         await asyncio.to_thread(load_fn, load_config)
     return model_instance
+
+
+def _ovgenai_worker_enabled(model_type: ModelType) -> bool:
+    """Whether an OpenVINO GenAI model of this type runs in a worker process.
+
+    OPENARC_OVGENAI_WORKER is the master switch (default on);
+    OPENARC_VLM_WORKER additionally gates VLMs (stage-1 escape hatch).
+    """
+    if os.getenv("OPENARC_OVGENAI_WORKER", "1").strip().lower() in ("0", "false", "off", "no"):
+        return False
+    if model_type == ModelType.VLM:
+        return os.getenv("OPENARC_VLM_WORKER", "1").strip().lower() not in ("0", "false", "off", "no")
+    return True
