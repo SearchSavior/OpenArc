@@ -1,4 +1,4 @@
-OpenArc now uses a YAML based configutation system! Before we did things with a CLI tool- but now, you are free to configure defaults to your hearts content. 
+OpenArc now uses a YAML based configutation system! Before we did things with a CLI tool- but now, you are free to configure defaults to your hearts content. Configuration options set here override hardcoded defaults, but can be overridden at request time. For example, if you are in openwebui but need higher `max_tokens` than what you set in the config, you can raise that value in openwebui and that value will override the config saved in `config.yaml` for that request.
 
 
 ## Config Blocks
@@ -37,20 +37,37 @@ OpenArc does not validate these, and OpenVINO upstream does not provide a way to
 *properties* have the worst documentation in all of OpenVINO ecosystem, yet they are used everywhere in the openvino_notebooks, PRs and sometimes are even hardcoded depending on the needs of OpenVINO team. In that way, poking at these settings can drastically change performance but have less knobs than users of projects like `llama.cpp`, `vllm`, `sglang` are used to tinkering with.
 
 
+| Property | Values | Notes |
+|---|---|---|
+| `OFFLOAD_RATIO` | `0-100` | CPU offload |
+| `ATTENTION_BACKEND` | `SDPA`, `PA` | |
+| `KV_CACHE_PRECISION` | `u4`, `u8`, `f16`, `f32` | |
+| `PERFORMANCE_HINT` | `LATENCY`, `THROUGHPUT` | |
+| `EXECUTION_MODE_HINT` | `ACCURACY`, `PERFORMANCE` | |
+| `INFERENCE_PRECISION_HINT` | `f16`, `f32` | |
+| `MODEL_DISTRIBUTION_POLICY` | `TENSOR_PARALLEL`, `PIPELINE_PARALLEL` | |
+| `ACTIVATIONS_SCALING_FACTOR` | | |
+| `DYNAMIC_QUANTIZATION_GROUP_SIZE` | integer | |
+| `ENABLE_HYPER_THREADING` | bool | defaults to true |
+| `SCHEDULING_CORE_TYPE` | `ANY_CORE`, `ECORE_ONLY`, `PCORE_ONLY` | |
+| `LOG_LEVEL` | `ERR`, `WARN`, `INFO`, `DEBUG`, `TRACE` | requires building openvino with DEBUG_CAPS=ON |
 
 
-- OFFLOAD_RATIO      "0-100" CPU offload
-- ATTENTION_BACKEND     "SDPA", "PA"
-- KV_CACHE_PRECISION   "u4", "u8", "f16", "f32"
-- PERFORMANCE_HINT     "LATNENCY", "THROUGHPUT"
-- EXECUTION_MODE_HINT   "ACCURACY", "PERFORMANCE"
-- INFERENCE_PRECISION_HINT "f16", "f32"
-- MODEL_DISTRIBUTION_POLICY      "TENSOR_PARALLEL", "PIPELINE_PARALLEL"
-- ACTIVATIONS_SCALING_FACTOR: 
-- DYNAMIC_QUANTIZATION_GROUP_SIZE:  integer
-- ENABLE_HYPER_THREADING:        bool, defaults to true
-- SCHEDULING_CORE_TYPE:   "ANY_CORE", "ECORE_ONLY", "PCORE_ONLY"
-- LOG_LEVEL:      "ERR", "WARN", "INFO", "DEBUG", "TRACE" # might require building openvino
+### sampler_config 
+
+Request defaults for sampling, applied to `llm` and `vlm` models only. Anything set here can be overridden per request.
+
+| Field | Default | Description |
+|---|---|---|
+| `temperature` | `1.0` | Sampling temperature; higher values increase randomness |
+| `top_k` | `50` | Top-k sampling cutoff |
+| `top_p` | `1.0` | Nucleus sampling probability cutoff |
+| `repetition_penalty` | `1.0` | Penalty for repeating sequences of tokens |
+| `frequency_penalty` | none | Penalty for repeated tokens |
+| `presence_penalty` | none | Flat penalty for tokens which appeared at least once |
+| `max_tokens` | `16384` | Maximum number of tokens to generate |
+| `seed` | none | Fix the RNG seed; same prompt returns the same text |
+| `chat_template_kwargs` | empty | Additional arguments to apply to the chat template (e.g. `enable_thinking: true`) |
 
 ## Example Configs
 

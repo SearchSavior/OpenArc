@@ -36,35 +36,22 @@ Notes from the schema:
 - `num_linear_attention_blocks` and `cache_interval_multiplier` only apply to models with linear attention cache inputs. `cache_interval_multiplier: 0` is valid only when prefix caching is disabled.
 - With `enable_prefix_caching` on, all previously calculated KV caches are kept in memory and blocks are not released; maximum RAM usage is bounded by `cache_size` or `num_kv_blocks`. With it off, only the KV cache required for the current batch is kept and released when a sequence finishes.
 
-## runtime_config
-
-`runtime_config` is an OpenArc entrypoint to the *properties* way of configuring the OpenVINO runtime. These settings tune runtime behavior without changing application logic and are meant to be portable, requiring no code changes.
-
-OpenArc does not validate these, and OpenVINO upstream does not provide a way to check the behavior of these settings in all cases. They can help you access hardware features not available on all devices like `SCHEDULING_CORE_TYPE` for more recent Intel CPUs, debug numerical precision issues with `INFERENCE_PRECISION_HINT`, or control `KV_CACHE_PRECISION`.
-
-*properties* have the worst documentation in the OpenVINO ecosystem, yet they are used everywhere in the openvino_notebooks, PRs, and are sometimes hardcoded depending on the needs of the OpenVINO team. Poking at these settings can drastically change performance but offers fewer knobs than users of projects like `llama.cpp`, `vllm`, or `sglang` are familiar with.
-
-Because invalid values surface as C++ errors from the runtime when the model loads, experimentation is cheap: edit the entry, reload the model, read the server error, run `openarc bench`. See the OpenVINO documentation on [Inference Optimization](https://docs.openvino.ai/2025/openvino-workflow/running-inference/optimize-inference.html) for what can be customized. Even though we can learn from the source code what these settings do, knowing when they are useful comes with practice.
-
-| Property | Values |
-| --- | --- |
-| `ATTENTION_BACKEND` | `"SDPA"`, `"PA"` |
-| `KV_CACHE_PRECISION` | `"u4"`, `"u8"`, `"f16"`, `"f32"` |
-| `PERFORMANCE_HINT` | `"LATENCY"`, `"THROUGHPUT"` |
-| `EXECUTION_MODE_HINT` | `"ACCURACY"`, `"PERFORMANCE"` |
-| `INFERENCE_PRECISION_HINT` | `"f16"`, `"f32"` |
-| `MODEL_DISTRIBUTION_POLICY` | `"TENSOR_PARALLEL"`, `"PIPELINE_PARALLEL"` |
-| `ACTIVATIONS_SCALING_FACTOR` | number |
-| `DYNAMIC_QUANTIZATION_GROUP_SIZE` | integer |
-| `ENABLE_HYPER_THREADING` | bool, defaults to true |
-| `SCHEDULING_CORE_TYPE` | `"ANY_CORE"`, `"ECORE_ONLY"`, `"PCORE_ONLY"` |
-| `LOG_LEVEL` | `"ERR"`, `"WARN"`, `"INFO"`, `"DEBUG"`, `"TRACE"` — may require building openvino |
 
 ## Multi-Device Inference
 
 Review the [pipeline-parallelism preview](https://docs.openvino.ai/2026/openvino-workflow/running-inference/inference-devices-and-modes/hetero-execution.html#pipeline-parallelism-preview) to learn how to customize multi-device inference using the HETERO device plugin.
 
+### CPU Offload for MoE Models
+
+So far we have tested Qwen3.6-35B-A3B on B580 and B70 and it works, but this is a preview feature upstream.
+
+```yaml
+runtime_config
+  OFFLOAD_RATIO: 1
+```
+
 ### Multi-GPU Pipeline Parallel
+Note: this feature has issues and may not work. 
 
 ```yaml
     load_config:
