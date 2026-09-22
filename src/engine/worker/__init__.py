@@ -14,7 +14,12 @@ from src.engine.worker.protocol import (
     serialize_error,
 )
 from src.engine.worker.supervisor import EOF, WorkerSupervisor
-from src.engine.worker.worker_client import RemoteOVGenAI_VLM
+from src.engine.worker.worker_client import (
+    RemoteOVGenAI,
+    RemoteOVGenAI_LLM,
+    RemoteOVGenAI_VLM,
+    RemoteOVGenAI_Whisper,
+)
 
 __all__ = [
     "PROTOCOL_VERSION",
@@ -26,5 +31,8 @@ __all__ = [
     "serialize_error",
     "EOF",
     "WorkerSupervisor",
+    "RemoteOVGenAI",
     "RemoteOVGenAI_VLM",
+    "RemoteOVGenAI_LLM",
+    "RemoteOVGenAI_Whisper",
 ]

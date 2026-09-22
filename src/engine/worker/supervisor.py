@@ -224,14 +224,15 @@ class WorkerSupervisor:
             raise proto.RemoteWorkerDeadError(f"cannot write to worker process: {e}") from e
 
     # -- request API ----------------------------------------------------------------
-    async def begin_generate(
-        self, gen_config_json: str, request_id: Optional[str]
+    async def begin_run(
+        self, op: str, gen_config_json: str, request_id: Optional[str] = None
     ) -> Tuple[asyncio.Queue, asyncio.Future]:
-        """Send GENERATE and return (item queue, result future).
+        """Send a run request (GENERATE / TRANSCRIBE) and return (item queue,
+        result future).
 
-        The queue yields the items the model's generate_type produced; it
-        always ends with the EOF sentinel, after which the result future
-        resolves (None) or raises.
+        The queue yields the items the model's run method produced; it always
+        ends with the EOF sentinel, after which the result future resolves
+        (None) or raises.
         """
         if self._state != self.STATE_READY:
             raise proto.RemoteWorkerDeadError(
@@ -242,12 +243,7 @@ class WorkerSupervisor:
         req.result = loop.create_future()
         self._active[req.req_id] = req
         await self._send(
-            proto.encode(
-                proto.OP_GENERATE,
-                req_id=req.req_id,
-                request_id=request_id,
-                gen_config=gen_config_json,
-            )
+            proto.encode(op, req_id=req.req_id, request_id=request_id, gen_config=gen_config_json)
         )
         return req.queue, req.result
 
