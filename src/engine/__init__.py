@@ -1,9 +1,28 @@
+"""OpenArc inference engines.
 
-from src.engine.ov_genai.llm import OVGenAI_LLM
-from src.engine.ov_genai.vlm import OVGenAI_VLM
-from src.engine.ov_genai.whisper import OVGenAI_Whisper
-from src.engine.openvino.kokoro import OV_Kokoro
+The heavy engine classes (OpenVINO GenAI, Kokoro, ...) are exported
+lazily (PEP 562): ``from src.engine import OVGenAI_LLM`` keeps working, but
+merely importing ``src.engine`` -- e.g. via its ``src.engine.worker``
+subpackage, which the inference worker subprocesses import at startup -- no
+longer drags torch / openvino_genai / transformers / kokoro into the process.
+That keeps worker-process startup (and every respawn) cheap.
+"""
 
-from src.engine.ov_genai.streamers import ChunkStreamer
+import importlib
 
-__all__ = ["OVGenAI_LLM", "ChunkStreamer", "OVGenAI_VLM", "OVGenAI_Whisper", "OV_Kokoro"]
+_LAZY_EXPORTS = {
+    "OVGenAI_LLM": "src.engine.ov_genai.llm",
+    "OVGenAI_VLM": "src.engine.ov_genai.vlm",
+    "OVGenAI_Whisper": "src.engine.ov_genai.whisper",
+    "OV_Kokoro": "src.engine.openvino.kokoro",
+    "ChunkStreamer": "src.engine.ov_genai.streamers",
+}
+
+__all__ = list(_LAZY_EXPORTS)
+
+
+def __getattr__(name):
+    if name in _LAZY_EXPORTS:
+        module = importlib.import_module(_LAZY_EXPORTS[name])
+        return getattr(module, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -61,6 +61,7 @@ Request-time parameters passed via `extra_body` on the OpenAI-compatible API.
 ## Concepts
 
 - [Tool and Reasoning Parsing](tool_use.md#tool-and-reasoning-parsing)
+- [Out-of-Process Inference Workers](worker-processes.md) — VLMs run in supervised worker subprocesses so unload/load always get a clean OpenVINO Core
 
 
 ## Models
