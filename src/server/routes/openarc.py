@@ -7,7 +7,7 @@ from operator import is_
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -155,9 +155,22 @@ def get_gpu_info():
 
 
 @router.post("/load", dependencies=[Depends(verify_api_key)])
-async def load_model(load_config: ModelLoadConfig):
+async def load_model(
+    load_config: ModelLoadConfig,
+    force_recompile: bool = Query(
+        False,
+        description=(
+            "When true, invalidate the model's compiled-model cache and recompile "
+            "from the IR even if its config is unchanged -- the server-side "
+            "equivalent of the --force-recompile / --fr flag on `openarc load`. "
+            "Forces a fresh compile instead of reusing the OpenVINO cache. "
+            "Sent as a query parameter, so it is never part of the (persisted) "
+            "request body or the model's config-hash."
+        ),
+    ),
+):
     try:
-        model_id = await _registry.register_load(load_config)
+        model_id = await _registry.register_load(load_config, force_recompile=force_recompile)
         return {
             "model_id": model_id,
             "model_name": load_config.model_name,

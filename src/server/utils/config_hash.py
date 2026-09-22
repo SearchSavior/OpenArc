@@ -137,7 +137,9 @@ def persist_model_config_hash(model_name: str, config_hash: str) -> bool:
     return True
 
 
-def check_model_config_hash(load_config: ModelLoadConfig) -> Tuple[str, bool]:
+def check_model_config_hash(
+    load_config: ModelLoadConfig, *, force_recompile: bool = False
+) -> Tuple[str, bool]:
     """Config-change gate run at every model load.
 
     Computes the hash of the configuration about to be compiled, compares it
@@ -148,12 +150,22 @@ def check_model_config_hash(load_config: ModelLoadConfig) -> Tuple[str, bool]:
     Args:
         load_config: The RESOLVED load configuration (context window already
             resolved, paths already absolute), as handed to the engine.
+        force_recompile: When True, the compiled-model cache is invalidated and the
+            pipeline is forced to recompile from the IR even though the configuration
+            is UNCHANGED (so the config-hash gate would stay closed). It is set by the
+            ``--force-recompile`` / ``--fr`` operator flag on ``openarc serve start``
+            and ``openarc load`` -- an explicit request to recompile rather than reuse
+            the cache (e.g. after the operator swapped the model files or host, or
+            simply to be sure the pipeline is freshly built). The recompile is a
+            deliberate "full load"; it is deliberately NOT done on the ordinary
+            (cache-warm) load path, where the fast cache load is wanted.
 
     Returns:
         (current_hash, recompiled): the hash of the configuration being
-        compiled, and True when a config difference was detected and the
-        compiled-model cache invalidation was triggered (the cache may have
-        been empty; the recompile is then simply a first compile).
+        compiled, and True when a config difference was detected OR
+        ``force_recompile`` was requested, in which case the compiled-model cache
+        invalidation was triggered (the cache may have been empty; the recompile
+        is then simply a first compile).
     """
     current_hash = compute_config_hash(load_config)
     recompiled = False
@@ -161,14 +173,27 @@ def check_model_config_hash(load_config: ModelLoadConfig) -> Tuple[str, bool]:
     entry = _model_config_entry(load_config.model_name)
     if entry is not None:
         stored_hash = entry.get(CONFIG_HASH_KEY)
-        if stored_hash != current_hash:
-            logger.info(
-                f"[{load_config.model_name}] Model config changed since the last "
-                f"compile (stored {CONFIG_HASH_KEY} "
-                f"{stored_hash!r} != current {current_hash!r}); invalidating the "
-                f"compiled-model cache so the pipeline recompiles with the new "
-                f"settings."
-            )
+        config_changed = stored_hash != current_hash
+        if config_changed or force_recompile:
+            if config_changed:
+                logger.info(
+                    f"[{load_config.model_name}] Model config changed since the last "
+                    f"compile (stored {CONFIG_HASH_KEY} "
+                    f"{stored_hash!r} != current {current_hash!r}); invalidating the "
+                    f"compiled-model cache so the pipeline recompiles with the new "
+                    f"settings."
+                )
+            else:
+                # Config is unchanged, but a recompile was forced anyway by the
+                # operator --force-recompile / --fr. Invalidate the cache so the
+                # pipeline rebuilds from the IR instead of re-importing its
+                # existing (possibly stale) blobs.
+                logger.info(
+                    f"[{load_config.model_name}] Forcing a recompile; config is "
+                    f"unchanged but the compiled-model cache {load_config.cache_dir!r} "
+                    f"is invalidated so the pipeline rebuilds from the IR instead of "
+                    f"re-importing its existing (possibly stale) blobs."
+                )
             invalidate_compiled_model_cache(load_config.cache_dir)
             recompiled = True
         try:
@@ -183,9 +208,19 @@ def check_model_config_hash(load_config: ModelLoadConfig) -> Tuple[str, bool]:
                 f"to openarc_config.json: {e}"
             )
     else:
+        # No entry in openarc_config.json (e.g. a raw POST /openarc/load).
+        # Normally nothing is tracked and the cache is left as-is so cache-less
+        # API users keep cache reuse. A forced recompile still has to clear the
+        # cache so it recompiles fresh even for a model that is not tracked in the
+        # config file -- the force came from an operator --force-recompile / --fr;
+        # there is just no entry to persist the hash into.
+        if force_recompile:
+            invalidate_compiled_model_cache(load_config.cache_dir)
+            recompiled = True
         logger.debug(
             f"[{load_config.model_name}] No entry in openarc_config.json; "
-            f"skipping config-hash tracking (cache left as-is)."
+            f"skipping config-hash tracking "
+            f"({'(forced recompile requested) forcing a recompile anyway' if force_recompile else 'cache left as-is'})."
         )
 
     return current_hash, recompiled

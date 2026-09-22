@@ -10,8 +10,15 @@ from ..utils import validate_model_path
 
 @cli.command()
 @click.argument('model_names', nargs=-1, required=True)
+@click.option("--force-recompile", "--fr", "force_recompile",
+              is_flag=True, default=False,
+              help="Force a full recompile for every model loaded by this command: "
+              "sent to the server as ?force_recompile=true so it invalidates each "
+              "model's compiled-model cache and rebuilds from the IR even if its "
+              "config is unchanged (no OpenVINO cache reuse). Use after swapping "
+              "model files/host, or just to be sure the pipeline is freshly compiled.")
 @click.pass_context
-def load(ctx, model_names):
+def load(ctx, model_names, force_recompile):
     """- Load one or more models from saved configuration.
     
     Examples:
@@ -21,6 +28,13 @@ def load(ctx, model_names):
     cli_instance = OpenArcCLI(server_config=ctx.obj.server_config)
     
     model_names = list(model_names)
+
+    # --force-recompile / --fr travels as a query parameter (the request body stays
+    # a plain load config), so a single flag can force a per-load recompile without
+    # becoming part of the persisted model configuration. It is sent only when
+    # requested, so a plain `openarc load <model>` is byte-for-byte unchanged.
+    if force_recompile:
+        console.print("[blue]--force-recompile:[/blue] will force a full recompile (no cache reuse) for each model below\n")
     
     # Track results
     successful_loads = []
@@ -58,10 +72,13 @@ def load(ctx, model_names):
         
         # Make API request to load the model
         url = f"{cli_instance.base_url}/openarc/load"
-        
+
         try:
             console.print("[cyan]...working[/cyan]")
-            response = requests.post(url, json=load_config, headers=cli_instance.get_headers())
+            params = {"force_recompile": "true"} if force_recompile else None
+            response = requests.post(
+                url, json=load_config, params=params, headers=cli_instance.get_headers()
+            )
             
             if response.status_code == 200:
                 console.print(f"[green]{name} loaded![/green]\n")

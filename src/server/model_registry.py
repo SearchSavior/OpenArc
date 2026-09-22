@@ -41,6 +41,10 @@ class ModelRecord:
     # Context window (tokens) advertised in /v1/models. Discovered from the model's
     # config.json at load time, or set explicitly via the load config.
     context_window: Optional[int] = None
+    # The FULL resolved load configuration this record was created from (including
+    # the resolved context_window). Kept on the record so the model can always be
+    # re-registered (or its inference backend re-spawned) with identical parameters.
+    load_config: Optional[ModelLoadConfig] = None
 
 
     def registered_models(self) -> dict:
@@ -82,8 +86,28 @@ class ModelRegistry:
     def add_on_unloaded(self, callback: Callable[[ModelRecord], Awaitable[None]]) -> None:
         self._on_unloaded.append(callback)
 
-    async def register_load(self, loader: ModelLoadConfig) -> str:
+    async def register_load(
+        self,
+        loader: ModelLoadConfig,
+        force_recompile: bool = False,
+    ) -> str:
         """Register and load a model, waiting for completion.
+
+        Model names are unique across the registry: a second load with an
+        existing name raises ValueError.
+
+        Args:
+            loader: The full load configuration. It is resolved (context window)
+                and then stored verbatim on the record so the model can later be
+                re-registered with identical parameters.
+            force_recompile: When True, the compiled-model cache is invalidated
+                and the pipeline is forced to recompile from the IR even if the
+                configuration is UNCHANGED (so the config-hash gate would stay
+                closed). This is driven by the --force-recompile / --fr flag on
+                `openarc serve start` (server startup) and `openarc load`
+                (POST /openarc/load) -- an explicit operator request for a fresh
+                compile (e.g. after swapping the model files or host, or simply
+                to be sure the pipeline was freshly built).
 
         Raises:
             ValueError: If model name already exists
@@ -124,8 +148,15 @@ class ModelRegistry:
         # cleared and the pipeline recompiles; the hash of the config being
         # compiled is persisted in the config file either way. Runs off the event
         # loop (config file I/O, and the cache directory can be large).
+        #
+        # A recompile is also FORCED even when the config is UNCHANGED (so the
+        # config-hash gate would stay closed) by an operator request
+        # (force_recompile=True): the --force-recompile / --fr flag on
+        # `openarc serve start` / `openarc load`, which asks for a fresh compile
+        # regardless (e.g. after the operator swapped the model files or host,
+        # or simply to be sure the pipeline is freshly built).
         current_config_hash, config_changed = await asyncio.to_thread(
-            check_model_config_hash, loader
+            check_model_config_hash, loader, force_recompile=force_recompile
         )
         if config_changed:
             logger.warning(
@@ -133,9 +164,19 @@ class ModelRegistry:
                 f"compiled-model cache {loader.cache_dir!r} invalidated -- the model "
                 f"will recompile with the new settings."
             )
-        # The record (and thus the OOM auto-reload path, which re-registers from
-        # record.load_config) must carry the hash of the config it was compiled
-        # with, so a later reload does not re-trigger the invalidation.
+        elif force_recompile:
+            logger.warning(
+                f"[{loader.model_name}] Forcing a recompile (--force-recompile / --fr); "
+                f"the config is unchanged but the compiled-model cache {loader.cache_dir!r} "
+                f"is invalidated so the pipeline rebuilds from the IR instead of re-importing "
+                f"its existing (possibly stale) blobs."
+            )
+        # The record must carry the hash of the config it was compiled with so a
+        # later ORDINARY load (server startup, POST /openarc/load) matches and
+        # reuses the warm cache. An operator --force-recompile (force_recompile=True)
+        # invalidates the cache but does NOT change the hash that is recorded/
+        # persisted (the config is unchanged), so the next ordinary load still
+        # finds a warm, matching cache.
         loader = loader.model_copy(update={"config_hash": current_config_hash})
 
         # Create a model record with LOADING status
@@ -151,6 +192,7 @@ class ModelRegistry:
             ),
             context_window=context_window,
             status=ModelStatus.LOADING,
+            load_config=loader,
         )
 
         # Register the model record immediately

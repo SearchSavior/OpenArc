@@ -401,6 +401,13 @@ This page contains example commands to help you choose models and configure Open
 
             The `config_hash` field is managed by the server; you can ignore (or safely delete) it, the next load re-stores it. A re-run of `openarc add` with an unchanged configuration keeps the stored hash, so it does not needlessly trigger a recompile.
 
+            A recompile is also forced **by hand**, independent of any configuration change:
+
+            * `openarc load <model> --force-recompile` (`--fr`) sends `?force_recompile=true` to the server, so that model's load invalidates its `--cache-dir` and rebuilds from the IR even though its config is unchanged.
+            * `openarc serve start --force-recompile` (`--fr`) does the same for every model loaded with `--load-models` / `--lm`: it sets `OPENARC_FORCE_RECOMPILE=true`, which the server's startup lifespan forwards to each load.
+
+            Use these after you swap the model files or the host, or simply to be sure the pipeline was freshly built. Unlike the automatic (config-change) case the `config_hash` is **not** changed -- only the cache is invalidated -- so an ordinary load afterwards still finds a warm, matching cache. (See the `openarc load` and `openarc serve` sections below for exact usage.)
+
 
             ```
             openarc add \
@@ -471,6 +478,16 @@ This page contains example commands to help you choose models and configure Open
 
     When `--use-api-key` is passed, clients must authenticate with a `Bearer` token matching `OPENARC_API_KEY`. If the environment variable is not set, the server will not start. Without the flag, no authentication is required.
 
+    To force a full recompile of every model loaded on startup (e.g. after swapping the model files or host, or to be sure the pipeline was freshly compiled):
+
+    ```
+    openarc serve start \
+      --load-models model1 model2 \
+      --force-recompile
+    ```
+
+    `--force-recompile` (alias `--fr`) sets `OPENARC_FORCE_RECOMPILE=true`, which the server's startup lifespan forwards to each model's load: it invalidates each loaded model's `--cache-dir` and rebuilds from the IR even though its config is unchanged, so the OpenVINO cache is not reused.
+
 === "load"
 
     After using `openarc add` you can use `openarc load` to read the added configuration and load models onto the OpenArc server.
@@ -491,6 +508,14 @@ This page contains example commands to help you choose models and configure Open
     ```
 
     Be mindful of your resources; loading models can be resource intensive! On the first load, OpenVINO performs model compilation for the target `--device`.
+
+    To force a full recompile (e.g. after swapping the model files or host, or to be sure the pipeline was freshly compiled) instead of reusing the OpenVINO cache:
+
+    ```
+    openarc load <model-name> --force-recompile
+    ```
+
+    `--force-recompile` (alias `--fr`) is sent to the server as `?force_recompile=true`; it invalidates the model's `--cache-dir` and rebuilds from the IR even when the config is unchanged, without changing the persisted `config_hash`.
 
     When `openarc load` fails, the CLI tool displays a full stack trace to help you figure out why.
 

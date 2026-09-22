@@ -53,6 +53,13 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     models = os.getenv("OPENARC_STARTUP_MODELS", "").strip()
+    # OPENARC_FORCE_RECOMPILE is set by `openarc serve start --force-recompile
+    # (--fr): when true, force every model loaded at startup to recompile from the
+    # IR (invalidating its compiled-model cache) even if its config is unchanged.
+    # The value is forwarded to each register_load call below.
+    force_recompile = os.getenv(
+        "OPENARC_FORCE_RECOMPILE", "false"
+    ).strip().lower() in {"1", "true", "yes", "on", "y", "t"}
     if models:
         from pathlib import Path
 
@@ -81,7 +88,9 @@ async def lifespan(app: FastAPI):
                     if cache_dir:
                         # Create the cache directory at startup if it doesn't exist.
                         Path(cache_dir).mkdir(parents=True, exist_ok=True)
-                    await _registry.register_load(ModelLoadConfig(**model_config))
+                    await _registry.register_load(
+                        ModelLoadConfig(**model_config), force_recompile=force_recompile
+                    )
                     logger.info(f"Startup: loaded '{name}'")
                 except Exception as e:
                     logger.error(f"Startup: failed to load '{name}': {e}")

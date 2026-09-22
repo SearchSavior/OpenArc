@@ -353,8 +353,7 @@ def test_register_load_recompiles_on_stored_hash_mismatch(
     monkeypatch: pytest.MonkeyPatch, config_file: Path, tmp_path: Path
 ) -> None:
     """Config edit while the model is unloaded: the next register_load clears
-    the compiled cache and stores the new hash; a later OOM auto-reload from
-    the record does NOT re-trigger the invalidation."""
+    the compiled cache and stores the new hash."""
     cache_dir = _make_cache_dir(tmp_path, "reg-re")
     model_path = tmp_path / "model"
     model_path.mkdir()
@@ -401,13 +400,9 @@ def test_register_load_recompiles_on_stored_hash_mismatch(
         )
         await registry.register_load(edited)  # mismatch: 2nd invalidation
 
-        # OOM auto-reload re-registers from the record's stored load config.
-        await registry.reload_model("reg-re")
-
     asyncio.run(_run())
 
-    # First load (no stored hash yet) + config-change load recompile; the
-    # auto-reload from the record does not.
+    # First load (no stored hash yet) + config-change load recompile.
     assert invalidate_calls == [str(cache_dir), str(cache_dir)]
     assert (
         _read_entry(config_file, "reg-re")[CONFIG_HASH_KEY]
@@ -540,3 +535,152 @@ def test_add_new_model_has_no_hash(tmp_path: Path) -> None:
     assert result.exit_code == 0
     entry = json.loads(config_file.read_text(encoding="utf-8"))["models"]["fresh"]
     assert CONFIG_HASH_KEY not in entry
+
+
+# --- operator --force-recompile / --fr forces a recompile (the gate) -----------
+#
+# The last two commits made the compiled-model cache recompile (a) when the
+# configuration changed and (b) when a repeated-OOM auto-reload wedged the
+# device. The --force-recompile / --fr flag on `openarc serve start` and
+# `openarc load` is the third trigger: an explicit operator request to recompile
+# even though the configuration is UNCHANGED, so the config-hash gate would
+# otherwise stay closed. These pin the shared gate (check_model_config_hash) and
+# its register_load wiring, on which the flag just as much as the auto-reload
+# relies.
+
+
+def test_force_recompile_invalidates_cache_even_when_config_unchanged(
+    config_file: Path, tmp_path: Path
+) -> None:
+    """``force_recompile=True`` on an UNCHANGED config: the stored hash still
+    matches the current one (the gate would stay closed), yet the (warm)
+    compiled-model cache is invalidated anyway so the pipeline rebuilds from the
+    IR. This is the gate-level contract for `--force-recompile / --fr`. Nothing
+    new is persisted (the config is unchanged), so a later ordinary load still
+    finds a warm, hash-matching cache."""
+    cache_dir = _make_cache_dir(tmp_path, "force")
+    _write_entry(
+        config_file,
+        "force",
+        {
+            "model_name": "force",
+            "model_path": "/models/mock",
+            "model_type": "llm",
+            "engine": "ovgenai",
+            "device": "CPU",
+            "runtime_config": {},
+            "cache_dir": str(cache_dir),
+        },
+    )
+
+    # First (ordinary) load stores the hash of this config into the entry ...
+    first = _load_config(name="force", model_path="/models/mock", cache_dir=str(cache_dir))
+    check_model_config_hash(first)
+    # ... and (a real compile would have) repopulated the cache.
+    cache_dir.mkdir(parents=True)
+    (cache_dir / "warm.blob").write_bytes(b"warm")
+    (cache_dir / "warm.cl_cache").write_bytes(b"warm")
+
+    # Same config again (so the gate would be closed) but forced -- the warm
+    # cache must still be invalidated so the pipeline recompiles from the IR.
+    reloaded = _load_config(name="force", model_path="/models/mock", cache_dir=str(cache_dir))
+    current_hash, recompiled = check_model_config_hash(reloaded, force_recompile=True)
+
+    assert recompiled is True
+    # The config did not change, so the very same hash is (re)stored (the persist
+    # is a no-op) ...
+    assert current_hash == compute_config_hash(first)
+    assert _read_entry(config_file, "force")[CONFIG_HASH_KEY] == current_hash
+    # ... yet the warm compiled cache was invalidated anyway.
+    assert not cache_dir.exists()
+
+
+def test_force_recompile_invalidates_cache_for_untracked_model(
+    config_file: Path, tmp_path: Path
+) -> None:
+    """A forced recompile must also clear the cache for a model with NO entry in
+    openarc_config.json (a raw ``POST /openarc/load?force_recompile=true``). There
+    is nothing to persist the hash into -- so the models section must stay empty,
+    exactly as an ordinary untracked load leaves it -- but the operator's force
+    still invalidates the cache so it recompiles fresh."""
+    cache_dir = _make_cache_dir(tmp_path, "ghost-force")
+    loader = _load_config(name="ghost-force", cache_dir=str(cache_dir))
+    current_hash, recompiled = check_model_config_hash(loader, force_recompile=True)
+
+    assert recompiled is True
+    assert current_hash
+    # Untracked: nothing is written back, so the models section stays empty ...
+    assert json.loads(config_file.read_text(encoding="utf-8"))["models"] == {}
+    # ... but the cache is cleared anyway so the forced recompile is real.
+    assert not cache_dir.exists()
+
+
+def test_register_load_force_recompile_invalidates_despite_matching_hash(
+    monkeypatch: pytest.MonkeyPatch, config_file: Path, tmp_path: Path
+) -> None:
+    """``register_load(force_recompile=True)`` -- the single entry point behind
+    both `openarc load --force-recompile` (``POST /openarc/load?force_recompile=true``)
+    and `openarc serve start --force-recompile` (``OPENARC_FORCE_RECOMPILE``) -- must
+    invalidate the compiled cache on EVERY load even when the stored hash matches
+    the current one (the config is unchanged): the flag is not a no-op on the
+    ordinary, warm-cache path."""
+    cache_dir = _make_cache_dir(tmp_path, "reg-force")
+    model_path = tmp_path / "model"
+    model_path.mkdir()
+    _write_entry(
+        config_file,
+        "reg-force",
+        {
+            "model_name": "reg-force",
+            "model_path": str(model_path),
+            "model_type": "llm",
+            "engine": "ovgenai",
+            "device": "CPU",
+            "runtime_config": {},
+            "cache_dir": str(cache_dir),
+        },
+    )
+
+    invalidate_calls: list = []
+
+    def counting_invalidate(cache_dir_value):  # type: ignore[override]
+        invalidate_calls.append(cache_dir_value)
+        return True
+
+    monkeypatch.setattr(
+        config_hash_module, "invalidate_compiled_model_cache", counting_invalidate
+    )
+
+    registry = _reg(monkeypatch, [])
+    loader = _load_config(
+        name="reg-force", model_path=str(model_path), cache_dir=str(cache_dir)
+    )
+
+    async def _run():
+        # First load: no stored hash yet -> 1st invalidation (the initial build),
+        # which also persists the hash for the (now unchanged) config.
+        await registry.register_load(loader)
+        await registry.register_unload("reg-force")
+        await _await_unloaded(registry, "reg-force")
+        # The exact same config, re-loaded with force_recompile=True: the stored
+        # hash MATCHES (the config is unchanged), so the auto-hash gate is closed;
+        # the flag must still force a 2nd invalidation -> a fresh build.
+        reloaded = _load_config(
+            name="reg-force", model_path=str(model_path), cache_dir=str(cache_dir)
+        )
+        await registry.register_load(reloaded, force_recompile=True)
+
+    asyncio.run(_run())
+
+    # Both loads tore the cache down; the first as a normal first-build, the
+    # second purely because force_recompile bypassed the (closed) hash gate.
+    assert invalidate_calls == [str(cache_dir), str(cache_dir)]
+    # The config never changed, so the same hash is (re)stored -- the flag only
+    # controlled whether the cache was invalidated, never what hash is persisted,
+    # so the next ORDINARY load still reuses a warm, hash-matching cache.
+    assert (
+        _read_entry(config_file, "reg-force")[CONFIG_HASH_KEY]
+        == compute_config_hash(
+            _load_config(name="reg-force", model_path=str(model_path), cache_dir=str(cache_dir))
+        )
+    )
