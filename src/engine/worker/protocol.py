@@ -28,6 +28,17 @@ from typing import Any, Dict, Optional, Union
 
 PROTOCOL_VERSION = 1
 
+# Maximum size of one protocol line, in bytes.
+#
+# The protocol is one JSON object per line, and a request line can be large:
+# a VLM chat request carries the full conversation (including base64 images)
+# inside gen_config, so lines of tens of MB are normal. asyncio's
+# StreamReader.readline() rejects lines longer than its limit (64 KiB by
+# default) with "Separator is found, but chunk is longer than limit", which
+# would kill the worker on every real chat request. Every side must read the
+# protocol channel with a reader created/configured for this limit.
+PROTOCOL_LINE_LIMIT = 256 * 1024 * 1024
+
 # --- parent -> worker ops ---------------------------------------------------
 OP_LOAD = "LOAD"        # payload: req_id, config (ModelLoadConfig JSON)
 OP_GENERATE = "GENERATE"  # payload: req_id, request_id, gen_config (OVGenAI_GenConfig JSON)

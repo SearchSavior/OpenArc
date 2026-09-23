@@ -6,6 +6,13 @@ supervisor, and the server talks to it over the process's stdin/stdout (one
 JSON object per line). The worker builds and runs the pipeline; the server
 process never touches OpenVINO for that model.
 
+A request line can be very large — a VLM chat request carries the whole
+conversation (base64 images included) inside its JSON, so lines of tens of
+MB are normal. Both sides therefore read the pipe with a line limit of
+`PROTOCOL_LINE_LIMIT` (256 MiB, `protocol.py`), not asyncio's 64 KiB
+`readline()` default; a line beyond the limit is reported as a clear `FATAL`
+rather than killing the reader silently.
+
 ## Why a process boundary
 
 openvino_genai pipelines share a **process-wide singleton `ov::Core`**. When
