@@ -11,7 +11,13 @@ conversation (base64 images included) inside its JSON, so lines of tens of
 MB are normal. Both sides therefore read the pipe with a line limit of
 `PROTOCOL_LINE_LIMIT` (256 MiB, `protocol.py`), not asyncio's 64 KiB
 `readline()` default; a line beyond the limit is reported as a clear `FATAL`
-rather than killing the reader silently.
+rather than killing the reader silently. The limit is per-model and can be
+overridden with `worker_line_limit` in the model config (`openarc add
+--worker-line-limit 256M`), in bytes or with a K/M/G suffix, minimum 64 KiB.
+It bounds the IPC memory a single request can use; requests with larger
+payloads fail with a clear error (the worker respawns). Because it is an IPC
+setting rather than a compilation setting, changing it never invalidates the
+compiled-model cache.
 
 ## Why a process boundary
 

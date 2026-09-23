@@ -119,3 +119,29 @@ def test_gen_config_chat_shape_roundtrips() -> None:
     assert restored.prompt is None
     assert restored.input_ids is None
     assert restored.messages == [{"role": "user", "content": "hi"}]
+
+
+def test_model_load_config_worker_line_limit_validation() -> None:
+    from src.server.schemas.registration import (
+        EngineType,
+        ModelLoadConfig,
+        ModelType,
+    )
+
+    def _cfg(**kwargs) -> ModelLoadConfig:
+        return ModelLoadConfig(
+            model_path="/models/mock",
+            model_name="limit-model",
+            model_type=ModelType.LLM,
+            engine=EngineType.OV_GENAI,
+            device="CPU",
+            **kwargs,
+        )
+
+    assert _cfg().worker_line_limit is None
+    assert _cfg(worker_line_limit=65536).worker_line_limit == 65536
+    assert _cfg(worker_line_limit=2 * 1024**3).worker_line_limit == 2 * 1024**3
+    # Below the 64 KiB floor is rejected: even the smallest real request
+    # (a ~60 KB goose prompt) could never get through.
+    with pytest.raises(ValueError):
+        _cfg(worker_line_limit=4096)
