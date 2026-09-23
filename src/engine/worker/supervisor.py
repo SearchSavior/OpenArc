@@ -156,12 +156,16 @@ class WorkerSupervisor:
         self._stop_ping()
         self._terminate_process()
 
+    # Child entry module (the one that provides main()). The plain-OpenVINO
+    # worker (src.engine.worker.plain) subclasses and overrides this.
+    WORKER_ENTRY = "src.engine.worker.worker_process"
+
     # -- spawning ---------------------------------------------------------------
     def _build_command(self) -> list:
         return [
             sys.executable,
             "-c",
-            "import sys; from src.engine.worker.worker_process import main; sys.exit(main())",
+            f"import sys; from {self.WORKER_ENTRY} import main; sys.exit(main())",
         ]
 
     def _build_env(self) -> Dict[str, str]:
@@ -459,6 +463,11 @@ class WorkerSupervisor:
                 req.queue.put_nowait(msg.get("item"))
         elif mtype == proto.MSG_DONE:
             self._finish_request(msg.get("req_id"), None)
+        elif mtype == proto.MSG_RESULT:
+            # Single-result runs (plain-OpenVINO worker protocol): the result
+            # payload (e.g. audio samples or a transcription) resolves the
+            # request. The GenAI workers never send this.
+            self._finish_request(msg.get("req_id"), None, result=msg.get("result"))
         elif mtype == proto.MSG_ERROR:
             err = msg.get("error") or {}
             self._finish_request(
@@ -490,7 +499,12 @@ class WorkerSupervisor:
             ):
                 self._cancel[1].set_result(bool(msg.get("ok")))
 
-    def _finish_request(self, req_id: Optional[str], error: Optional[BaseException]) -> None:
+    def _finish_request(
+        self,
+        req_id: Optional[str],
+        error: Optional[BaseException] = None,
+        result: Optional[Dict[str, Any]] = None,
+    ) -> None:
         if req_id is None:
             return
         req = self._active.pop(req_id, None)
@@ -499,7 +513,9 @@ class WorkerSupervisor:
         req.queue.put_nowait(EOF)
         if req.result is not None and not req.result.done():
             if error is None:
-                req.result.set_result(None)
+                # result is None for streaming runs (DONE); a dict for
+                # single-result runs (MSG_RESULT).
+                req.result.set_result(result)
             else:
                 req.result.set_exception(error)
 

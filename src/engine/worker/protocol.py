@@ -53,6 +53,7 @@ MSG_LOAD_OK = "LOAD_OK"        # pipeline built and ready
 MSG_LOAD_ERROR = "LOAD_ERROR"  # payload: req_id, error -- clean load failure, worker stays up
 MSG_ITEM = "ITEM"              # payload: req_id, item -- one item yielded by generate_type (str chunk or dict)
 MSG_DONE = "DONE"              # payload: req_id -- generation finished without error
+MSG_RESULT = "RESULT"          # payload: req_id, result -- single-result run finished (plain-OpenVINO protocol)
 MSG_ERROR = "ERROR"            # payload: req_id, error -- per-request error, worker stays up
 MSG_FATAL = "FATAL"            # payload: error -- worker is exiting; process-wide failure
 MSG_BYE = "BYE"                # payload: req_id -- ack of UNLOAD; worker is exiting cleanly

@@ -1,9 +1,19 @@
-"""Out-of-process inference worker machinery (stage 1: OpenVINO GenAI VLM).
+"""Out-of-process inference worker machinery.
+
+Stage 1+2: OpenVINO GenAI (VLM/LLM/Whisper) -- token-streaming protocol.
+Stage 3: plain OpenVINO (Kokoro/Qwen3-ASR/Qwen3-TTS) -- single-result and
+audio-streaming protocol (src.engine.worker.plain).
 
 The main server process never builds an OpenVINO pipeline for these models;
 each one runs in a supervised child process (see docs/worker-processes.md).
 """
 
+from src.engine.worker.plain import (
+    PlainWorkerSupervisor,
+    RemoteOV_Kokoro,
+    RemoteOVQwen3ASR,
+    RemoteOVQwen3TTS,
+)
 from src.engine.worker.protocol import (
     PROTOCOL_VERSION,
     ProtocolError,
@@ -35,4 +45,8 @@ __all__ = [
     "RemoteOVGenAI_VLM",
     "RemoteOVGenAI_LLM",
     "RemoteOVGenAI_Whisper",
+    "PlainWorkerSupervisor",
+    "RemoteOV_Kokoro",
+    "RemoteOVQwen3ASR",
+    "RemoteOVQwen3TTS",
 ]

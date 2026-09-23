@@ -1,10 +1,24 @@
 # Out-of-Process Inference Workers
 
-OpenVINO GenAI models (VLM, LLM, Whisper) are not loaded in the server
-process. Each one runs in a **dedicated worker subprocess** owned by a
-supervisor, and the server talks to it over the process's stdin/stdout (one
-JSON object per line). The worker builds and runs the pipeline; the server
-process never touches OpenVINO for that model.
+OpenVINO models are not loaded in the server process. Each one runs in a
+**dedicated worker subprocess** owned by a supervisor, and the server talks
+to it over the process's stdin/stdout (one JSON object per line). The worker
+builds and runs the pipeline; the server process never touches OpenVINO for
+that model.
+
+Two model families use two protocol dialects over the same byte-identical
+framing (`src/engine/worker/protocol.py`, extended by
+`src/engine/worker/plain/protocol.py`):
+
+- **OpenVINO GenAI** (VLM, LLM, Whisper) — `OP_GENERATE` / `OP_TRANSCRIBE`
+  stream tokens and segments. The process boundary exists because a wedged
+  GPU plugin poisons the process-wide `ov::Core` and only a new process
+  recovers (see below).
+- **Plain OpenVINO** (Kokoro TTS, Qwen3-ASR, Qwen3-TTS) — `OP_RUN` (one
+  result) and `OP_RUN_STREAM` (audio chunks, base64 float32 samples). The
+  process boundary exists for **segfault isolation**: these engines crash
+  natively, and a crash must take down only the worker, which the supervisor
+  respawns — not the server.
 
 A request line can be very large — a VLM chat request carries the whole
 conversation (base64 images included) inside its JSON, so lines of tens of
@@ -39,6 +53,15 @@ get a clean Core is a new process. That is why:
 A PING watchdog (every 30 s, 5 s timeout) kills a worker that stops
 responding, so a wedged-but-alive process is recovered the same way.
 
+The plain-openvino engines (Kokoro, Qwen3-ASR, Qwen3-TTS) do not use
+openvino_genai at all; they compile `ov::Model`s directly with `ov.Core`.
+They do not wedge the Core — they **segfault** (native crashes inside the
+OpenVINO/torch inference paths). A process boundary turns such a crash from
+a server death into a worker death: the supervisor sees the dead process,
+respawns, and the model comes back; the server process itself never crashes.
+Audio crosses the pipe as base64 float32 sample arrays; WAV encoding stays
+in the server, so the public response shapes are unchanged.
+
 ## What you will see in `openarc.log`
 
 - `spawning inference worker: ...` / `inference worker ready (pid=...)`
@@ -53,6 +76,7 @@ responding, so a wedged-but-alive process is recovered the same way.
 | --- | --- |
 | `OPENARC_OVGENAI_WORKER=0` | master switch: disable worker processes for all OpenVINO GenAI models (VLM/LLM/Whisper) and restore the historical in-process behaviour |
 | `OPENARC_VLM_WORKER=0` | additionally disable the worker process for VLMs only (stage-1 escape hatch) |
+| `OPENARC_OPENVINO_WORKER=0` | master switch: disable worker processes for the plain-openvino engines (Kokoro, Qwen3-ASR, Qwen3-TTS) and restore the historical in-process behaviour |
 
 Everything else (respawn budget, watchdog timings, unload timeouts) is
 configurable on `WorkerSupervisor` for now and will get config-file support in
@@ -63,16 +87,22 @@ a later stage.
 | file | role |
 | --- | --- |
 | `src/engine/worker/protocol.py` | wire protocol, error types, non-recoverable-error classification |
-| `src/engine/worker/supervisor.py` | process lifecycle, protocol session, respawn + watchdog |
-| `src/engine/worker/worker_process.py` | child entry point; builds the pipeline inside the worker |
-| `src/engine/worker/worker_client.py` | `RemoteOVGenAI_VLM` facade (same surface as `OVGenAI_VLM`) |
-| `src/server/model_registry.py` | the factory wraps `OVGenAI_VLM` / `OVGenAI_LLM` / `OVGenAI_Whisper` in a facade |
-| `src/server/worker_registry.py` | dispatches VLM/LLM/Whisper packets to the facades; a *worker death* does not trigger a registry unload (the supervisor owns recovery) |
+| `src/engine/worker/supervisor.py` | process lifecycle, protocol session, respawn + watchdog (inherited by both supervisors) |
+| `src/engine/worker/worker_process.py` | GenAI child entry point; builds the pipeline inside the worker (base class for the plain worker) |
+| `src/engine/worker/worker_client.py` | `RemoteEngine` base + `RemoteOVGenAI_*` facades (same surface as the engines) |
+| `src/engine/worker/plain/protocol.py` | plain-OpenVINO dialect: re-exports the shared framing byte-identically, adds `OP_RUN` / `OP_RUN_STREAM` |
+| `src/engine/worker/plain/supervisor.py` | `PlainWorkerSupervisor` — the same lifecycle, plain child entry point |
+| `src/engine/worker/plain/worker_process.py` | plain child entry point; builds Kokoro / Qwen3-ASR / Qwen3-TTS in the worker |
+| `src/engine/worker/plain/worker_client.py` | `RemoteOV_Kokoro` / `RemoteOVQwen3ASR` / `RemoteOVQwen3TTS` facades (same surface as the engines) |
+| `src/server/model_registry.py` | the factory picks the facade by `(engine, model_type)` *before* instantiating (engine constructors have side effects) and wraps GenAI and plain-openvino engines |
+| `src/server/worker_registry.py` | dispatches VLM/LLM/Whisper/Kokoro/ASR/TTS packets to the facades; a *worker death* does not trigger a registry unload (the supervisor owns recovery) |
 
-## Scope (stages 1–2 done)
+## Scope (stages 1–3 done)
 
-Stages 1 and 2 are complete: OpenVINO GenAI **VLM, LLM, and Whisper** run
-out-of-process. The plain-openvino engines (Kokoro, Qwen3-ASR, Qwen3-TTS) and
-the optimum engines (embedding, rerank) still load in-process and will join
-the worker pool in a later stage. `openarc bench` also still builds its
-pipeline in-process.
+Stages 1–3 are complete: OpenVINO GenAI **VLM, LLM, and Whisper** and the
+plain-openvino engines **Kokoro TTS, Qwen3-ASR, and Qwen3-TTS** (all three
+voice modes) run out-of-process. The optimum engines (embedding, rerank)
+still load in-process and join the worker pool in stage 4 — their call shape
+returns tuples rather than streaming generators, which the single-result
+`OP_RUN` op already supports. `openarc bench` also still builds its pipeline
+in-process.
