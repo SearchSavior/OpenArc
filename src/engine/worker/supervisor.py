@@ -191,6 +191,9 @@ class WorkerSupervisor:
     async def _spawn_and_load(self, timeout: Optional[float]) -> None:
         if self._closed:
             raise proto.RemoteWorkerDeadError("supervisor is closed")
+        load_config = self._load_config
+        if load_config is None:
+            raise proto.RemoteWorkerDeadError("no load config registered")
         self._set_state(self.STATE_STARTING)
         self._fatal_error = None
         self._death_handled = False
@@ -200,7 +203,7 @@ class WorkerSupervisor:
         self._set_state(self.STATE_LOADING)
         await self._send(
             proto.encode(
-                proto.OP_LOAD, req_id="load", config=self._load_config.model_dump_json()
+                proto.OP_LOAD, req_id="load", config=load_config.model_dump_json()
             )
         )
         try:
@@ -405,7 +408,10 @@ class WorkerSupervisor:
                 )
             )
         elif mtype == proto.MSG_ITEM:
-            req = self._active.get(msg.get("req_id"))
+            req_id = msg.get("req_id")
+            if not isinstance(req_id, str):
+                return
+            req = self._active.get(req_id)
             if req is not None and not (req.result is not None and req.result.done()):
                 req.queue.put_nowait(msg.get("item"))
         elif mtype == proto.MSG_DONE:
@@ -421,13 +427,14 @@ class WorkerSupervisor:
             )
         elif mtype == proto.MSG_FATAL:
             err = msg.get("error") or {}
-            self._fatal_error = err.get("message") or "worker reported a fatal error"
+            message = str(err.get("message") or "worker reported a fatal error")
+            self._fatal_error = message
             # The worker is taking itself down on purpose (wedged device): for
             # every in-flight request the worker IS dead, so the failures are
             # RemoteWorkerDeadErrors -- the supervisor owns recovery (respawn
             # within budget, or an unload once it is exhausted), and the
             # registry must not double-act by unloading on the request error.
-            exc = proto.RemoteWorkerDeadError(self._fatal_error, original_type=err.get("type"))
+            exc = proto.RemoteWorkerDeadError(message, original_type=err.get("type"))
             self._fail_load(exc)
             self._fail_all_active(exc)
         elif mtype == proto.MSG_BYE:
@@ -441,6 +448,8 @@ class WorkerSupervisor:
                 self._cancel[1].set_result(bool(msg.get("ok")))
 
     def _finish_request(self, req_id: Optional[str], error: Optional[BaseException]) -> None:
+        if req_id is None:
+            return
         req = self._active.pop(req_id, None)
         if req is None:
             return
@@ -525,8 +534,11 @@ class WorkerSupervisor:
                 await self._fire_on_dead()
 
     async def _fire_on_dead(self) -> None:
+        on_dead = self._on_dead
+        if on_dead is None:
+            return
         try:
-            await self._on_dead()
+            await on_dead()
         except Exception:
             logger.exception(f"[{self._model_name}] on_dead callback failed")
 
