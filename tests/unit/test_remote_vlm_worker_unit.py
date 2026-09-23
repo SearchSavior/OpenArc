@@ -10,11 +10,13 @@ respawn budget exhaustion, load failure) for VLM, LLM, and Whisper.
 
 import asyncio
 import base64
+from typing import Optional
 
 import pytest  # type: ignore[import]
 
 from src.engine.worker import protocol as proto
 from src.engine.worker.worker_client import (
+    RemoteOVGenAI,
     RemoteOVGenAI_LLM,
     RemoteOVGenAI_VLM,
     RemoteOVGenAI_Whisper,
@@ -34,11 +36,13 @@ def _load_config(tmp_path, name: str = "stub-vlm", model_type: ModelType = Model
     )
 
 
-def _gen_config(prompt: str, stream: bool = False, request_id: str = None) -> OVGenAI_GenConfig:
+def _gen_config(
+    prompt: str, stream: bool = False, request_id: Optional[str] = None
+) -> OVGenAI_GenConfig:
     return OVGenAI_GenConfig(prompt=prompt, stream=stream, request_id=request_id)
 
 
-async def _wait_for_state(facade: RemoteOVGenAI_VLM, state: str, timeout: float = 30.0) -> None:
+async def _wait_for_state(facade: RemoteOVGenAI, state: str, timeout: float = 30.0) -> None:
     async def _poll():
         while facade.status()["state"] != state:
             await asyncio.sleep(0.05)
@@ -46,7 +50,9 @@ async def _wait_for_state(facade: RemoteOVGenAI_VLM, state: str, timeout: float 
     await asyncio.wait_for(_poll(), timeout)
 
 
-async def _wait_for_respawn(facade: RemoteOVGenAI_VLM, first_pid: int, timeout: float = 30.0) -> None:
+async def _wait_for_respawn(
+    facade: RemoteOVGenAI, first_pid: Optional[int], timeout: float = 30.0
+) -> None:
     """Wait until the supervisor has detected the death and the respawned
     worker is ready again (a fresh PID proves a fresh process/Core)."""
 
@@ -229,7 +235,11 @@ def test_respawn_budget_exhaustion_unloads_model(tmp_path, monkeypatch) -> None:
     async def _run():
         registry = _FakeRegistry()
         facade = RemoteOVGenAI_VLM(
-            config, registry=registry, max_respawns=0, load_timeout=30.0
+            # _FakeRegistry duck-types ModelRegistry for this test.
+            config,
+            registry=registry,  # pyright: ignore[reportArgumentType]
+            max_respawns=0,
+            load_timeout=30.0,
         )
         await facade.load_model(config)
 
@@ -452,6 +462,30 @@ def test_whisper_fatal_error_respawns_worker(tmp_path, monkeypatch) -> None:
 
         await _wait_for_respawn(facade, first_pid)
         items = await _drain(facade, _whisper_config("audio again"))
+        assert items[1] == "stub transcript"
+        await facade._supervisor.unload()
+
+    asyncio.run(_run())
+
+
+def test_large_request_line_survives_the_pipe(tmp_path, monkeypatch) -> None:
+    """Regression: real goose requests are ~60 KB+ (system prompt + tool
+    schemas; base64 images make them multi-MB), which exceeds asyncio's
+    default 64 KiB readline limit. A protocol line far beyond 64 KiB must
+    not kill the worker."""
+    monkeypatch.setenv("OPENARC_WORKER_STUB", "1")
+    config = _load_config(tmp_path, name="stub-whisper", model_type=ModelType.WHISPER)
+
+    async def _run():
+        facade = RemoteOVGenAI_Whisper(config, load_timeout=30.0)
+        await facade.load_model(config)
+        # ~2.7 MB of payload in one protocol line (well past the old 64 KiB
+        # default, far below the 256 MiB protocol limit).
+        big_audio = base64.b64encode(b"A" * (2 * 1024 * 1024)).decode("ascii")
+        items = await _drain(facade, OVGenAI_WhisperGenConfig(audio_base64=big_audio))
+        assert items[1] == "stub transcript"
+        # The worker is still alive and serving after the oversized line.
+        items = await _drain(facade, _whisper_config("small again"))
         assert items[1] == "stub transcript"
         await facade._supervisor.unload()
 

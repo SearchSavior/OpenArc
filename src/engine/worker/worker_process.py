@@ -203,11 +203,27 @@ class _Worker:
 
     async def run(self) -> None:
         loop = asyncio.get_running_loop()
-        reader = asyncio.StreamReader()
+        # Protocol lines can be very large (a VLM chat request with base64
+        # images is one multi-MB JSON line); the default 64 KiB readline
+        # limit would raise "Separator is found, but chunk is longer than
+        # limit" and kill the worker on the first real request.
+        reader = asyncio.StreamReader(limit=proto.PROTOCOL_LINE_LIMIT)
         protocol = asyncio.StreamReaderProtocol(reader)
         await loop.connect_read_pipe(lambda: protocol, sys.stdin)
         while True:
-            line = await reader.readline()
+            try:
+                line = await reader.readline()
+            except ValueError as e:
+                # A line even beyond PROTOCOL_LINE_LIMIT: report it clearly
+                # and take the process down (the supervisor respawns).
+                logger.error(f"protocol line from parent exceeds the limit: {e}")
+                try:
+                    await self.send(
+                        proto.encode_response(proto.MSG_FATAL, error=proto.serialize_error(e))
+                    )
+                except Exception:
+                    pass
+                os._exit(1)
             if not line:
                 logger.info("parent closed stdin; exiting")
                 break

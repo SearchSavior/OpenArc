@@ -30,7 +30,7 @@ import logging
 import os
 import sys
 import uuid
-from typing import Any, Awaitable, Callable, Dict, Optional, Tuple, Union
+from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Optional, Tuple, Union
 
 from src.engine.worker import protocol as proto
 from src.server.schemas.registration import ModelLoadConfig
@@ -181,6 +181,10 @@ class WorkerSupervisor:
             cwd=os.getcwd(),
             env=self._build_env(),
         )
+        # Note: the child's stdout/stderr readers keep asyncio's default
+        # readline limit, so this side never calls readline() on them --
+        # see _read_lines (protocol lines can be very large, see
+        # protocol.PROTOCOL_LINE_LIMIT).
         self._reader_task = asyncio.create_task(
             self._read_loop(), name=f"ovworker-read-{self._model_name}"
         )
@@ -353,14 +357,41 @@ class WorkerSupervisor:
                 pass
 
     # -- protocol session ---------------------------------------------------------------
+    @staticmethod
+    async def _read_lines(stream: asyncio.StreamReader) -> AsyncIterator[bytes]:
+        """Yield newline-terminated lines of any size.
+
+        asyncio's StreamReader.readline() rejects lines longer than the
+        reader's limit (64 KiB by default) with ValueError, and the readers
+        the subprocess transport creates internally cannot be configured.
+        Protocol lines can be far larger (see protocol.PROTOCOL_LINE_LIMIT),
+        so read in chunks and split on newlines ourselves. read() is the
+        public, version-stable API.
+        """
+        buffer = b""
+        while True:
+            chunk = await stream.read(1024 * 1024)
+            if not chunk:
+                break  # EOF
+            buffer += chunk
+            while True:
+                newline = buffer.find(b"\n")
+                if newline < 0:
+                    break
+                line, buffer = buffer[: newline + 1], buffer[newline + 1:]
+                yield line
+            if len(buffer) > proto.PROTOCOL_LINE_LIMIT:
+                raise ValueError(
+                    f"line from the worker exceeds {proto.PROTOCOL_LINE_LIMIT} bytes"
+                )
+        if buffer:
+            yield buffer  # final line without a trailing newline
+
     async def _read_loop(self) -> None:
         proc = self._proc
         assert proc is not None and proc.stdout is not None
         try:
-            while True:
-                line = await proc.stdout.readline()
-                if not line:
-                    break
+            async for line in self._read_lines(proc.stdout):
                 try:
                     msg = proto.decode_response(line)
                 except proto.ProtocolError as e:
@@ -370,7 +401,12 @@ class WorkerSupervisor:
         except asyncio.CancelledError:
             raise
         except Exception:
-            logger.exception(f"[{self._model_name}] worker reader loop crashed")
+            logger.exception(
+                f"[{self._model_name}] worker reader loop crashed; killing the worker"
+            )
+            # The child may still be alive (e.g. it sent an oversized line);
+            # kill it so the proc.wait() below cannot hang.
+            self._terminate_process()
         await proc.wait()
         self._close_process_streams()
         self._on_process_exited(proc.returncode)
@@ -379,10 +415,7 @@ class WorkerSupervisor:
         proc = self._proc
         assert proc is not None and proc.stderr is not None
         try:
-            while True:
-                line = await proc.stderr.readline()
-                if not line:
-                    break
+            async for line in self._read_lines(proc.stderr):
                 text = line.decode("utf-8", errors="replace").rstrip()
                 if text:
                     logger.info(f"[{self._model_name} pid={proc.pid}] {text}")
