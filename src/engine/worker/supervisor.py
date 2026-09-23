@@ -100,6 +100,7 @@ class WorkerSupervisor:
         self._closed = False
         self._respawns = 0
         self._load_config: Optional[ModelLoadConfig] = None
+        self._line_limit = proto.PROTOCOL_LINE_LIMIT
 
     # -- introspection --------------------------------------------------------
     @property
@@ -131,6 +132,11 @@ class WorkerSupervisor:
         if self._state not in (self.STATE_NOT_STARTED, self.STATE_DEAD):
             raise RuntimeError(f"supervisor is already running (state={self._state})")
         self._load_config = load_config
+        self._line_limit = (
+            load_config.worker_line_limit
+            if load_config.worker_line_limit is not None
+            else proto.PROTOCOL_LINE_LIMIT
+        )
         self._respawns = 0
         self._closed = False
         timeout = self._load_timeout if load_timeout is None else load_timeout
@@ -168,6 +174,11 @@ class WorkerSupervisor:
         if cwd not in paths:
             paths.insert(0, cwd)
         env["PYTHONPATH"] = os.pathsep.join(paths)
+        # The child sizes its stdin reader with this limit BEFORE the LOAD
+        # command arrives (the pipe reader is created at startup), so the
+        # per-model worker_line_limit travels in the environment, not the
+        # protocol.
+        env["OPENARC_WORKER_LINE_LIMIT"] = str(self._line_limit)
         return env
 
     async def _spawn(self) -> None:
@@ -357,16 +368,15 @@ class WorkerSupervisor:
                 pass
 
     # -- protocol session ---------------------------------------------------------------
-    @staticmethod
-    async def _read_lines(stream: asyncio.StreamReader) -> AsyncIterator[bytes]:
-        """Yield newline-terminated lines of any size.
+    async def _read_lines(self, stream: asyncio.StreamReader) -> AsyncIterator[bytes]:
+        """Yield newline-terminated lines of any size up to self._line_limit.
 
         asyncio's StreamReader.readline() rejects lines longer than the
         reader's limit (64 KiB by default) with ValueError, and the readers
         the subprocess transport creates internally cannot be configured.
-        Protocol lines can be far larger (see protocol.PROTOCOL_LINE_LIMIT),
-        so read in chunks and split on newlines ourselves. read() is the
-        public, version-stable API.
+        Protocol lines can be far larger (see protocol.PROTOCOL_LINE_LIMIT
+        and ModelLoadConfig.worker_line_limit), so read in chunks and split
+        on newlines ourselves. read() is the public, version-stable API.
         """
         buffer = b""
         while True:
@@ -380,9 +390,9 @@ class WorkerSupervisor:
                     break
                 line, buffer = buffer[: newline + 1], buffer[newline + 1:]
                 yield line
-            if len(buffer) > proto.PROTOCOL_LINE_LIMIT:
+            if len(buffer) > self._line_limit:
                 raise ValueError(
-                    f"line from the worker exceeds {proto.PROTOCOL_LINE_LIMIT} bytes"
+                    f"line from the worker exceeds {self._line_limit} bytes"
                 )
         if buffer:
             yield buffer  # final line without a trailing newline

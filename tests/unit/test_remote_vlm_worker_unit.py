@@ -26,13 +26,19 @@ from src.server.schemas.modeling.contract_whisper import OVGenAI_WhisperGenConfi
 from src.server.schemas.registration import EngineType, ModelLoadConfig, ModelType
 
 
-def _load_config(tmp_path, name: str = "stub-vlm", model_type: ModelType = ModelType.VLM) -> ModelLoadConfig:
+def _load_config(
+    tmp_path,
+    name: str = "stub-vlm",
+    model_type: ModelType = ModelType.VLM,
+    worker_line_limit: Optional[int] = None,
+) -> ModelLoadConfig:
     return ModelLoadConfig(
         model_path=str(tmp_path),
         model_name=name,
         model_type=model_type,
         engine=EngineType.OV_GENAI,
         device="CPU",
+        worker_line_limit=worker_line_limit,
     )
 
 
@@ -485,6 +491,46 @@ def test_large_request_line_survives_the_pipe(tmp_path, monkeypatch) -> None:
         items = await _drain(facade, OVGenAI_WhisperGenConfig(audio_base64=big_audio))
         assert items[1] == "stub transcript"
         # The worker is still alive and serving after the oversized line.
+        items = await _drain(facade, _whisper_config("small again"))
+        assert items[1] == "stub transcript"
+        await facade._supervisor.unload()
+
+    asyncio.run(_run())
+
+
+def test_worker_line_limit_override_is_enforced(tmp_path, monkeypatch) -> None:
+    """A per-model worker_line_limit lower than the 256 MiB default must
+    actually bound the pipe: a request whose line exceeds the (lowered) limit
+    kills the worker (which then respawns), whereas the same request succeeds
+    under the default limit (see test_large_request_line_survives_the_pipe)."""
+    monkeypatch.setenv("OPENARC_WORKER_STUB", "1")
+    limit = 65536  # the schema minimum (64 KiB)
+    config = _load_config(
+        tmp_path,
+        name="stub-whisper",
+        model_type=ModelType.WHISPER,
+        worker_line_limit=limit,
+    )
+
+    async def _run():
+        facade = RemoteOVGenAI_Whisper(config, load_timeout=30.0)
+        await facade.load_model(config)
+        first_pid = facade.worker_pid
+
+        # The child must have received the lowered limit in its environment.
+        assert facade._supervisor._build_env()["OPENARC_WORKER_LINE_LIMIT"] == str(limit)
+
+        # A payload making the request line exceed 64 KiB must fail now. The
+        # worker either reports FATAL on the oversized line or the parent's
+        # write to the dying child fails -- both surface as
+        # RemoteWorkerDeadError.
+        big_audio = base64.b64encode(b"A" * (96 * 1024)).decode("ascii")
+        with pytest.raises(proto.RemoteWorkerDeadError):
+            await _drain(facade, OVGenAI_WhisperGenConfig(audio_base64=big_audio))
+
+        # The failure was a clean worker death, not a wedged session: the
+        # supervisor respawns and serves a small request again.
+        await _wait_for_respawn(facade, first_pid)
         items = await _drain(facade, _whisper_config("small again"))
         assert items[1] == "stub transcript"
         await facade._supervisor.unload()

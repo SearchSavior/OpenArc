@@ -82,6 +82,26 @@ def _configure_logging() -> None:
 _STUB_ON = ("1", "true", "yes", "on")
 
 
+def _worker_line_limit() -> int:
+    """The IPC line limit (bytes) this worker's stdin reader accepts.
+
+    The supervisor exports it in the environment at spawn time, because the
+    stdin reader is created before the LOAD command (which carries the model
+    config) arrives. It reflects the model's ``worker_line_limit`` setting,
+    or the protocol default when the model does not override it.
+    """
+    raw = os.environ.get("OPENARC_WORKER_LINE_LIMIT", "").strip()
+    if not raw:
+        return proto.PROTOCOL_LINE_LIMIT
+    try:
+        return int(raw)
+    except ValueError:
+        logger.warning(
+            f"invalid OPENARC_WORKER_LINE_LIMIT {raw!r}; using the protocol default"
+        )
+        return proto.PROTOCOL_LINE_LIMIT
+
+
 class _StubModel:
     """
     Test double for the OVGenAI models (VLM/LLM/Whisper), selected by
@@ -206,8 +226,10 @@ class _Worker:
         # Protocol lines can be very large (a VLM chat request with base64
         # images is one multi-MB JSON line); the default 64 KiB readline
         # limit would raise "Separator is found, but chunk is longer than
-        # limit" and kill the worker on the first real request.
-        reader = asyncio.StreamReader(limit=proto.PROTOCOL_LINE_LIMIT)
+        # limit" and kill the worker on the first real request. The limit
+        # itself is per-model (see ModelLoadConfig.worker_line_limit,
+        # exported by the supervisor as OPENARC_WORKER_LINE_LIMIT).
+        reader = asyncio.StreamReader(limit=_worker_line_limit())
         protocol = asyncio.StreamReaderProtocol(reader)
         await loop.connect_read_pipe(lambda: protocol, sys.stdin)
         while True:

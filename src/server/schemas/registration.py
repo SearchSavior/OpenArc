@@ -156,6 +156,28 @@ class ModelLoadConfig(BaseModel):
           for multimodal models, inside text_config / language_config / ...).
         """,
     )
+    worker_line_limit: Optional[int] = Field(
+        default=None,
+        ge=65536,
+        description="""
+        Maximum size, in bytes, of one line on the IPC pipe between the server
+        and this model's inference worker subprocess (ovgenai models only;
+        ignored by in-process engines).
+
+        A request whose JSON line exceeds the limit fails with a clear error
+        (the worker reports FATAL and the supervisor respawns it). When unset,
+        the protocol default of 256 MiB applies, which covers arbitrarily long
+        text conversations, dozens of images, and hours of audio. Lower it to
+        bound IPC memory on small machines or to reject oversized payloads;
+        raise it for very large single requests.
+
+        This is an IPC setting, not a compilation setting: changing it never
+        triggers a recompile or invalidates the OpenVINO model cache. It is
+        exported to this model's inference worker as the
+        OPENARC_WORKER_LINE_LIMIT environment variable and read at worker start,
+        so an override applies on the next worker (re)start instead.
+        """,
+    )
 
     # --- Model-level request defaults, authored in config.yaml ---
     # Each entry is a plain dict of only the keys the author wrote, keyed by
