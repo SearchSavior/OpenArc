@@ -1,5 +1,6 @@
 import logging
 import asyncio
+import inspect
 import uuid
 import base64
 import io
@@ -7,7 +8,7 @@ import numpy as np
 import torch
 import soundfile as sf
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Dict, List, Optional, Union
+from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union, cast
 
 from src.engine.ov_genai.llm import OVGenAI_LLM
 from src.engine.ov_genai.vlm import OVGenAI_VLM
@@ -19,6 +20,7 @@ from src.engine.openvino.qwen3_tts.qwen3_tts import OVQwen3TTS
 from src.engine.optimum.optimum_emb import Optimum_EMB
 from src.engine.optimum.optimum_rr import Optimum_RR
 from src.engine.worker.worker_client import RemoteOVGenAI_LLM, RemoteOVGenAI_VLM, RemoteOVGenAI_Whisper
+from src.engine.worker.plain.worker_client import RemoteOV_Kokoro, RemoteOVQwen3ASR, RemoteOVQwen3TTS
 from src.engine.worker.protocol import RemoteWorkerDeadError
 
 from src.server.schemas.modeling.contract_kokoro import OV_KokoroGenConfig
@@ -246,7 +248,7 @@ class InferWorker:
         return packet
 
     @staticmethod
-    async def infer_qwen3_asr(packet: WorkerPacket, asr_model: OVQwen3ASR) -> WorkerPacket:
+    async def infer_qwen3_asr(packet: WorkerPacket, asr_model: Union[OVQwen3ASR, RemoteOVQwen3ASR]) -> WorkerPacket:
         """Transcribe audio for a single packet using the OVQwen3ASR pipeline."""
         metrics = None
 
@@ -264,7 +266,7 @@ class InferWorker:
         return packet
 
     @staticmethod
-    async def infer_kokoro(packet: WorkerPacket, kokoro_model: OV_Kokoro) -> WorkerPacket:
+    async def infer_kokoro(packet: WorkerPacket, kokoro_model: Union[OV_Kokoro, RemoteOV_Kokoro]) -> WorkerPacket:
         """Generate speech audio for a single packet using the OV_Kokoro pipeline.
 
         Collects audio chunks and concatenates them into a single audio tensor,
@@ -325,7 +327,7 @@ class InferWorker:
         return packet
 
     @staticmethod
-    async def infer_qwen3_tts(packet: WorkerPacket, tts_model: OVQwen3TTS) -> WorkerPacket:
+    async def infer_qwen3_tts_stream(packet: WorkerPacket, tts_model: Union[OVQwen3TTS, RemoteOVQwen3TTS]) -> WorkerPacket:
         """Generate speech audio for a single packet using the OVQwen3TTS engine."""
         try:
             wav, sr = await tts_model.generate(packet.gen_config)
@@ -350,23 +352,41 @@ class InferWorker:
         return packet
 
     @staticmethod
-    async def infer_qwen3_tts_stream(packet: WorkerPacket, tts_model: OVQwen3TTS) -> WorkerPacket:
+    async def infer_qwen3_tts_stream(packet: WorkerPacket, tts_model: Union[OVQwen3TTS, RemoteOVQwen3TTS]) -> WorkerPacket:
         """Stream Qwen3 TTS PCM chunks (int16 LE bytes) onto packet.stream_queue; ends with None."""
         if packet.stream_queue is None:
             raise RuntimeError("infer_qwen3_tts_stream requires stream_queue")
         loop = asyncio.get_running_loop()
 
-        def _run_sync_generator() -> None:
+        def _pcm(tchunk) -> bytes:
+            return np.clip(tchunk.audio * 32768.0, -32768.0, 32767.0).astype(np.int16).tobytes()
+
+        gen = tts_model.generate_stream(packet.gen_config)
+        if inspect.isasyncgen(gen):
+            # Out-of-process facade: an async generator over the worker's
+            # streamed audio chunks.
+            async_gen = cast("AsyncIterator[Any]", gen)
             try:
-                for tchunk in tts_model.generate_stream(packet.gen_config):
-                    pcm = np.clip(tchunk.audio * 32768.0, -32768.0, 32767.0).astype(np.int16).tobytes()
-                    asyncio.run_coroutine_threadsafe(packet.stream_queue.put(pcm), loop).result()
+                async for tchunk in async_gen:
+                    await packet.stream_queue.put(_pcm(tchunk))
             except Exception:
                 logger.error("Qwen3 TTS streaming inference failed!", exc_info=True)
             finally:
-                asyncio.run_coroutine_threadsafe(packet.stream_queue.put(None), loop).result()
+                await packet.stream_queue.put(None)
+        else:
+            # In-process engine: a blocking sync generator, run in a thread.
+            sync_gen = cast("Iterator[Any]", gen)
 
-        await asyncio.to_thread(_run_sync_generator)
+            def _run_sync_generator() -> None:
+                try:
+                    for tchunk in sync_gen:
+                        asyncio.run_coroutine_threadsafe(packet.stream_queue.put(_pcm(tchunk)), loop).result()
+                except Exception:
+                    logger.error("Qwen3 TTS streaming inference failed!", exc_info=True)
+                finally:
+                    asyncio.run_coroutine_threadsafe(packet.stream_queue.put(None), loop).result()
+
+            await asyncio.to_thread(_run_sync_generator)
         packet.response = ""
         packet.metrics = None
         return packet
@@ -489,7 +509,7 @@ class QueueWorker:
             model_queue.task_done()
 
     @staticmethod
-    async def queue_worker_qwen3_asr(model_name: str, model_queue: asyncio.Queue, asr_model: OVQwen3ASR, registry: ModelRegistry):
+    async def queue_worker_qwen3_asr(model_name: str, model_queue: asyncio.Queue, asr_model: Union[OVQwen3ASR, RemoteOVQwen3ASR], registry: ModelRegistry):
         """Qwen3 ASR model inference worker that processes packets from queue."""
         logger.info(f"[Qwen3ASR Worker: {model_name}] Started, waiting for packets...")
         while True:
@@ -510,7 +530,7 @@ class QueueWorker:
             model_queue.task_done()
 
     @staticmethod
-    async def queue_worker_kokoro(model_name: str, model_queue: asyncio.Queue, kokoro_model: OV_Kokoro, registry: ModelRegistry):
+    async def queue_worker_kokoro(model_name: str, model_queue: asyncio.Queue, kokoro_model: Union[OV_Kokoro, RemoteOV_Kokoro], registry: ModelRegistry):
         """Kokoro model inference worker that processes packets from queue"""
         logger.info(f"[Kokoro Worker: {model_name}] Started, waiting for packets...")
         while True:
@@ -534,7 +554,7 @@ class QueueWorker:
             model_queue.task_done()
 
     @staticmethod
-    async def queue_worker_qwen3_tts(model_name: str, model_queue: asyncio.Queue, tts_model: OVQwen3TTS, registry: ModelRegistry):
+    async def queue_worker_qwen3_tts(model_name: str, model_queue: asyncio.Queue, tts_model: Union[OVQwen3TTS, RemoteOVQwen3TTS], registry: ModelRegistry):
         """Qwen3 TTS model inference worker that processes packets from queue."""
         logger.info(f"[Qwen3TTS Worker: {model_name}] Started, waiting for packets...")
         while True:
@@ -679,7 +699,7 @@ class WorkerRegistry:
                     task = asyncio.create_task(QueueWorker.queue_worker_whisper(record.model_name, q, instance, self._model_registry))
                     self._model_tasks_whisper[record.model_name] = task
 
-            elif mt == ModelType.QWEN3_ASR and isinstance(instance, OVQwen3ASR):
+            elif mt == ModelType.QWEN3_ASR and isinstance(instance, (OVQwen3ASR, RemoteOVQwen3ASR)):
                 if record.model_name not in self._model_queues_qwen3_asr:
                     q = asyncio.Queue()
                     self._model_queues_qwen3_asr[record.model_name] = q
@@ -688,7 +708,7 @@ class WorkerRegistry:
                     )
                     self._model_tasks_qwen3_asr[record.model_name] = task
 
-            elif mt == ModelType.KOKORO and isinstance(instance, OV_Kokoro):
+            elif mt == ModelType.KOKORO and isinstance(instance, (OV_Kokoro, RemoteOV_Kokoro)):
                 if record.model_name not in self._model_queues_kokoro:
                     q: asyncio.Queue = asyncio.Queue()
                     self._model_queues_kokoro[record.model_name] = q
@@ -699,7 +719,7 @@ class WorkerRegistry:
                 ModelType.QWEN3_TTS_CUSTOM_VOICE,
                 ModelType.QWEN3_TTS_VOICE_DESIGN,
                 ModelType.QWEN3_TTS_VOICE_CLONE,
-            ) and isinstance(instance, OVQwen3TTS):
+            ) and isinstance(instance, (OVQwen3TTS, RemoteOVQwen3TTS)):
                 if record.model_name not in self._model_queues_qwen3_tts:
                     q: asyncio.Queue = asyncio.Queue()
                     self._model_queues_qwen3_tts[record.model_name] = q
@@ -967,13 +987,13 @@ class WorkerRegistry:
         q = self._get_qwen3_asr_queue(model_name)
         await q.put(packet)
         completed = await result_future
-        
+
         response: Dict[str, Any] = {"text": completed.response or ""}
         if completed.metrics:
             response["metrics"] = completed.metrics
         if completed.segments:
             response["segments"] = completed.segments
-        
+
         return response
 
     async def generate_speech_qwen3_tts(self, model_name: str, gen_config: OV_Qwen3TTSGenConfig) -> Dict[str, Any]:

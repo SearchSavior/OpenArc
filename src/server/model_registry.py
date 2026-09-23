@@ -365,47 +365,62 @@ async def create_model_instance(load_config: ModelLoadConfig) -> Any:
         logger.info(f"Model load failed: {error_msg}")
         raise ValueError(error_msg)
 
-    # Dynamic import and instantiation
+    # Dynamic import of the engine class.
     class_path = MODEL_CLASS_REGISTRY[key]
     module_path, class_name = class_path.rsplit('.', 1)
     module = importlib.import_module(module_path)
     model_class = getattr(module, class_name)
 
-    # Create the model instance.
-    model_instance = model_class(load_config)
-
     # Lazy imports: src.engine's package __init__ imports the engine classes,
     # and those import back into this module, so they must not be imported at
     # module level here (circular import).
-    from src.engine.ov_genai.llm import OVGenAI_LLM
-    from src.engine.ov_genai.vlm import OVGenAI_VLM
-    from src.engine.ov_genai.whisper import OVGenAI_Whisper
     from src.engine.worker.worker_client import (
         RemoteOVGenAI_LLM,
         RemoteOVGenAI_VLM,
         RemoteOVGenAI_Whisper,
     )
-
-    # OpenVINO GenAI models (VLM/LLM/Whisper) run in a dedicated worker
-    # process instead of in the server process: openvino_genai pipelines
-    # share a process-wide singleton ov::Core, and a wedged GPU plugin
-    # poisons it for the life of the process -- no in-process unload/reload
-    # can ever fix that. The facade below owns a supervised subprocess, so
-    # unload = terminate (guaranteed clean), reload = fresh process (fresh
-    # Core), and a wedged worker is respawned transparently within a
-    # per-load budget. OPENARC_OVGENAI_WORKER=0 (or OPENARC_VLM_WORKER=0 for
-    # VLMs) restores the historical in-process behaviour.
-    _WORKER_FACADES = {
-        OVGenAI_VLM: RemoteOVGenAI_VLM,
-        OVGenAI_LLM: RemoteOVGenAI_LLM,
-        OVGenAI_Whisper: RemoteOVGenAI_Whisper,
-    }
-    facade_cls = next(
-        (cls for base, cls in _WORKER_FACADES.items() if isinstance(model_instance, base)),
-        None,
+    from src.engine.worker.plain.worker_client import (
+        RemoteOV_Kokoro,
+        RemoteOVQwen3ASR,
+        RemoteOVQwen3TTS,
     )
-    if facade_cls is not None and _ovgenai_worker_enabled(load_config.model_type):
+
+    # OpenVINO models run in a dedicated worker process instead of in the
+    # server process:
+    #   * GenAI (VLM/LLM/Whisper): pipelines share a process-wide singleton
+    #     ov::Core, and a wedged GPU plugin poisons it for the life of the
+    #     process -- no in-process unload/reload can ever fix that.
+    #   * plain OpenVINO (Kokoro/Qwen3-ASR/Qwen3-TTS): for SEGFAULT
+    #     ISOLATION -- a native crash in inference takes down only the
+    #     worker process, which is respawned with a fresh pipeline.
+    # The facade owns a supervised subprocess, so unload = terminate
+    # (guaranteed clean), reload = fresh process, and a wedged/crashed worker
+    # is respawned transparently within a per-load budget.
+    # OPENARC_OVGENAI_WORKER=0 (or OPENARC_VLM_WORKER=0 for VLMs) and
+    # OPENARC_OPENVINO_WORKER=0 restore the historical in-process behaviour.
+    #
+    # The facade is chosen by (engine, model_type) -- the same key as
+    # MODEL_CLASS_REGISTRY -- BEFORE instantiating the real engine: several
+    # constructors have side effects (reading model files, creating ov.Core,
+    # allocating tensors), which must not run in the server process when the
+    # model is about to load in a worker.
+    _WORKER_FACADES = {
+        (EngineType.OV_GENAI, ModelType.VLM): RemoteOVGenAI_VLM,
+        (EngineType.OV_GENAI, ModelType.LLM): RemoteOVGenAI_LLM,
+        (EngineType.OV_GENAI, ModelType.WHISPER): RemoteOVGenAI_Whisper,
+        (EngineType.OPENVINO, ModelType.KOKORO): RemoteOV_Kokoro,
+        (EngineType.OPENVINO, ModelType.QWEN3_ASR): RemoteOVQwen3ASR,
+        (EngineType.OPENVINO, ModelType.QWEN3_TTS_CUSTOM_VOICE): RemoteOVQwen3TTS,
+        (EngineType.OPENVINO, ModelType.QWEN3_TTS_VOICE_DESIGN): RemoteOVQwen3TTS,
+        (EngineType.OPENVINO, ModelType.QWEN3_TTS_VOICE_CLONE): RemoteOVQwen3TTS,
+    }
+    facade_cls = _WORKER_FACADES.get((load_config.engine, load_config.model_type))
+    if facade_cls is not None and _worker_enabled(
+        load_config.engine, load_config.model_type
+    ):
         model_instance = facade_cls(load_config)
+    else:
+        model_instance = model_class(load_config)
 
     # Load the model instance: remote facades load asynchronously (they spawn
     # a subprocess); in-process engines keep their blocking load off the
@@ -416,6 +431,18 @@ async def create_model_instance(load_config: ModelLoadConfig) -> Any:
     else:
         await asyncio.to_thread(load_fn, load_config)
     return model_instance
+
+
+def _worker_enabled(engine: EngineType, model_type: ModelType) -> bool:
+    """Whether a model of this engine/type runs in a worker process (stage 1-3).
+
+    Optimum models (emb/rerank) still run in-process (a later stage).
+    """
+    if engine == EngineType.OV_GENAI:
+        return _ovgenai_worker_enabled(model_type)
+    if engine == EngineType.OPENVINO:
+        return _openvino_worker_enabled(model_type)
+    return False
 
 
 def _ovgenai_worker_enabled(model_type: ModelType) -> bool:
@@ -429,3 +456,16 @@ def _ovgenai_worker_enabled(model_type: ModelType) -> bool:
     if model_type == ModelType.VLM:
         return os.getenv("OPENARC_VLM_WORKER", "1").strip().lower() not in ("0", "false", "off", "no")
     return True
+
+
+def _openvino_worker_enabled(model_type: ModelType) -> bool:
+    """Whether a plain-OpenVINO model (Kokoro/Qwen3-ASR/Qwen3-TTS) of this
+    type runs in a worker process (stage 3, for segfault isolation).
+
+    OPENARC_OPENVINO_WORKER is the master switch (default on); set it to 0 to
+    restore the historical in-process behaviour.
+    """
+    return (
+        os.getenv("OPENARC_OPENVINO_WORKER", "1").strip().lower()
+        not in ("0", "false", "off", "no")
+    )

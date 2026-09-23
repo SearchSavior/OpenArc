@@ -261,6 +261,16 @@ class _Worker:
         if self._active_gen is not None and not self._active_gen.done():
             self._active_gen.cancel()
 
+    # Overridable hooks so protocol variants (e.g. the plain-OpenVINO worker)
+    # can subclass this loop without duplicating it.
+    def _build_model(self, load_config: ModelLoadConfig) -> Any:
+        return _make_model(load_config)
+
+    def _gen_config_cls(self) -> Optional[Any]:
+        if self.model_type is None:
+            return None
+        return _GEN_CONFIG_CLASSES.get(self.model_type)
+
     async def _handle(self, msg: Dict[str, Any]) -> None:
         op = msg["op"]
         if op == proto.OP_PING:
@@ -282,13 +292,19 @@ class _Worker:
         elif op == proto.OP_UNLOAD:
             await self.send(proto.encode_response(proto.MSG_BYE, req_id=msg["req_id"]))
             await self._shutdown()
+        else:
+            await self._handle_custom_op(msg)
+
+    async def _handle_custom_op(self, msg: Dict[str, Any]) -> None:
+        """Extension point for ops this protocol does not know (subclasses)."""
+        logger.warning(f"unknown protocol op: {msg.get('op')!r}")
 
     async def _do_load(self, msg: Dict[str, Any]) -> None:
         try:
             load_config = ModelLoadConfig.model_validate_json(msg["config"])
             self.model_name = load_config.model_name
             self.model_type = load_config.model_type
-            model = _make_model(load_config)
+            model = self._build_model(load_config)
             logger.info(f"[{load_config.model_name}] building pipeline on {load_config.device} ...")
             await asyncio.to_thread(model.load_model, load_config)
             self.model = model
@@ -312,7 +328,7 @@ class _Worker:
         """Validate the gen_config payload against the loaded engine's contract."""
         if self.model_type is None:
             raise ValueError("no model loaded")
-        gen_config_cls = _GEN_CONFIG_CLASSES.get(self.model_type)
+        gen_config_cls = self._gen_config_cls()
         if gen_config_cls is None:
             raise ValueError(f"no gen config contract for model type {self.model_type!r}")
         raw = dict(raw)
@@ -329,28 +345,49 @@ class _Worker:
                 raw.pop(name)
         return gen_config_cls.model_validate(raw)
 
-    async def _start_run(self, msg: Dict[str, Any], method_name: str) -> None:
+    async def _check_run_preconditions(self, msg: Dict[str, Any]) -> Optional[bytes]:
+        """Shared guards for starting a run (reused by protocol variants):
+        an error response line to send, or None when the run may start."""
         req_id = msg["req_id"]
         if self.model is None:
-            await self.send(
-                proto.encode_response(
-                    proto.MSG_ERROR,
-                    req_id=req_id,
-                    error={"type": "NotLoaded", "message": "no model loaded"},
-                )
+            return proto.encode_response(
+                proto.MSG_ERROR,
+                req_id=req_id,
+                error={"type": "NotLoaded", "message": "no model loaded"},
             )
-            return
         if self._active_gen is not None and not self._active_gen.done():
-            await self.send(
-                proto.encode_response(
-                    proto.MSG_ERROR,
-                    req_id=req_id,
-                    error={"type": "Busy", "message": "an inference is already in progress"},
-                )
+            return proto.encode_response(
+                proto.MSG_ERROR,
+                req_id=req_id,
+                error={"type": "Busy", "message": "an inference is already in progress"},
             )
+        return None
+
+    async def _start_run(self, msg: Dict[str, Any], method_name: str) -> None:
+        err = await self._check_run_preconditions(msg)
+        if err is not None:
+            await self.send(err)
             return
         self._active_gen = asyncio.create_task(
-            self._run_inference(msg, method_name), name=f"ovworker-gen-{req_id[:8]}"
+            self._run_inference(msg, method_name), name=f"ovworker-gen-{msg['req_id'][:8]}"
+        )
+
+    async def _report_run_error(self, e: BaseException, req_id: str, method_name: str) -> None:
+        """The shared error ladder for failed runs (reused by protocol
+        variants): recoverable -> MSG_ERROR (worker stays up); non-recoverable
+        (wedged device / native failure) -> MSG_FATAL + exit so the supervisor
+        respawns a clean process."""
+        logger.error(f"[{self.model_name}] {method_name} failed", exc_info=True)
+        if proto.is_non_recoverable_error(e):
+            try:
+                await self.send(
+                    proto.encode_response(proto.MSG_FATAL, error=proto.serialize_error(e))
+                )
+            except Exception:
+                pass
+            os._exit(1)
+        await self.send(
+            proto.encode_response(proto.MSG_ERROR, req_id=req_id, error=proto.serialize_error(e))
         )
 
     async def _run_inference(self, msg: Dict[str, Any], method_name: str) -> None:
@@ -365,22 +402,7 @@ class _Worker:
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            logger.error(f"[{self.model_name}] {method_name} failed", exc_info=True)
-            if proto.is_non_recoverable_error(e):
-                # Wedged device: report FATAL and take the process down so
-                # the supervisor can respawn with a fresh ov::Core.
-                try:
-                    await self.send(
-                        proto.encode_response(proto.MSG_FATAL, error=proto.serialize_error(e))
-                    )
-                except Exception:
-                    pass
-                os._exit(1)
-            await self.send(
-                proto.encode_response(
-                    proto.MSG_ERROR, req_id=req_id, error=proto.serialize_error(e)
-                )
-            )
+            await self._report_run_error(e, req_id, method_name)
         finally:
             self._active_request_id = None
             self._active_gen = None
