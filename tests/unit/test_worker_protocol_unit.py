@@ -105,3 +105,17 @@ def test_remote_worker_error_carries_original_type() -> None:
     assert exc.original_type == "RuntimeError"
     assert isinstance(exc, Exception)
     assert not isinstance(exc, proto.RemoteWorkerDeadError)
+
+
+def test_gen_config_chat_shape_roundtrips() -> None:
+    """Regression: chat requests carry `messages` only, so prompt/input_ids
+    are None. The IPC JSON round-trip must not choke on those nulls."""
+    from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_GenConfig
+
+    gc = OVGenAI_GenConfig(messages=[{"role": "user", "content": "hi"}])
+    assert gc.prompt is None
+    assert gc.input_ids is None
+    restored = OVGenAI_GenConfig.model_validate_json(gc.model_dump_json())
+    assert restored.prompt is None
+    assert restored.input_ids is None
+    assert restored.messages == [{"role": "user", "content": "hi"}]

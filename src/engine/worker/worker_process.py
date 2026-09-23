@@ -272,16 +272,23 @@ class _Worker:
 
     def _validate_gen_config(self, raw: Dict[str, Any]) -> Any:
         """Validate the gen_config payload against the loaded engine's contract."""
+        if self.model_type is None:
+            raise ValueError("no model loaded")
         gen_config_cls = _GEN_CONFIG_CLASSES.get(self.model_type)
         if gen_config_cls is None:
             raise ValueError(f"no gen config contract for model type {self.model_type!r}")
-        if gen_config_cls is OVGenAI_GenConfig:
-            # The contract declares messages/input_ids as non-optional lists
-            # with a None default (pydantic skips validation of defaults), so
-            # a JSON round-trip must normalise them back to empty lists.
-            raw = dict(raw)
-            raw["messages"] = raw.get("messages") or []
-            raw["input_ids"] = raw.get("input_ids") or []
+        raw = dict(raw)
+        # Drop explicit nulls on fields whose declared default is None: the
+        # parent serialises whatever the in-memory object carries, and
+        # pydantic does not validate defaults, so a field declared
+        # non-optional with a None default arrives as null and would fail
+        # validation against its declared type even though the in-memory
+        # object holds exactly that value. Removing the key lets the default
+        # apply. Required fields (no default) are left untouched, so a null
+        # there still fails loudly.
+        for name, field_info in gen_config_cls.model_fields.items():
+            if field_info.default is None and raw.get(name) is None:
+                raw.pop(name)
         return gen_config_cls.model_validate(raw)
 
     async def _start_run(self, msg: Dict[str, Any], method_name: str) -> None:

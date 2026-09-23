@@ -331,6 +331,32 @@ def _whisper_config(payload: str) -> OVGenAI_WhisperGenConfig:
     return OVGenAI_WhisperGenConfig(audio_base64=base64.b64encode(payload.encode("utf-8")).decode("ascii"))
 
 
+def test_vlm_chat_request_with_messages_only_roundtrips(tmp_path, monkeypatch) -> None:
+    """Regression for the goose chat failure: a chat request carries
+    `messages` (no `prompt`), so prompt is None; the JSON round-trip into
+    the worker process must survive that."""
+    monkeypatch.setenv("OPENARC_WORKER_STUB", "1")
+    config = _load_config(tmp_path)
+
+    async def _run():
+        facade = RemoteOVGenAI_VLM(config, load_timeout=30.0)
+        await facade.load_model(config)
+        chat_config = OVGenAI_GenConfig(
+            messages=[
+                {"role": "system", "content": "you are a test"},
+                {"role": "user", "content": "hello world"},
+            ],
+            stream=False,
+        )
+        assert chat_config.prompt is None
+        items = await _drain(facade, chat_config)
+        assert isinstance(items[0], dict)
+        assert items[-1] == "you are a test hello world"  # stub echoes message text
+        await facade._supervisor.unload()
+
+    asyncio.run(_run())
+
+
 def test_llm_generate_and_unload(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("OPENARC_WORKER_STUB", "1")
     config = _load_config(tmp_path, name="stub-llm", model_type=ModelType.LLM)
