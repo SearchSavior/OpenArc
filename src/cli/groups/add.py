@@ -72,8 +72,13 @@ from ..utils import validate_model_path
     required=False,
     default=None,
     help='Context window (tokens) for this model. Becomes the compiled model\'s MAX CONTENT WINDOW (openvino.genai SchedulerConfig.max_num_batched_tokens) and is advertised in /v1/models. When omitted, the value is discovered from the model\'s config.json')
+@click.option('--max-tokens',
+    type=int,
+    required=False,
+    default=None,
+    help='Model-level default max_tokens (max_new_tokens) applied when a request omits max_tokens. Bounds the output length for requests that do not specify one, avoiding the 16384 default and GPU OOM. An explicit client max_tokens always wins.')
 @click.pass_context
-def add(ctx, model_path, model_name, engine, model_type, device, runtime_config, scheduler_config, cache_dir, draft_model_path, draft_device, num_assistant_tokens, assistant_confidence_threshold, tool_call_parser, context_window):
+def add(ctx, model_path, model_name, engine, model_type, device, runtime_config, scheduler_config, cache_dir, draft_model_path, draft_device, num_assistant_tokens, assistant_confidence_threshold, tool_call_parser, context_window, max_tokens):
     """- Add a model configuration to the config file."""
 
     # Validate model path
@@ -142,6 +147,8 @@ def add(ctx, model_path, model_name, engine, model_type, device, runtime_config,
         load_config["tool_call_parser"] = tool_call_parser
     if context_window is not None:
         load_config["context_window"] = context_window
+    if max_tokens is not None:
+        load_config["max_tokens"] = max_tokens
 
     # A re-add that does not change the configuration keeps the stored
     # config_hash, so the next load does not needlessly recompile. Any change

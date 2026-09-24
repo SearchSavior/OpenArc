@@ -190,6 +190,17 @@ class ModelLoadConfig(BaseModel):
         Clients (openarc load) pass the stored value through unchanged; it
         never affects inference itself.""",
     )
+    max_tokens: Optional[int] = Field(
+        default=None,
+        description="""
+        Model-level default for the number of tokens to generate (max_new_tokens).
+        Applied ONLY when a request omits max_tokens: a client that omits it would
+        otherwise inherit OVGenAI_GenConfig's large default (16384), which can
+        exhaust GPU memory (CL_OUT_OF_RESOURCES) on a big prompt/image. Set this to
+        bound the output length for requests that do not specify one. An explicit
+        client max_tokens always takes precedence.
+        """,
+    )
 
 
 class ModelUnloadConfig(BaseModel):

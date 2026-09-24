@@ -45,6 +45,7 @@ class ModelRecord:
     # the resolved context_window). Kept on the record so the model can always be
     # re-registered (or its inference backend re-spawned) with identical parameters.
     load_config: Optional[ModelLoadConfig] = None
+    max_tokens: Optional[int] = None  # Model-level default max_tokens (applied when a request omits it)
 
 
     def registered_models(self) -> dict:
@@ -191,6 +192,7 @@ class ModelRegistry:
                 loader.tool_call_parser.value if loader.tool_call_parser else None
             ),
             context_window=context_window,
+            max_tokens=loader.max_tokens,
             status=ModelStatus.LOADING,
             load_config=loader,
         )

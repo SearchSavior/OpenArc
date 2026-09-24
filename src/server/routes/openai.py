@@ -59,6 +59,32 @@ def _prepend_system_instruction(messages: Any, instruction: str) -> Any:
     return messages
 
 
+def _apply_model_max_tokens_default(
+    generation_config: OVGenAI_GenConfig,
+    request_max_tokens: Optional[int],
+    model_max_tokens: Optional[int],
+) -> OVGenAI_GenConfig:
+    """Apply the model-level max_tokens default when the client omitted max_tokens.
+
+    A client that omits max_tokens would otherwise inherit OVGenAI_GenConfig's
+    large default (16384), which can exhaust GPU memory (CL_OUT_OF_RESOURCES) on
+    a big prompt/image. When the model config sets max_tokens, use it instead. An
+    explicit client value always wins.
+    """
+    if request_max_tokens is None and model_max_tokens:
+        generation_config.max_tokens = model_max_tokens
+    return generation_config
+
+
+async def _model_max_tokens(model_name: str) -> Optional[int]:
+    """Return the model-level default max_tokens for ``model_name`` (None if unset)."""
+    async with _registry._lock:
+        for record in _registry._models.values():
+            if record.model_name == model_name:
+                return getattr(record, "max_tokens", None)
+    return None
+
+
 def _apply_tool_choice(
     messages: Any,
     tools: Optional[List[Dict[str, Any]]],
@@ -160,10 +186,12 @@ async def openai_chat_completions(
         logger.info(f'"{request.model}" request received')
 
         tool_parser_name = None
+        model_max_tokens = None
         async with _registry._lock:
             for record in _registry._models.values():
                 if record.model_name == request.model:
                     tool_parser_name = record.tool_call_parser
+                    model_max_tokens = getattr(record, "max_tokens", None)
                     break
 
         if tool_parser_name is None and request.tools:
@@ -203,7 +231,9 @@ async def openai_chat_completions(
             config_kwargs["tool_call_parser"] = tool_parser_name
         config_kwargs = {k: v for k, v in config_kwargs.items() if v is not None}
 
-        generation_config = OVGenAI_GenConfig(**config_kwargs)
+        generation_config = _apply_model_max_tokens_default(
+            OVGenAI_GenConfig(**config_kwargs), request.max_tokens, model_max_tokens
+        )
 
         model_name = request.model
         created_ts = int(time.time())
@@ -403,7 +433,11 @@ async def openai_completions(request: OpenAICompletionRequest, raw_request: Requ
         }
         config_kwargs = {k: v for k, v in config_kwargs.items() if v is not None}
 
-        generation_config = OVGenAI_GenConfig(**config_kwargs)
+        generation_config = _apply_model_max_tokens_default(
+            OVGenAI_GenConfig(**config_kwargs),
+            request.max_tokens,
+            await _model_max_tokens(request.model),
+        )
 
         model_name = request.model
         created_ts = int(time.time())
