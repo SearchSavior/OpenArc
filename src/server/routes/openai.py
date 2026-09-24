@@ -59,6 +59,32 @@ def _prepend_system_instruction(messages: Any, instruction: str) -> Any:
     return messages
 
 
+def _apply_model_max_tokens_default(
+    generation_config: OVGenAI_GenConfig,
+    request_max_tokens: Optional[int],
+    model_max_tokens: Optional[int],
+) -> OVGenAI_GenConfig:
+    """Apply the model-level max_tokens default when the client omitted max_tokens.
+
+    A client that omits max_tokens would otherwise inherit OVGenAI_GenConfig's
+    large default (16384), which can exhaust GPU memory (CL_OUT_OF_RESOURCES) on
+    a big prompt/image. When the model config sets max_tokens, use it instead. An
+    explicit client value always wins.
+    """
+    if request_max_tokens is None and model_max_tokens:
+        generation_config.max_tokens = model_max_tokens
+    return generation_config
+
+
+async def _model_max_tokens(model_name: str) -> Optional[int]:
+    """Return the model-level default max_tokens for ``model_name`` (None if unset)."""
+    async with _registry._lock:
+        for record in _registry._models.values():
+            if record.model_name == model_name:
+                return getattr(record, "max_tokens", None)
+    return None
+
+
 def _apply_tool_choice(
     messages: Any,
     tools: Optional[List[Dict[str, Any]]],
@@ -115,17 +141,35 @@ def _apply_tool_choice(
 async def openai_list_models():
     try:
         registry_status = await _registry.status()
+        created = int(datetime.datetime.now().timestamp())
 
         models = []
-        for model_name in registry_status["openai_model_names"]:
-            models.append(
-                {
-                    "id": model_name,
-                    "object": "model",
-                    "created": int(datetime.datetime.now().timestamp()),
-                    "owned_by": "OpenArc",
-                }
-            )
+        for entry in registry_status["models"]:
+            model_name = entry["model_name"]
+            context_window = entry.get("context_window")
+
+            item: Dict[str, Any] = {
+                "id": model_name,
+                "object": "model",
+                "created": created,
+                "owned_by": "OpenArc",
+            }
+
+            # Propagate the model's context window so OpenAI-compatible
+            # clients can size their conversation (e.g. for auto-compaction).
+            # `context_window` is the OpenAI-standard field; goose reads the
+            # non-standard `meta.n_ctx` (llama.cpp / Ollama convention) from
+            # /v1/models, so both are emitted from the same resolved value.
+            #
+            # This value is the SAME one the inference engine applies as the
+            # compiled pipeline's max content window
+            # (SchedulerConfig.max_num_batched_tokens), so what is advertised
+            # here is what is actually enforced at inference time.
+            if isinstance(context_window, int) and context_window > 0:
+                item["context_window"] = context_window
+                item["meta"] = {"n_ctx": context_window}
+
+            models.append(item)
 
         return {"object": "list", "data": models}
     except Exception as exc:
@@ -142,10 +186,12 @@ async def openai_chat_completions(
         logger.info(f'"{request.model}" request received')
 
         tool_parser_name = None
+        model_max_tokens = None
         async with _registry._lock:
             for record in _registry._models.values():
                 if record.model_name == request.model:
                     tool_parser_name = record.tool_call_parser
+                    model_max_tokens = getattr(record, "max_tokens", None)
                     break
 
         if tool_parser_name is None and request.tools:
@@ -185,7 +231,9 @@ async def openai_chat_completions(
             config_kwargs["tool_call_parser"] = tool_parser_name
         config_kwargs = {k: v for k, v in config_kwargs.items() if v is not None}
 
-        generation_config = OVGenAI_GenConfig(**config_kwargs)
+        generation_config = _apply_model_max_tokens_default(
+            OVGenAI_GenConfig(**config_kwargs), request.max_tokens, model_max_tokens
+        )
 
         model_name = request.model
         created_ts = int(time.time())
@@ -385,7 +433,11 @@ async def openai_completions(request: OpenAICompletionRequest, raw_request: Requ
         }
         config_kwargs = {k: v for k, v in config_kwargs.items() if v is not None}
 
-        generation_config = OVGenAI_GenConfig(**config_kwargs)
+        generation_config = _apply_model_max_tokens_default(
+            OVGenAI_GenConfig(**config_kwargs),
+            request.max_tokens,
+            await _model_max_tokens(request.model),
+        )
 
         model_name = request.model
         created_ts = int(time.time())

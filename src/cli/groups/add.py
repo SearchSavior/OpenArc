@@ -12,6 +12,30 @@ from ..main import cli, console
 from ..utils import validate_model_path
 
 
+def _runtime_config_help_callback(ctx, _param, value):
+    """Eager callback: ``--runtime-config --help`` prints the full, dynamically
+    discovered key listing (from the installed openvino plugin) and exits, before
+    the other required options of ``add`` are validated."""
+    if value == "--help":
+        from src.cli.modules.ov_config_docs import runtime_config_help
+
+        console.print(runtime_config_help())
+        ctx.exit(0)
+    return value
+
+
+def _scheduler_config_help_callback(ctx, _param, value):
+    """Eager callback: ``--scheduler-config --help`` prints the full, dynamically
+    discovered key listing (from the installed openvino_genai package) and exits,
+    before the other required options of ``add`` are validated."""
+    if value == "--help":
+        from src.cli.modules.ov_config_docs import scheduler_config_help
+
+        console.print(scheduler_config_help())
+        ctx.exit(0)
+    return value
+
+
 @cli.command()
 @click.option('--model-name', '--mn',
     required=True,
@@ -36,10 +60,25 @@ from ..utils import validate_model_path
     help='Device(s) to load the model on.')
 @click.option("--runtime-config", "--rtc",
     default=None,
-    help='OpenVINO runtime configuration as JSON string (e.g., \'{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}\').')
+    is_eager=True,
+    callback=_runtime_config_help_callback,
+    help=(
+        'OpenVINO GPU runtime/compile configuration as a JSON string of plugin keys '
+        '(e.g., \'{"OFFLOAD_RATIO": 0.05, "PERFORMANCE_HINT": "LATENCY"}\'). '
+        'Run `openarc add --runtime-config --help` to list every available key with usage '
+        '(discovered from the installed openvino plugin). Memory-relevant keys include '
+        'OFFLOAD_RATIO, KV_CACHE_PRECISION, INFERENCE_PRECISION_HINT, NUM_STREAMS, '
+        'PERFORMANCE_HINT.'))
 @click.option("--scheduler-config", "-sc",
     default=None,
-    help='OpenVINO runtime scheduler configuration as JSON string (e.g., \'{"use_sparse_attention": true}\').')
+    is_eager=True,
+    callback=_scheduler_config_help_callback,
+    help=(
+        'OpenVINO GenAI scheduler configuration as a JSON string of scheduler keys '
+        '(e.g., \'{"cache_size": 12, "max_num_seqs": 1}\'). '
+        'Run `openarc add --scheduler-config --help` to list every available key with usage '
+        '(discovered from the installed openvino_genai package). Memory-relevant keys include '
+        'cache_size, num_kv_blocks, max_num_seqs, max_num_batched_tokens.'))
 @click.option('--cache-dir', '--cd',
     required=False,
     default=None,
@@ -67,8 +106,18 @@ from ..utils import validate_model_path
     required=False,
     default=None,
     help='Tool-call output format for this model (qwen35 XML, hermes JSON, gemma4 call syntax, or museglimmer Harmony atem). llm/vlm only; required for tool calling.')
+@click.option('--context-window', '--cw',
+    type=int,
+    required=False,
+    default=None,
+    help='Context window (tokens) for this model. Becomes the compiled model\'s MAX CONTENT WINDOW (openvino.genai SchedulerConfig.max_num_batched_tokens) and is advertised in /v1/models. When omitted, the value is discovered from the model\'s config.json')
+@click.option('--max-tokens',
+    type=int,
+    required=False,
+    default=None,
+    help='Model-level default max_tokens (max_new_tokens) applied when a request omits max_tokens. Bounds the output length for requests that do not specify one, avoiding the 16384 default and GPU OOM. An explicit client max_tokens always wins.')
 @click.pass_context
-def add(ctx, model_path, model_name, engine, model_type, device, runtime_config, scheduler_config, cache_dir, draft_model_path, draft_device, num_assistant_tokens, assistant_confidence_threshold, tool_call_parser):
+def add(ctx, model_path, model_name, engine, model_type, device, runtime_config, scheduler_config, cache_dir, draft_model_path, draft_device, num_assistant_tokens, assistant_confidence_threshold, tool_call_parser, context_window, max_tokens):
     """- Add a model configuration to the config file."""
 
     # Validate model path
@@ -135,6 +184,25 @@ def add(ctx, model_path, model_name, engine, model_type, device, runtime_config,
         load_config["assistant_confidence_threshold"] = assistant_confidence_threshold
     if tool_call_parser:
         load_config["tool_call_parser"] = tool_call_parser
+    if context_window is not None:
+        load_config["context_window"] = context_window
+    if max_tokens is not None:
+        load_config["max_tokens"] = max_tokens
+
+    # A re-add that does not change the configuration keeps the stored
+    # config_hash, so the next load does not needlessly recompile. Any change
+    # drops the hash (the entry is replaced), which makes the next load
+    # invalidate the compiled-model cache and recompile -- see
+    # src.server.utils.config_hash. The comparison uses the raw file entry, so
+    # the path strings compare exactly as typed.
+    previous_entry = ctx.obj.server_config.load_config().get("models", {}).get(model_name)
+    if isinstance(previous_entry, dict):
+        same_config = (
+            {k: v for k, v in previous_entry.items() if k != "config_hash"}
+            == {k: v for k, v in load_config.items() if k != "config_hash"}
+        )
+        if same_config and previous_entry.get("config_hash"):
+            load_config["config_hash"] = previous_entry["config_hash"]
 
     ctx.obj.server_config.save_model_config(model_name, load_config)
     console.print(f"[green]Model configuration saved:[/green] {model_name}")

@@ -9,7 +9,7 @@ from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import SchedulerCo
 
 class ModelStatus(str, Enum):
     """loading status.
-    
+
     Options:
     - LOADING: Model is currently being loaded in the background
     - LOADED: Model has been successfully loaded and is ready for inference
@@ -23,7 +23,7 @@ class ModelStatus(str, Enum):
 class ModelType(str, Enum):
     """
     Internal routing to the correct inference pipeline.
-    
+
     Options:
     - llm: Text-to-text LLM models
     - vlm: Image-to-text VLM models
@@ -33,9 +33,9 @@ class ModelType(str, Enum):
     - qwen3_tts_custom_voice: Qwen3-TTS with predefined speaker
     - qwen3_tts_voice_design: Qwen3-TTS with free-form voice description
     - qwen3_tts_voice_clone: Qwen3-TTS cloning a reference audio
-    - emb: Text-to-vector models    
-    - rerank: Reranker models"""    
-    
+    - emb: Text-to-vector models
+    - rerank: Reranker models"""
+
     LLM = "llm"
     VLM = "vlm"
     WHISPER = "whisper"
@@ -54,7 +54,7 @@ class EngineType(str, Enum):
     Options:
     - optimum: Optimum-Intel engine
     - ovgenai: OpenVINO GenAI engine"""
-    
+
     OV_OPTIMUM = "optimum"
     OV_GENAI = "ovgenai"
     OPENVINO = "openvino"
@@ -80,7 +80,7 @@ class ModelLoadConfig(BaseModel):
     model_path: str = Field(
         description="""
         Top level path to directory containing OpenVINO IR converted model.
-        
+
         OpenArc does not support runtime conversion and cannot pull from HF.""")
     model_name: str = Field(
         ...,
@@ -112,7 +112,12 @@ class ModelLoadConfig(BaseModel):
         When set, compiled model blobs are cached here so subsequent loads of
         this model skip recompilation. Relative paths are resolved against the
         config file's directory when the model is loaded, the same as
-        model_path.""")
+        model_path.
+
+        The cache is keyed by the model files and device, NOT by the
+        runtime/scheduler configuration, so when this model's config entry
+        changes (see config_hash) the server invalidates this directory before
+        loading to force a recompile with the new settings.""")
 
     draft_model_path: Optional[str] = Field(
         default=None,
@@ -141,6 +146,60 @@ class ModelLoadConfig(BaseModel):
 
         When unset, /chat/completions requests containing tools are rejected
         with 400.""",
+    )
+    context_window: Optional[int] = Field(
+        default=None,
+        description="""
+        Context window (in tokens) for this model. It is used in two places that
+        must agree, both driven by this single value:
+
+        * The compiled pipeline's **max content window** -- fed to the engine and
+          written to openvino.genai's ``SchedulerConfig.max_num_batched_tokens``,
+          which bounds a running sequence's KV-cache growth at inference time.
+          An operator-set ``scheduler_config.max_num_batched_tokens`` must be the
+          same value (or is left unset) so advertisement and enforcement match.
+        * Advertised in ``/v1/models`` (both as the OpenAI-standard
+          ``context_window`` field and as ``meta.n_ctx`` so goose can
+          auto-compact against it).
+
+        When set to a positive integer it overrides automatic discovery and is
+        used as-is. When None (or <= 0) the value is discovered from the model's
+        config.json -- searched at the top level first, and (because multimodal
+        models nest their language config under ``text_config`` / ``language_config``
+        / ``llm_config`` / ...) then inside those nested per-modality sections --
+        using the first present key of
+        max_position_embeddings / n_positions / seq_len / seq_length / n_ctx /
+        sliding_window; that discovered value is likewise used as the
+        compiled max content window.
+        """,
+    )
+    config_hash: Optional[str] = Field(
+        default=None,
+        description="""
+        Hash of this model's config entry as stored in openarc_config.json
+        under the same key (see src.server.utils.config_hash).
+
+        The server maintains it: at every load it hashes the configuration it
+        is about to compile and compares it against the stored value. On a
+        difference (a changed --runtime-config / --scheduler-config, a manual
+        edit of openarc_config.json, a re-run of `openarc add`, ...) the
+        model's compiled-model cache (cache_dir) is invalidated so the
+        pipeline recompiles with the new settings, and the new hash is written
+        back to the config file.
+
+        Clients (openarc load) pass the stored value through unchanged; it
+        never affects inference itself.""",
+    )
+    max_tokens: Optional[int] = Field(
+        default=None,
+        description="""
+        Model-level default for the number of tokens to generate (max_new_tokens).
+        Applied ONLY when a request omits max_tokens: a client that omits it would
+        otherwise inherit OVGenAI_GenConfig's large default (16384), which can
+        exhaust GPU memory (CL_OUT_OF_RESOURCES) on a big prompt/image. Set this to
+        bound the output length for requests that do not specify one. An explicit
+        client max_tokens always takes precedence.
+        """,
     )
 
 
