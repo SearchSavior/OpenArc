@@ -1,19 +1,57 @@
 """
-Run command - Add a model config, start the server, and load the model in one step.
+Run command - Add a model config, start the server, load the model, and keep running.
+
+Combines 'openarc add' + 'openarc serve start' + 'openarc load'.
+Stays alive until Ctrl+C, then unloads the model and shuts down cleanly.
 """
 import json
 import os
-import threading
+import signal
+import subprocess
+import sys
 import time
 
 import click
 import requests
-from pydantic import ValidationError
 
 from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import SchedulerConfigSchema
 
 from ..main import cli, console
 from ..utils import validate_model_path
+
+
+def _shutdown(server_proc: subprocess.Popen, base_url: str, model_name: str, use_api_key: bool):
+    """Graceful shutdown: unload the model, then terminate the server process."""
+    console.print("[yellow]Shutting down...[/yellow]")
+
+    # Unload the model via HTTP
+    api_key_header = {}
+    if use_api_key:
+        api_key_header = {"X-API-Key": os.getenv("OPENARC_API_KEY", "")}
+
+    try:
+        resp = requests.post(
+            f"{base_url}/openarc/unload",
+            json={"model_name": model_name},
+            headers={**api_key_header},
+            timeout=5,
+        )
+        if resp.status_code == 200:
+            console.print(f"[green]{model_name} unloaded[/green]")
+        else:
+            console.print(f"[yellow]Unload returned {resp.status_code}: {resp.text}[/yellow]")
+    except requests.exceptions.RequestException as e:
+        console.print(f"[dim]Server may already be down ({e})[/dim]")
+
+    # Terminate the server subprocess
+    if server_proc and server_proc.poll() is None:
+        try:
+            server_proc.terminate()
+            server_proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            console.print("[yellow]Server did not stop gracefully, forcing...[/yellow]")
+            server_proc.kill()
+            server_proc.wait()
 
 
 @cli.command()
@@ -81,9 +119,10 @@ from ..utils import validate_model_path
               help="Increase verbosity: -v warnings, -vv info + HTTP requests, -vvv debug, -vvvv debug incl. third-party libraries.")
 @click.pass_context
 def run(ctx, model_path, model_name, engine, model_type, device, runtime_config, scheduler_config, cache_dir, draft_model_path, draft_device, num_assistant_tokens, assistant_confidence_threshold, tool_call_parser, host, port, use_api_key, verbose):
-    """- Add a model configuration, start the server, and load the model in one step.
+    """Add a model configuration, start the server, load the model, and keep running.
 
     Combines 'openarc add' + 'openarc serve start' + 'openarc load'.
+    Press Ctrl+C to unload the model and shut down cleanly.
 
     Examples:
         openarc run --model-name my-model --model-path /path/to/model --engine ovgenai --model-type llm --device AUTO
@@ -117,7 +156,7 @@ def run(ctx, model_path, model_name, engine, model_type, device, runtime_config,
                 console.print(f"[red]Error: scheduler_config must be a JSON object (dictionary), got {type(scheduler_config).__name__}[/red]")
                 console.print('[yellow]Example format: \'{"max_num_batched_tokens": 256, "enable_prefix_caching": true}\'[/yellow]')
             SchedulerConfigSchema.model_validate_json(scheduler_config)
-        except ValidationError as e:
+        except Exception as e:
             console.print("[red]Error: Failed validating scheduler_config:[/red]")
             console.print('[yellow]Example format: \'{"max_num_batched_tokens": 256, "enable_prefix_caching": true}\'[/yellow]')
             console.print('')
@@ -170,51 +209,86 @@ def run(ctx, model_path, model_name, engine, model_type, device, runtime_config,
     else:
         os.environ["OPENARC_API_KEY_REQUIRED"] = "false"
 
-    # Step 4: Start the server in a background thread, then load the model
-    from ..modules.launch_server import start_server
+    # Step 4: Start the server as a subprocess (not daemon thread).
+    # This keeps uvicorn alive independently and allows clean shutdown.
+    from ..modules.launch_server import _build_log_config, logger
 
     console.print(f"[green]Starting OpenArc server on {host}:{port}[/green]")
     console.print(f"[blue]Loading model:[/blue] {model_name}")
 
-    # Build the base URL for loading
     base_url = f"http://{host}:{port}"
 
-    def load_model_after_startup():
-        """Wait for server to be ready, then POST the model config."""
-        api_key_header = {}
-        if use_api_key:
-            api_key_header = {"X-API-Key": os.getenv("OPENARC_API_KEY", "")}
+    # Write log config to a temporary JSON file so uvicorn's CLI can read it.
+    # --log-config expects a file path, not an inline JSON string.
+    import tempfile
+    log_config_path = str(tempfile.NamedTemporaryFile(
+        mode="w", suffix=".json", delete=False, prefix="openarc_log_config_"
+    ).name)
+    with open(log_config_path, "w") as f:
+        json.dump(_build_log_config(verbose), f)
 
-        max_retries = 30
-        for i in range(max_retries):
-            try:
-                resp = requests.get(f"{base_url}/openarc/version", headers=api_key_header, timeout=2)
-                if resp.status_code == 200:
-                    console.print("[cyan]Server is ready[/cyan]")
+    # Launch uvicorn in a subprocess so it runs independently.
+    # The parent process handles loading, keep-alive, and graceful shutdown.
+    server_proc = subprocess.Popen(
+        [sys.executable, "-m", "uvicorn", "src.server.main:app",
+         "--host", host, "--port", str(port),
+         "--log-config", log_config_path],
+        stdout=None,  # inherit parent's stdout/stderr for visibility
+        stderr=None,
+    )
 
-                    # POST the load request
-                    try:
-                        console.print("[cyan]...loading model[/cyan]")
-                        response = requests.post(
-                            f"{base_url}/openarc/load",
-                            json=load_config,
-                            headers={**api_key_header},
-                        )
-                        if response.status_code == 200:
-                            console.print(f"[green]{model_name} loaded![/green]")
-                        else:
-                            console.print(f"[red]Error loading model ({response.status_code}):[/red] {response.text}")
-                    except requests.exceptions.RequestException as e:
-                        console.print(f"[red]Failed to load model:[/red] {e}")
-                    return
-            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
-                time.sleep(1)
+    def _handle_signal(signum, frame):
+        """SIGINT/SIGTERM handler: unload model then terminate server."""
+        _shutdown(server_proc, base_url, model_name, use_api_key)
+        sys.exit(0)
 
+    signal.signal(signal.SIGINT, _handle_signal)
+    signal.signal(signal.SIGTERM, _handle_signal)
+
+    # Wait for the server to be ready, then load the model.
+    max_retries = 30
+    loaded = False
+    for i in range(max_retries):
+        try:
+            resp = requests.get(f"{base_url}/openarc/version", timeout=2)
+            if resp.status_code == 200:
+                console.print("[cyan]Server is ready[/cyan]")
+
+                # POST the load request
+                try:
+                    console.print("[cyan]...loading model[/cyan]")
+                    response = requests.post(
+                        f"{base_url}/openarc/load",
+                        json=load_config,
+                    )
+                    if response.status_code == 200:
+                        console.print(f"[green]{model_name} loaded![/green]")
+                        loaded = True
+                    else:
+                        console.print(f"[red]Error loading model ({response.status_code}):[/red] {response.text}")
+                except requests.exceptions.RequestException as e:
+                    console.print(f"[red]Failed to load model:[/red] {e}")
+                break
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+            time.sleep(1)
+
+    if not loaded and server_proc.poll() is None:
+        # Server started but model failed — still keep alive so user can try again.
+        console.print("[yellow]Model load did not complete. Server is running.[/yellow]")
+    elif not loaded:
         console.print("[red]Server did not become ready in time.[/red]")
+        _shutdown(server_proc, base_url, model_name, use_api_key)
+        ctx.exit(1)
 
-    # Start server thread
-    server_thread = threading.Thread(target=start_server, kwargs={"host": host, "port": port, "verbose": verbose}, daemon=True)
-    server_thread.start()
-
-    # Run the load-in-background logic in main thread (so we stay alive)
-    load_model_after_startup()
+    # Step 5: Keep the process alive. Poll /openarc/version to stay responsive
+    # and detect if the server crashes unexpectedly.
+    console.print(f"[green]{model_name} is ready. Press Ctrl+C to stop.[/green]")
+    try:
+        while True:
+            time.sleep(1)
+            # Check if subprocess died on its own
+            if server_proc.poll() is not None:
+                console.print("[red]Server process exited unexpectedly (code {}).[/red]".format(server_proc.returncode))
+                break
+    except KeyboardInterrupt:
+        _shutdown(server_proc, base_url, model_name, use_api_key)
