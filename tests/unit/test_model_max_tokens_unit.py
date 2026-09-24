@@ -1,4 +1,4 @@
-"""Unit tests for the server-side max_tokens default.
+"""Unit tests for the server-side max_tokens default and the dynamic CLI config help.
 
 Covers:
 * ``_apply_model_max_tokens_default`` -- the pure helper that substitutes the
@@ -7,6 +7,9 @@ Covers:
 * ``ModelRegistry.register_load`` -- that the model-level max_tokens is stored on
   the record so the routes can read it.
 * ``_model_max_tokens`` -- the per-model lookup used by the routes.
+* ``ov_config_docs`` -- that the dynamic --help listings surface the
+  memory-relevant keys (discovered from the installed openvino packages, with a
+  curated fallback when they are unavailable).
 """
 
 import asyncio
@@ -17,6 +20,7 @@ import pytest  # type: ignore[import]
 
 import src.server.model_registry as registry_module
 import src.server.routes.openai as openai_module
+from src.cli.modules import ov_config_docs
 from src.server.model_registry import ModelRegistry
 from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_GenConfig
 from src.server.schemas.registration import EngineType, ModelLoadConfig, ModelType
@@ -105,3 +109,22 @@ def test_model_max_tokens_lookup(
     found, missing = asyncio.run(_run())
     assert found == 777
     assert missing is None
+
+
+# --- dynamic CLI config help -----------------------------------------------
+def test_scheduler_config_help_lists_memory_keys() -> None:
+    text = ov_config_docs.scheduler_config_help()
+    for key in ("cache_size", "num_kv_blocks", "max_num_seqs", "max_num_batched_tokens"):
+        assert key in text, f"missing scheduler key {key}"
+
+
+def test_runtime_config_help_lists_memory_keys() -> None:
+    text = ov_config_docs.runtime_config_help()
+    for key in (
+        "OFFLOAD_RATIO",
+        "KV_CACHE_PRECISION",
+        "INFERENCE_PRECISION_HINT",
+        "NUM_STREAMS",
+        "PERFORMANCE_HINT",
+    ):
+        assert key in text, f"missing runtime key {key}"

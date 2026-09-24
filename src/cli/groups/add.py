@@ -12,6 +12,30 @@ from ..main import cli, console
 from ..utils import validate_model_path
 
 
+def _runtime_config_help_callback(ctx, _param, value):
+    """Eager callback: ``--runtime-config --help`` prints the full, dynamically
+    discovered key listing (from the installed openvino plugin) and exits, before
+    the other required options of ``add`` are validated."""
+    if value == "--help":
+        from src.cli.modules.ov_config_docs import runtime_config_help
+
+        console.print(runtime_config_help())
+        ctx.exit(0)
+    return value
+
+
+def _scheduler_config_help_callback(ctx, _param, value):
+    """Eager callback: ``--scheduler-config --help`` prints the full, dynamically
+    discovered key listing (from the installed openvino_genai package) and exits,
+    before the other required options of ``add`` are validated."""
+    if value == "--help":
+        from src.cli.modules.ov_config_docs import scheduler_config_help
+
+        console.print(scheduler_config_help())
+        ctx.exit(0)
+    return value
+
+
 @cli.command()
 @click.option('--model-name', '--mn',
     required=True,
@@ -36,10 +60,25 @@ from ..utils import validate_model_path
     help='Device(s) to load the model on.')
 @click.option("--runtime-config", "--rtc",
     default=None,
-    help='OpenVINO runtime configuration as JSON string (e.g., \'{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}\').')
+    is_eager=True,
+    callback=_runtime_config_help_callback,
+    help=(
+        'OpenVINO GPU runtime/compile configuration as a JSON string of plugin keys '
+        '(e.g., \'{"OFFLOAD_RATIO": 0.05, "PERFORMANCE_HINT": "LATENCY"}\'). '
+        'Run `openarc add --runtime-config --help` to list every available key with usage '
+        '(discovered from the installed openvino plugin). Memory-relevant keys include '
+        'OFFLOAD_RATIO, KV_CACHE_PRECISION, INFERENCE_PRECISION_HINT, NUM_STREAMS, '
+        'PERFORMANCE_HINT.'))
 @click.option("--scheduler-config", "-sc",
     default=None,
-    help='OpenVINO runtime scheduler configuration as JSON string (e.g., \'{"use_sparse_attention": true}\').')
+    is_eager=True,
+    callback=_scheduler_config_help_callback,
+    help=(
+        'OpenVINO GenAI scheduler configuration as a JSON string of scheduler keys '
+        '(e.g., \'{"cache_size": 12, "max_num_seqs": 1}\'). '
+        'Run `openarc add --scheduler-config --help` to list every available key with usage '
+        '(discovered from the installed openvino_genai package). Memory-relevant keys include '
+        'cache_size, num_kv_blocks, max_num_seqs, max_num_batched_tokens.'))
 @click.option('--cache-dir', '--cd',
     required=False,
     default=None,
