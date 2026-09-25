@@ -23,7 +23,6 @@ Welcome to the OpenArc documentation!
 
 OpenArc includes a command line tool for controlling the server.
 
-- [openarc add](commands.md#add) — Add a model to the config.
 - [openarc list](commands.md#list) — List models added to the config.
 - [openarc serve](commands.md#serve) — Start the OpenArc server.
 - [openarc load](commands.md#load) — Load a model from the config.
@@ -33,9 +32,30 @@ OpenArc includes a command line tool for controlling the server.
 
 ## Configuration
 
->Under construction!
+OpenArc uses a YAML based config system. See [Examples](configure.md#examples) for a config block for each model type.
 
-- [Advanced openvino properties](configure.md#runtime_config)
+- [LLM](configure.md#llm)
+- [VLM](configure.md#vlm)
+- [Kokoro](configure.md#kokoro)
+- [Qwen3-ASR](configure.md#qwen3-asr)
+- [Qwen3-TTS](configure.md#qwen3-tts)
+
+## Performance
+
+Scheduler, runtime properties, and multi-device recipes.
+
+- [scheduler_config](performance.md#scheduler_config)
+- [runtime_config](performance.md#runtime_config)
+- [Multi-Device Inference](performance.md#multi-device-inference)
+- [Speculative Decoding](performance.md#speculative-decoding)
+- [Model Caching](performance.md#model-caching)
+
+## API Usage
+
+Request-time parameters passed via `extra_body` on the OpenAI-compatible API.
+
+- [Qwen3-TTS](api_usage.md#qwen3-tts)
+- [Qwen3-ASR](api_usage.md#qwen3-asr)
 
 
 ## Concepts

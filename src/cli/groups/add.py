@@ -2,13 +2,22 @@
 Add command - Add a model configuration to the config file.
 """
 import json
+from pathlib import Path
 
 import click
-from pydantic import ValidationError
 
-from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import SchedulerConfigSchema
+# rich_click's package namespace falls through to click for unknown names, so
+# the globals module is imported directly. Mutating its dict in place is what
+# RichHelpConfiguration.load_from_globals() reads.
+from rich_click.rich_click import OPTION_GROUPS as RICH_CLICK_OPTION_GROUPS
 
 from ..main import cli, console
+from ..modules.config_options import (
+    ConfigOptionError,
+    config_options,
+    option_groups,
+    resolve_config_values,
+)
 from ..utils import validate_model_path
 
 
@@ -37,9 +46,6 @@ from ..utils import validate_model_path
 @click.option("--runtime-config", "--rtc",
     default=None,
     help='OpenVINO runtime configuration as JSON string (e.g., \'{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}\').')
-@click.option("--scheduler-config", "-sc",
-    default=None,
-    help='OpenVINO runtime scheduler configuration as JSON string (e.g., \'{"use_sparse_attention": true}\').')
 @click.option('--cache-dir', '--cd',
     required=False,
     default=None,
@@ -67,9 +73,20 @@ from ..utils import validate_model_path
     required=False,
     default=None,
     help='Tool-call output format for this model (qwen35 XML, hermes JSON, gemma4 call syntax, or museglimmer Harmony atem). llm/vlm only; required for tool calling.')
+@config_options
 @click.pass_context
-def add(ctx, model_path, model_name, engine, model_type, device, runtime_config, scheduler_config, cache_dir, draft_model_path, draft_device, num_assistant_tokens, assistant_confidence_threshold, tool_call_parser):
-    """- Add a model configuration to the config file."""
+def add(ctx, model_path, model_name, engine, model_type, device, runtime_config, cache_dir, draft_model_path, draft_device, num_assistant_tokens, assistant_confidence_threshold, tool_call_parser, **config_values):
+    """- Add a model configuration to the config file.
+
+    \b
+    Model defaults (--temperature, --max-tokens, --max-num-seqs, ...) are
+    generated from the pydantic contracts in src/server/schemas/modeling, so
+    they never drift from the request schema. Each help panel below is one
+    config.yaml key. A flag is written to the key that backs it for the chosen
+    --model-type, and a flag that does not apply to that model type is
+    rejected. Only flags you actually pass are written, so everything else
+    keeps using the contract's own default.
+    """
 
     # Validate model path
     if not validate_model_path(model_path):
@@ -89,53 +106,87 @@ def add(ctx, model_path, model_name, engine, model_type, device, runtime_config,
             console.print(f"[red]Error parsing runtime_config JSON:[/red] {e}")
             console.print('[yellow]Example format: \'{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}\'[/yellow]')
             ctx.exit(1)
-    parsed_scheduler_config = {}
-    if scheduler_config:
-        # Let the model validate the JSON itself. If it validates, assume we can safely load the JSON.
-        try:
-            parsed_scheduler_config = json.loads(scheduler_config)
-            if not isinstance(parsed_scheduler_config, dict):
-                console.print(f"[red]Error: scheduler_config must be a JSON object (dictionary), got {type(scheduler_config).__name__}[/red]")
-                console.print('[yellow]Example format: \'{"max_num_batched_tokens": 256, "enable_prefix_caching": true}\'[/yellow]')
-            SchedulerConfigSchema.model_validate_json(scheduler_config)
-        except ValidationError as e:
-                console.print("[red]Error: Failed validating scheduler_config:[/red]")
-                console.print('[yellow]Example format: \'{"max_num_batched_tokens": 256, "enable_prefix_caching": true}\'[/yellow]')
-                console.print('')
-                console.print('[yellow]Error:[/yellow]')
-                console.print(e)
-                ctx.exit(1)
+    # llm/vlm always get a model cache: compiled blobs live alongside the IR.
+    # An explicit CACHE_DIR in --runtime-config wins. Resolved to an absolute
+    # path here because runtime_config values are passed to OpenVINO verbatim,
+    # unlike model_path they are not resolved against the config file.
+    if model_type in ("llm", "vlm"):
+        parsed_runtime_config.setdefault(
+            "CACHE_DIR", str((Path(model_path) / "model_cache").resolve())
+        )
 
-    # Legacy configs may still contain vlm_type, but new configs resolve VLM tokens from config.json.
-    load_config = {
-        "model_name": model_name,
-        "model_path": model_path,
-        "model_type": model_type,
-        "engine": engine,
-        "device": device,
-        "runtime_config": parsed_runtime_config,
-        "scheduler_config": parsed_scheduler_config,
+    # Route the contract-flagged values into their blocks. Validation happens
+    # against the contracts themselves, so a bad value is caught here rather
+    # than at model load time.
+    try:
+        scheduler_config, blocks = resolve_config_values(model_type, config_values)
+    except ConfigOptionError as e:
+        console.print("[red]Error: invalid model configuration options:[/red]")
+        console.print(e)
+        ctx.exit(1)
+
+    entry = {
+        "load_config": {
+            "model_name": model_name,
+            "model_path": model_path,
+            "model_type": model_type,
+            "engine": engine,
+            "device": device,
+        }
     }
+
+    # runtime_config / scheduler_config and the request-default blocks are all
+    # siblings of load_config, matching the canonical config.yaml shape.
+    if parsed_runtime_config:
+        entry["runtime_config"] = parsed_runtime_config
+    if scheduler_config:
+        entry["scheduler_config"] = scheduler_config
+    for block_name, payload in blocks.items():
+        entry[block_name] = payload
 
     # Store the cache directory (resolved relative to the config file at load time)
     if cache_dir:
-        load_config["cache_dir"] = cache_dir
+        entry["load_config"]["cache_dir"] = cache_dir
 
     # Add speculative decoding options if provided
     if draft_model_path:
         if not validate_model_path(draft_model_path):
             console.print(f"[red]Model file check failed! {draft_model_path} does not contain openvino model files OR your chosen path is malformed. Verify chosen path is correct and acquired model files match source on the hub, or the destination of converted model.[/red]")
             ctx.exit(1)
-        load_config["draft_model_path"] = draft_model_path
+        entry["load_config"]["draft_model_path"] = draft_model_path
     if draft_device:
-        load_config["draft_device"] = draft_device
+        entry["load_config"]["draft_device"] = draft_device
     if num_assistant_tokens is not None:
-        load_config["num_assistant_tokens"] = num_assistant_tokens
+        entry["load_config"]["num_assistant_tokens"] = num_assistant_tokens
     if assistant_confidence_threshold is not None:
-        load_config["assistant_confidence_threshold"] = assistant_confidence_threshold
+        entry["load_config"]["assistant_confidence_threshold"] = assistant_confidence_threshold
     if tool_call_parser:
-        load_config["tool_call_parser"] = tool_call_parser
+        entry["load_config"]["tool_call_parser"] = tool_call_parser
 
-    ctx.obj.server_config.save_model_config(model_name, load_config)
+    ctx.obj.server_config.save_model_entry(model_name, entry)
     console.print(f"[green]Model configuration saved:[/green] {model_name}")
     console.print(f"[dim]Use 'openarc load {model_name}' to load this model.[/dim]")
+
+
+# Hand-declared load_config flags, plus click's own --help. Everything else in
+# the help comes from the contracts via option_groups().
+_LOAD_OPTIONS = [
+    "help",
+    "model_name",
+    "model_path",
+    "engine",
+    "model_type",
+    "device",
+    "runtime_config",
+    "cache_dir",
+    "draft_model_path",
+    "draft_device",
+    "num_assistant_tokens",
+    "assistant_confidence_threshold",
+    "tool_call_parser",
+]
+
+# One help panel per config.yaml key, keyed by the command path rich_click
+# matches against. This mutates rich_click's own groups, so there is no custom
+# panel code to maintain.
+RICH_CLICK_OPTION_GROUPS["*add"] = option_groups(_LOAD_OPTIONS)

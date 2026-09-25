@@ -49,6 +49,10 @@ nav = [
   { "Install" = "install.md" },
   { "Models" = "models.md" },
   { "Commands" = "commands.md" },
+  { "Configuration" = "configure.md" },
+  { "Performance" = "performance.md" },
+  { "API Usage" = "api_usage.md" },
+  { "Tool Use" = "tool_use.md" },
 ]
 
 # With the "extra_css" option you can add your own CSS styling to customize

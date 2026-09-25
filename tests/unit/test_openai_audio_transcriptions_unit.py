@@ -29,7 +29,11 @@ def _call(monkeypatch: pytest.MonkeyPatch, response_format: str, result=None, op
     fake_registry = SimpleNamespace(
         _lock=asyncio.Lock(),
         _models={
-            "qwen3": SimpleNamespace(model_name="qwen3-asr", model_type=ModelType.QWEN3_ASR),
+            "qwen3": SimpleNamespace(
+                model_name="qwen3-asr",
+                model_type=ModelType.QWEN3_ASR,
+                model_config_blocks={},
+            ),
         },
     )
     transcribe_mock = AsyncMock(return_value=result)

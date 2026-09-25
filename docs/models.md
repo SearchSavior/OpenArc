@@ -98,18 +98,6 @@ If you need help converting a particular model join Discord and we can help you!
 | [Qwen3-Reranker-0.6B-fp16-ov](https://huggingface.co/OpenVINO/Qwen3-Reranker-0.6B-fp16-ov) |
 
 
-## Model-Specific Instructions
-
-### Tool and Reasoning Parsing
-
-
-OpenArc now supports tool and reasoning parsing for several architectures. Our approach ensures correct openai compatible parsing using openvino genai by leveraging some useful facts about tokens. 
-
-Since Autoregressive language models emit tokens in a continuous stream one by one, we can visualize it this way
-- streaming decoded tokens to a buff
-
-
-
 **How do I control thinking?**
 
 Qwen3.5 utilizes chat instructions for thinking control. You can enable thinking by using the parameter `chat_template_kwargs` with a value of `{"enable_thinking": true}` and disable it by setting the value to `{"enable_thinking": false}`. 
@@ -118,20 +106,3 @@ Previous reasoning is also retained within a conversation. You can enable or dis
 
 For example, to enable thinking and disable previous reasoning, you would pass `chat_template_kwargs` with a value of `{"enable_thinking": true, "preserve_previous_think": false}`.
 
-### Qwen3 MoE
-
-**GPU loading fails with "FuseMOE3GemmCompressed transformation did not match the routing subgraph"?**
-
-Qwen3 MoE models (e.g., `Qwen3-Coder-30B-A3B-Instruct`) require a recent OpenVINO build on GPU. Older builds fail during pipeline creation with:
-
-```
-[GPU] MOECompressed (GEMM3_SWIGLU) reached the GPU backend without being fused: FuseMOE3GemmCompressed transformation did not match the routing subgraph
-```
-
-This was a bug in the OpenVINO GPU plugin's MoE fusion pass and is fixed upstream in nightly `2026.4.0.dev20260730` and newer. Upgrade with:
-
-```
-uv pip install --pre -U openvino openvino-genai openvino-tokenizers --extra-index-url https://storage.openvinotoolkit.org/simple/wheels/nightly
-```
-
-After upgrading, clear the model cache directory (if one is configured) so the model recompiles, and restart the server if it was running before the upgrade.
