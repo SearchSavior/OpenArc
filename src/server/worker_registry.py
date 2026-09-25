@@ -820,7 +820,16 @@ class WorkerRegistry:
             q = self._get_model_queue(model_name)
             await q.put(packet)
             while True:
-                item = await stream_queue.get()
+                try:
+                    item = await stream_queue.get()
+                except asyncio.CancelledError:
+                    # Catch cancellation at the innermost await while
+                    # _active_requests[request_id] still exists, so the
+                    # engine's cancel() actually fires.  The finally block
+                    # below still runs for cleanup; the route handler's
+                    # own infer_cancel call becomes a harmless no-op.
+                    await self._cancel_locked(request_id)
+                    raise
                 if item is None:
                     break
                 if isinstance(item, dict) and item.get("error"):
@@ -842,6 +851,28 @@ class WorkerRegistry:
             async with self._lock:
                 self._active_requests.pop(request_id, None)
 
+    async def _cancel_locked(self, request_id: str) -> bool:
+        """
+        Look up the model instance for request_id and call its cancel() method.
+
+        Acquires both self._lock and self._model_registry._lock internally.
+        Called from infer_cancel (explicit API) and from stream_generate's
+        CancelledError handler (race-condition fix).
+        """
+        async with self._lock:
+            if request_id in self._active_requests:
+                model_name, _ = self._active_requests[request_id]
+
+                async with self._model_registry._lock:
+                    for record in self._model_registry._models.values():
+                        if record.model_name == model_name and record.model_instance is not None:
+                            model_instance = record.model_instance
+                            if hasattr(model_instance, 'cancel'):
+                                await model_instance.cancel(request_id)
+                                logger.info(f"[WorkerRegistry] Cancelled request {request_id} on model {model_name}")
+                                return True
+            return False
+
     async def infer_cancel(self, request_id: str) -> bool:
         """
         Cancel an ongoing inference request by request_id.
@@ -852,20 +883,7 @@ class WorkerRegistry:
         Returns:
             True if cancellation was triggered, False if request not found
         """
-        async with self._lock:
-            if request_id in self._active_requests:
-                model_name, _ = self._active_requests[request_id]
-
-                # Look up model instance from ModelRegistry
-                async with self._model_registry._lock:
-                    for record in self._model_registry._models.values():
-                        if record.model_name == model_name and record.model_instance is not None:
-                            model_instance = record.model_instance
-                            if hasattr(model_instance, 'cancel'):
-                                await model_instance.cancel(request_id)
-                                logger.info(f"[WorkerRegistry] Cancelled request {request_id} on model {model_name}")
-                                return True
-            return False
+        return await self._cancel_locked(request_id)
 
     async def transcribe_whisper(self, model_name: str, gen_config: OVGenAI_WhisperGenConfig) -> Dict[str, Any]:
         """Transcribe audio using Whisper model."""
