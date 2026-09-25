@@ -9,6 +9,21 @@ After installation run ```openarc --help``` to see focused usage documentation i
 
 This page contains example commands to help you choose models and configure OpenArc. 
 
+=== "add"
+
+    Writes a model entry to `config.yaml`. Flags are validated against the chosen `--model-type`; a flag that does not apply is rejected, and only flags you pass are written.
+
+    ```
+    openarc add \
+      --model-name qwen35-08b \
+      --model-path /mnt/models/Qwen3.5-0.8B-int8-asym-ov \
+      --engine ovgenai \
+      --model-type vlm \
+      --device CPU
+    ```
+
+    `openarc add --help` shows one help panel per `config.yaml` key. See [Configuration](configure.md) for per-model-type examples and the full block reference.
+
 === "list"
 
     Reads model entries from `config.yaml`.

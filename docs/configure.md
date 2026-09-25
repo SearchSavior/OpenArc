@@ -1,9 +1,9 @@
-OpenArc now uses a YAML based configutation system! Before we did things with a CLI tool- but now, you are free to configure defaults to your hearts content. Configuration options set here override hardcoded defaults, but can be overridden at request time. For example, if you are in openwebui but need higher `max_tokens` than what you set in the config, you can raise that value in openwebui and that value will override the config saved in `config.yaml` for that request.
+OpenArc uses a YAML based configuration system! Models are added to `config.yaml` with `openarc add`, which writes the config blocks documented below. Configuration options set here override hardcoded defaults, but can be overridden at request time. For example, if you are in openwebui but need higher `max_tokens` than what you set in the config, you can raise that value in openwebui and that value will override the config saved in `config.yaml` for that request.
 
 
 ## Config Blocks
 
-There are a few different blocks in a models config that accept different parameters. Some will be common across implementations while others are specific. 
+There are a few different blocks in a models config that accept different parameters. Some will be common across implementations while others are specific. `openarc add` writes to these blocks; `openarc add --help` shows one help panel per key.
 
 ### load_config
 - engine: ovgenai, openvino, optimum
@@ -32,9 +32,9 @@ Openvino genai does a graph transformation in the pipeline, which adapts the mod
 
 runtime_config is an OpenArc entrypoint to the *properties* way of configuring openvino runtime. These settings allow users to tune the behavior of openivno runtime without needing to change application logic and are meant to be "portable", requring no code changes. Since OpenArc 
 
-OpenArc does not validate these, and OpenVINO upstream does not provide a way to check the behvaior of these settings in all cases. They can help you access hardware features not available to all devices like `SCHEDULING_CORE_TYPE` for more recent Intel CPUs, debug numeircal precision issues with `INFERENCE_PRECISION_HINT` or control `KV_CACHE_PRECISION`.
+OpenArc does not validate these, and OpenVINO upstream does not provide a way to check the behvaior of these settings in all cases. They can help you access hardware features not available to all devices like `SCHEDULING_CORE_TYPE` for more recent Intel CPUs, debug numerical precision issues with `INFERENCE_PRECISION_HINT` or control `KV_CACHE_PRECISION`.
 
-*properties* have the worst documentation in all of OpenVINO ecosystem, yet they are used everywhere in the openvino_notebooks, PRs and sometimes are even hardcoded depending on the needs of OpenVINO team. In that way, poking at these settings can drastically change performance but have less knobs than users of projects like `llama.cpp`, `vllm`, `sglang` are used to tinkering with.
+*properties* have the worst documentation in all of OpenVINO ecosystem, yet they are used everywhere in the openvino_notebooks, PRs and sometimes are even hardcoded depending on the needs of OpenVINO team. In that way, poking at these settings can drastically change performance but have less knobs than users of projects like `llama.cpp`, `vllm`, `sglang` are used to tinkering with. Additionally, some setting like `NUM_STREAMS` or ``
 
 
 | Property | Values | Notes |
@@ -71,89 +71,63 @@ Request defaults for sampling, applied to `llm` and `vlm` models only. Anything 
 
 ## Example Configs
 
+`openarc add` writes a model entry to `config.yaml`. Each help panel in `openarc add --help` is one config.yaml key: a flag is written to the key that backs it for the chosen `--model-type`, and a flag that does not apply to that model type is rejected. Only flags you actually pass are written, so everything else keeps its built-in default. Boolean options are plain flags (pass them to enable); options that take an object, like `--runtime-config` and `--chat-template-kwargs`, accept a JSON string.
+
 ### LLM
 
-```yaml
-models:
-  qwen35-08b:
-    load_config:
-      engine: ovgenai
-      model_type: llm
-      model_path: /mnt/models/Qwen3.5-0.8B-int8-asym-ov
-      device: CPU
-      tool_call_parser: qwen35
-    runtime_config:
-      PERFORMANCE_HINT: LATENCY
-    scheduler_config:
-      max_num_batched_tokens: 2048
-      num_kv_blocks: 
-      cache_size:
-      num_linear_attention_blocks:
-      cache_interval_multiplier:
-      dynamic_split_fuse:
-      enable_prefix_caching:
-      use_cache_eviction:
-      use_sparse_attention:
-    sampler_config:
-      temperature: 0.7
-      top_k: 40
-      top_p: 0.95
-      repetition_penalty: 1.05
-      max_tokens: 1024
-      chat_template_kwargs:
-        enable_thinking: true
+```
+openarc add \
+  --model-name qwen35-08b \
+  --model-path /mnt/models/Qwen3.5-0.8B-int8-asym-ov \
+  --engine ovgenai \
+  --model-type llm \
+  --device CPU \
+  --tool-call-parser qwen35 \
+  --runtime-config '{"PERFORMANCE_HINT": "LATENCY"}' \
+  --max-num-batched-tokens 2048 \
+  --temperature 0.7 \
+  --top-k 40 \
+  --top-p 0.95 \
+  --repetition-penalty 1.05 \
+  --max-tokens 1024 \
+  --chat-template-kwargs '{"enable_thinking": true}'
 ```
 
 ### VLM
 
-```yaml
-models:
-  qwen35-08b:
-    load_config:
-      engine: ovgenai
-      model_type: vlm
-      model_path: /mnt/models/Qwen3.5-0.8B-int8-asym-ov
-      device: CPU
-      tool_call_parser: qwen35
-    runtime_config:
-      PERFORMANCE_HINT: LATENCY
-    scheduler_config:
-      max_num_batched_tokens:
-      num_kv_blocks:
-      cache_size:
-      num_linear_attention_blocks:
-      cache_interval_multiplier:
-      dynamic_split_fuse:
-      enable_prefix_caching:
-      use_cache_eviction:
-      use_sparse_attention:
-    sampler_config:
-      temperature: 0.7
-      top_k: 40
-      top_p: 0.95
-      repetition_penalty: 1.05
-      max_tokens: 1024
+```
+openarc add \
+  --model-name qwen35-08b \
+  --model-path /mnt/models/Qwen3.5-0.8B-int8-asym-ov \
+  --engine ovgenai \
+  --model-type vlm \
+  --device CPU \
+  --tool-call-parser qwen35 \
+  --runtime-config '{"PERFORMANCE_HINT": "LATENCY"}' \
+  --temperature 0.7 \
+  --top-k 40 \
+  --top-p 0.95 \
+  --repetition-penalty 1.05 \
+  --max-tokens 1024
 ```
 
 ### Kokoro
 
 OpenArc supports kokoro! Support in openvino has improved since I first implemented this model, so its possible we should look into review.
 
-```yaml
-models:
-  kokoro-82m:
-    load_config:
-      engine: ovgenai
-      model_type: kokoro
-      model_path: /mnt/models/Kokoro-82M-ov
-      device: CPU
-    kokoro_config:
-      voice: af_sarah                
-      voice_blend: af_heart:0.7,af_nicole:0.3  
-      lang_code: a
-      speed: 1.0
-      character_count_chunk: 400
-      response_format: wav
+```
+openarc add \
+  --model-name kokoro-82m \
+  --model-path /mnt/models/Kokoro-82M-ov \
+  --engine ovgenai \
+  --model-type kokoro \
+  --device CPU \
+  --voice af_sarah \
+  --voice-blend af_heart:0.7,af_nicole:0.3 \
+  --lang-code a \
+  --speed 1.0 \
+  --character-count-chunk 400 \
+  --response-format wav
 ```
 
 ### Qwen3-ASR
@@ -162,115 +136,83 @@ Another great model for ASR task. THe below settings around chunking have model-
 
 Reference Implementation lives at [SearchSavior/Qwen3-ASR-OpenVINO](https://github.com/SearchSavior/Qwen3-ASR-OpenVINO)
 
-
-```yaml
-models:
-  qwen3-asr:
-    load_config:
-      engine: ovgenai
-      model_type: qwen3_asr
-      model_path: /mnt/models/Qwen3-ASR-ov
-      device: GPU.0
-    qwen3_asr_config:
-      language:                       # None = auto-detect
-      max_tokens: 1024                # must be > 0
-      max_chunk_sec: 30.0             # chunk upper bound, seconds
-      search_expand_sec: 5.0          # boundary search expansion, seconds
-      min_window_ms: 100.0            # energy window, ms
+```
+openarc add \
+  --model-name qwen3-asr \
+  --model-path /mnt/models/Qwen3-ASR-ov \
+  --engine ovgenai \
+  --model-type qwen3_asr \
+  --device GPU.0 \
+  --max-tokens 1024 \
+  --max-chunk-sec 30.0 \
+  --search-expand-sec 5.0 \
+  --min-window-ms 100.0
 ```
 
 ### Whisper
 
 Whisper has no config block; audio arrives per request, so only load-time options apply.
 
-```yaml
-models:
-  whisper-large-v3:
-    load_config:
-      engine: ovgenai
-      model_type: whisper
-      model_path: /mnt/models/whisper-large-v3-int8-ov
-      device: GPU.0
-    runtime_config:
-      PERFORMANCE_HINT: LATENCY
 ```
-
+openarc add \
+  --model-name whisper-large-v3 \
+  --model-path /mnt/models/whisper-large-v3-int8-ov \
+  --engine ovgenai \
+  --model-type whisper \
+  --device GPU.0 \
+  --runtime-config '{"PERFORMANCE_HINT": "LATENCY"}'
+```
 
 ### Qwen3-TTS
 
 All 3 flavors of qwen3-tts are supported, with a rich set of configuration options. PRs to improve performance or other enhancements are welcome
 
-Qwen3-TTS family models process audio and text in an interleaved way, leveraging the reasoning of the Qwen3-0.6b language model backbone to augment the latents produced up to that point; then, Qwen team trains a streaming audio codec decoder with multi-token prediction heads that spit audio into a tokenizer. 
+Qwen3-TTS family models process audio and text in an interleaved way, leveraging the reasoning of the Qwen3-0.6b language model backbone to augment the latents produced up to that point; then, Qwen team trains a streaming audio codec decoder with multi-token prediction heads that spit audio into a tokenizer.
 
 If you want to learn more or contribute improvements, check out my reference implementation [SearchSavior/Qwen3-TTS-OpenVINO](https://github.com/SearchSavior/Qwen3-TTS-OpenVINO).
 
+#### Custom Voice
 
-
-```yaml
-models:
-  qwen3-tts-custom:
-    load_config:
-      engine: ovgenai
-      model_type: qwen3_tts_custom_voice
-      model_path: /mnt/models/Qwen3-TTS-CustomVoice-ov
-      device: GPU.0
-    # Shared by all three modes.
-    qwen3_tts_config:
-      language:                       # None = auto-detect
-      max_new_tokens: 2048
-      do_sample: true
-      top_k: 50
-      top_p: 1.0
-      temperature: 0.9
-      repetition_penalty: 1.05
-      non_streaming_mode: true        # false = drip-feed text during decode
-      subtalker_do_sample: true
-      subtalker_top_k: 50
-      subtalker_top_p: 1.0
-      subtalker_temperature: 0.9
-      stream: true                    # chunked audio/L16 response
-      stream_chunk_frames: 300
-      stream_left_context: 25
+```
+openarc add \
+  --model-name qwen3-tts-custom \
+  --model-path /mnt/models/Qwen3-TTS-CustomVoice-ov \
+  --engine ovgenai \
+  --model-type qwen3_tts_custom_voice \
+  --device GPU.0 \
+  --max-new-tokens 2048 \
+  --do-sample \
+  --top-k 50 \
+  --top-p 1.0 \
+  --temperature 0.9 \
+  --repetition-penalty 1.05 \
+  --non-streaming-mode \
+  --subtalker-do-sample \
+  --subtalker-top-k 50 \
+  --subtalker-top-p 1.0 \
+  --subtalker-temperature 0.9 \
+  --stream \
+  --stream-chunk-frames 300 \
+  --stream-left-context 25 \
+  --speaker chelsie \
+  --instruct "Sound cheerful."
 ```
 
 #### Voice Clone
 
-```yaml
-    qwen3_tts_voice_clone_config:
-      ref_text: "Transcript of the reference clip."  # enables ICL
-      x_vector_only: false            # true = skip ICL even when ref_text is set
-      instruct: "Speak slowly."
+Use `--model-type qwen3_tts_voice_clone` and add these flags to the shared set above:
+
 ```
+  --ref-text "Transcript of the reference clip." \
+  --instruct "Speak slowly."
+```
+
+Passing `--x-vector-only` skips ICL even when `--ref-text` is set.
 
 #### Voice Design
-```yaml
-    qwen3_tts_voice_design_config:
-      voice_description: "A red furry muppet with an orange nose."
+
+Use `--model-type qwen3_tts_voice_design` and add:
+
 ```
-#### Custom Voice
-
-```yaml
-    qwen3_tts_custom_voice_config:
-      speaker: chelsie
-      instruct: "Sound cheerful."
+  --voice-description "A red furry muppet with an orange nose."
 ```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
