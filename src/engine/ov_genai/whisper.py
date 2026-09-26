@@ -3,11 +3,15 @@ import base64
 import gc
 import io
 import logging
+import os
+import subprocess
+import tempfile
 from typing import Any, AsyncIterator, Dict, Union
 
 import librosa
 import numpy as np
 from openvino_genai import WhisperPipeline
+from soundfile import LibsndfileError
 
 from src.server.model_registry import ModelRegistry
 from src.server.schemas.registration import ModelLoadConfig
@@ -22,6 +26,30 @@ class OVGenAI_Whisper:
         self.load_config = load_config
         pass
 
+    def decode_with_ffmpeg(self, audio_bytes: bytes) -> np.ndarray:
+        src = tempfile.NamedTemporaryFile(delete=False)
+        try:
+            src.write(audio_bytes)
+            src.flush()
+            src.close()
+            proc = subprocess.run(
+                [
+                    "ffmpeg",
+                    "-loglevel", "error",
+                    "-i", src.name,         # Read the uploaded audio from the temporary file.
+                    "-ac", "1",             # Convert the audio to mono.
+                    "-ar", "16000",         # Resample to 16 kHz.
+                    "-f", "f32le",          # Emit raw 32-bit little-endian float PCM.
+                    "pipe:1",               # Write the decoded audio to std out.
+                ],
+                capture_output=True,
+            )
+            if proc.returncode != 0:
+                raise ValueError(f"ffmpeg could not decode audio: {proc.stderr.decode(errors='replace')[:500]}")
+            return np.frombuffer(proc.stdout, dtype=np.float32)
+        finally:
+            os.unlink(src.name)  # always delete the temp file
+
     def prepare_audio(self, gen_config: OVGenAI_WhisperGenConfig) -> list[float]:
         """
         Prepare audio inputs from base64 string for the Whisper pipeline.
@@ -30,8 +58,12 @@ class OVGenAI_Whisper:
         audio_bytes = base64.b64decode(gen_config.audio_base64)
         
         audio_buffer = io.BytesIO(audio_bytes)
-        
-        audio, sr = librosa.load(audio_buffer, sr=16000, mono=True)
+
+        try:
+            audio, sr = librosa.load(audio_buffer, sr=16000, mono=True)
+        except LibsndfileError as exc:
+            logger.info(f"librosa decode failed ({exc}), retrying with ffmpeg")
+            audio = self.decode_with_ffmpeg(audio_bytes)
 
         return audio.astype(np.float32).tolist()
 

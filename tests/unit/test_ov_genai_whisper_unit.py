@@ -71,6 +71,27 @@ def test_prepare_audio_calls_librosa(monkeypatch: pytest.MonkeyPatch, load_confi
     assert audio_list == audio_array.tolist()
 
 
+def test_prepare_audio_falls_back_to_ffmpeg(monkeypatch: pytest.MonkeyPatch, load_config: ModelLoadConfig) -> None:
+    whisper = OVGenAI_Whisper(load_config)
+    audio_array = np.array([0.1, -0.2], dtype=np.float32)
+
+    load_mock = MagicMock(side_effect=whisper_module.LibsndfileError(1))
+    monkeypatch.setattr(whisper_module.librosa, "load", load_mock)
+    proc_mock = MagicMock(returncode=0, stdout=audio_array.tobytes())
+    run_mock = MagicMock(return_value=proc_mock)
+    monkeypatch.setattr(whisper_module.subprocess, "run", run_mock)
+
+    audio_list = whisper.prepare_audio(OVGenAI_WhisperGenConfig(audio_base64=_sample_audio_base64()))
+
+    load_mock.assert_called_once()
+    run_mock.assert_called_once()
+    command = run_mock.call_args.args[0]
+    assert command[:4] == ["ffmpeg", "-loglevel", "error", "-i"]
+    assert command[5:] == ["-ac", "1", "-ar", "16000", "-f", "f32le", "pipe:1"]
+    assert run_mock.call_args.kwargs["capture_output"] is True
+    assert audio_list == audio_array.tolist()
+
+
 def test_collect_metrics_formats_values(load_config: ModelLoadConfig) -> None:
     whisper = OVGenAI_Whisper(load_config)
     metrics = whisper.collect_metrics(DummyPerfMetrics())
@@ -151,4 +172,3 @@ def test_unload_model_resets_state(monkeypatch: pytest.MonkeyPatch, load_config:
     assert whisper.whisper_model is None
     registry.register_unload.assert_called_once_with("model-name")
     gc_mock.assert_called_once()
-
