@@ -3,6 +3,7 @@ Add command - Add a model configuration to the config file.
 """
 import json
 from pathlib import Path
+import re
 
 import click
 
@@ -19,6 +20,18 @@ from ..modules.config_options import (
     resolve_config_values,
 )
 from ..utils import validate_model_path
+
+_SIZE_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*([KMGT])?i?B?\s*$", re.IGNORECASE)
+_SIZE_MULTIPLIERS = {"": 1, "K": 1024, "M": 1024**2, "G": 1024**3, "T": 1024**4}
+
+
+def _parse_size_bytes(value: str) -> int:
+    """Parse a size like '524288', '512K', '256MiB', '1G' into bytes."""
+    match = _SIZE_RE.match(value)
+    if not match:
+        raise ValueError(f"unrecognized size {value!r}")
+    number, suffix = match.groups()
+    return int(float(number) * _SIZE_MULTIPLIERS[(suffix or "").upper()])
 
 
 @cli.command()
@@ -73,9 +86,13 @@ from ..utils import validate_model_path
     required=False,
     default=None,
     help='Tool-call output format for this model (qwen35 XML, hermes JSON, gemma4 call syntax, or museglimmer Harmony atem). llm/vlm only; required for tool calling.')
+@click.option('--worker-line-limit', '--wll',
+    required=False,
+    default=None,
+    help='Maximum size of one line on the IPC pipe to this model\'s inference worker (ovgenai only). Bytes, or K/M/G suffix (e.g. 512K, 256M, 1G). Default 256 MiB. Requests with larger payloads fail with a clear error; lowering it bounds IPC memory. Does not trigger a recompile.')
 @config_options
 @click.pass_context
-def add(ctx, model_path, model_name, engine, model_type, device, runtime_config, cache_dir, draft_model_path, draft_device, num_assistant_tokens, assistant_confidence_threshold, tool_call_parser, **config_values):
+def add(ctx, model_path, model_name, engine, model_type, device, runtime_config, cache_dir, draft_model_path, draft_device, num_assistant_tokens, assistant_confidence_threshold, tool_call_parser, worker_line_limit, **config_values):
     """- Add a model configuration to the config file.
 
     \b
@@ -162,6 +179,19 @@ def add(ctx, model_path, model_name, engine, model_type, device, runtime_config,
         entry["load_config"]["assistant_confidence_threshold"] = assistant_confidence_threshold
     if tool_call_parser:
         entry["load_config"]["tool_call_parser"] = tool_call_parser
+    limit_bytes: int | None = None
+    if worker_line_limit is not None:
+        try:
+            limit_bytes = _parse_size_bytes(worker_line_limit)
+        except ValueError as e:
+            console.print(f"[red]Error parsing --worker-line-limit:[/red] {e}")
+            console.print('[yellow]Examples: \'268435456\', \'512K\', \'256M\', \'1G\'[/yellow]')
+            ctx.exit(1)
+    if limit_bytes is not None:
+        if limit_bytes < 65536:
+            console.print(f"[red]Error: --worker-line-limit must be at least 65536 bytes (64 KiB), got {limit_bytes}.[/red]")
+            ctx.exit(1)
+        entry["load_config"]["worker_line_limit"] = limit_bytes
 
     ctx.obj.server_config.save_model_entry(model_name, entry)
     console.print(f"[green]Model configuration saved:[/green] {model_name}")

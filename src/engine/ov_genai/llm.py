@@ -31,7 +31,7 @@ class OVGenAI_LLM:
         self._active_streamer: Optional[ChunkStreamer] = None
 
     def prepare_inputs(self,
-        messages: List[Dict[str, Any]],
+        messages: Optional[List[Dict[str, Any]]],
         tools: Optional[List[Dict[str, Any]]] = None,
         chat_template_kwargs: dict = {}
     ) -> ov.Tensor:

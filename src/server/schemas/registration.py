@@ -9,7 +9,7 @@ from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import SchedulerCo
 
 class ModelStatus(str, Enum):
     """loading status.
-    
+
     Options:
     - LOADING: Model is currently being loaded in the background
     - LOADED: Model has been successfully loaded and is ready for inference
@@ -23,7 +23,7 @@ class ModelStatus(str, Enum):
 class ModelType(str, Enum):
     """
     Internal routing to the correct inference pipeline.
-    
+
     Options:
     - llm: Text-to-text LLM models
     - vlm: Image-to-text VLM models
@@ -33,9 +33,9 @@ class ModelType(str, Enum):
     - qwen3_tts_custom_voice: Qwen3-TTS with predefined speaker
     - qwen3_tts_voice_design: Qwen3-TTS with free-form voice description
     - qwen3_tts_voice_clone: Qwen3-TTS cloning a reference audio
-    - emb: Text-to-vector models    
-    - rerank: Reranker models"""    
-    
+    - emb: Text-to-vector models
+    - rerank: Reranker models"""
+
     LLM = "llm"
     VLM = "vlm"
     WHISPER = "whisper"
@@ -54,7 +54,7 @@ class EngineType(str, Enum):
     Options:
     - optimum: Optimum-Intel engine
     - ovgenai: OpenVINO GenAI engine"""
-    
+
     OV_OPTIMUM = "optimum"
     OV_GENAI = "ovgenai"
     OPENVINO = "openvino"
@@ -84,7 +84,7 @@ class ModelLoadConfig(BaseModel):
     model_path: str = Field(
         description="""
         Top level path to directory containing OpenVINO IR converted model.
-        
+
         OpenArc does not support runtime conversion and cannot pull from HF.""")
     model_name: str = Field(
         ...,
@@ -141,6 +141,25 @@ class ModelLoadConfig(BaseModel):
 
         When unset, /chat/completions requests containing tools are rejected
         with 400.""",
+    )
+    worker_line_limit: Optional[int] = Field(
+        default=None,
+        ge=65536,
+        description="""
+        Maximum size, in bytes, of one line on the IPC pipe between the server
+        and this model's inference worker subprocess (ovgenai models only;
+        ignored by in-process engines).
+
+        A request whose JSON line exceeds the limit fails with a clear error
+        (the worker reports FATAL and the supervisor respawns it). When unset,
+        the protocol default of 256 MiB applies, which covers arbitrarily long
+        text conversations, dozens of images, and hours of audio. Lower it to
+        bound IPC memory on small machines or to reject oversized payloads;
+        raise it for very large single requests.
+
+        This is an IPC setting, not a compilation setting: changing it never
+        invalidates the compiled-model cache (it is excluded from config_hash).
+        """,
     )
 
     # --- Model-level request defaults, authored in config.yaml ---

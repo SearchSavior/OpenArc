@@ -50,7 +50,7 @@ class OVGenAI_VLM:
         return token_template
 
     def prepare_inputs(self,
-        messages: List[Dict[str, Any]],
+        messages: Optional[List[Dict[str, Any]]],
         tools: Optional[List[Dict[str, Any]]] = None,
         chat_template_kwargs: dict = {}
     ) -> Tuple[str, List[ov.Tensor]]:
@@ -64,6 +64,12 @@ class OVGenAI_VLM:
         Returns:
             (tokenized_messages, ov_images)
         """
+
+        if not messages:
+            # Nothing to tokenize (a request carrying neither prompt,
+            # input_ids, nor messages); return an empty prompt and let the
+            # pipeline surface the missing-input error.
+            return "", []
 
         images: List[Image.Image] = []
         text_messages: List[Dict[str, Any]] = []
