@@ -37,6 +37,7 @@ def _load_config(
     tmp_path,
     name: str = "stub-kokoro",
     model_type: ModelType = ModelType.KOKORO,
+    worker_max_respawns: Optional[int] = None,
 ) -> ModelLoadConfig:
     return ModelLoadConfig(
         model_path=str(tmp_path),
@@ -44,6 +45,7 @@ def _load_config(
         model_type=model_type,
         engine=EngineType.OPENVINO,
         device="CPU",
+        worker_max_respawns=worker_max_respawns,
     )
 
 
@@ -384,3 +386,36 @@ def test_openvino_worker_env_switch(tmp_path, monkeypatch) -> None:
 
     # Optimum models are not worker-routed (a later stage).
     assert _worker_enabled(EngineType.OV_OPTIMUM, ModelType.EMB) is False
+
+
+def test_plain_worker_max_respawns_zero_is_unlimited(tmp_path, monkeypatch) -> None:
+    """The plain-OpenVINO supervisor inherits the respawn-budget policy: with
+    worker_max_respawns=0 the worker is reloaded on every native crash and is
+    never quarantined -- the default per-load budget of 2 is overridden by the
+    config, so the model survives past where it would otherwise be unloaded."""
+    monkeypatch.setenv("OPENARC_WORKER_STUB", "1")
+    config = _load_config(
+        tmp_path,
+        name="stub-tts",
+        model_type=ModelType.QWEN3_TTS_CUSTOM_VOICE,
+        worker_max_respawns=0,
+    )
+
+    async def _run():
+        facade = RemoteOVQwen3TTS(config, load_timeout=30.0)
+        await facade.load_model(config)
+        assert facade.status()["max_respawns"] == 0
+
+        # Crash well past the default budget of 2: each crash respawns a fresh
+        # process that returns ready, and the model is never quarantined.
+        pid = facade.worker_pid
+        for _ in range(5):
+            with pytest.raises(proto.RemoteWorkerDeadError):
+                await facade.generate(_tts_config("CRASH"))
+            await _wait_for_respawn(facade, pid)
+            pid = facade.worker_pid
+        assert facade.status()["state"] == "ready"
+        assert facade.status()["respawns"] == 5
+        await facade._supervisor.unload()
+
+    asyncio.run(_run())

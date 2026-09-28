@@ -137,9 +137,14 @@ class ContextWindowType(click.ParamType):
     required=False,
     default=None,
     help='Maximum size of one line on the IPC pipe to this model\'s inference worker (ovgenai only). Bytes, or K/M/G suffix (e.g. 512K, 256M, 1G). Default 256 MiB. Requests with larger payloads fail with a clear error; lowering it bounds IPC memory.')
+@click.option('--worker-max-respawns', '--wmr',
+    required=False,
+    default=None,
+    type=int,
+    help='Max times this model\'s inference worker is auto-reloaded after an unexpected crash/wedge within one load, before it is permanently unloaded (quarantined). Default 2 (the historical "reloaded twice, then quarantined on the 3rd failure" behaviour). 0 or a negative number = no limit: the worker is always reloaded and is never automatically unloaded. (ovgenai and plain-openvino models only; ignored by in-process engines.)')
 @config_options
 @click.pass_context
-def add(ctx, model_path, model_name, engine, model_type, device, runtime_config, cache_dir, draft_model_path, draft_device, num_assistant_tokens, assistant_confidence_threshold, tool_call_parser, context_window, worker_line_limit, **config_values):
+def add(ctx, model_path, model_name, engine, model_type, device, runtime_config, cache_dir, draft_model_path, draft_device, num_assistant_tokens, assistant_confidence_threshold, tool_call_parser, context_window, worker_line_limit, worker_max_respawns, **config_values):
     """- Add a model configuration to the config file.
 
     \b
@@ -243,6 +248,13 @@ def add(ctx, model_path, model_name, engine, model_type, device, runtime_config,
             ctx.exit(1)
         entry["load_config"]["worker_line_limit"] = limit_bytes
 
+    if worker_max_respawns is not None:
+        # 0 or a negative number means "no limit" (the worker is always reloaded
+        # and is never automatically unloaded); a positive number is the respawn
+        # budget. click already coerced it to int, so none is needed here -- the
+        # sentinel is meaningful rather than an error.
+        entry["load_config"]["worker_max_respawns"] = worker_max_respawns
+
     ctx.obj.server_config.save_model_entry(model_name, entry)
     console.print(f"[green]Model configuration saved:[/green] {model_name}")
     console.print(f"[dim]Use 'openarc load {model_name}' to load this model.[/dim]")
@@ -266,6 +278,7 @@ _LOAD_OPTIONS = [
     "tool_call_parser",
     "context_window",
     "worker_line_limit",
+    "worker_max_respawns",
 ]
 
 # One help panel per config.yaml key, keyed by the command path rich_click

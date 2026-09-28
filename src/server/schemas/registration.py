@@ -178,6 +178,27 @@ class ModelLoadConfig(BaseModel):
         so an override applies on the next worker (re)start instead.
         """,
     )
+    worker_max_respawns: Optional[int] = Field(
+        default=None,
+        description="""
+        Maximum number of times this model's inference worker is
+        auto-restarted after an unexpected crash/wedge within one load episode,
+        before it gives up and the model is unloaded from the registry (so
+        readiness drops and an operator must reload it). This is the respawn
+        budget of a load (ovgenai and plain-openvino models only; ignored by
+        in-process engines).
+
+        The worker is reloaded up to this many times, and on the next failure
+        after that it is quarantined (unloaded). When unset, the supervisor
+        default of 2 applies, so the worker is reloaded twice and quarantined
+        on the third failure -- hence the historical "reload did not work for
+        3 times" behaviour.
+
+        0 or a negative number means NO limit: the worker is always reloaded and
+        is never automatically unloaded. Set this for a model that crashes
+        transiently and would otherwise be permanently quarantined.
+        """,
+    )
 
     # --- Model-level request defaults, authored in config.yaml ---
     # Each entry is a plain dict of only the keys the author wrote, keyed by

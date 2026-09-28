@@ -120,6 +120,7 @@ class WorkerSupervisor:
             "state": self._state,
             "pid": self.pid,
             "respawns": self._respawns,
+            "max_respawns": self._max_respawns,
         }
 
     # -- lifecycle -------------------------------------------------------------
@@ -136,6 +137,15 @@ class WorkerSupervisor:
             load_config.worker_line_limit
             if load_config.worker_line_limit is not None
             else proto.PROTOCOL_LINE_LIMIT
+        )
+        # The respawn budget is per load episode; a per-model override
+        # (worker_max_respawns, see --worker-max-respawns) wins over the
+        # constructor default (2), exactly like the line limit. 0 or a negative
+        # number means "no limit" (the worker is always reloaded).
+        self._max_respawns = (
+            load_config.worker_max_respawns
+            if load_config.worker_max_respawns is not None
+            else self._max_respawns
         )
         self._respawns = 0
         self._closed = False
@@ -557,13 +567,22 @@ class WorkerSupervisor:
         if self._load_config is None:
             self._set_state(self.STATE_DEAD)
             return
-        if self._respawns < self._max_respawns:
+        # 0 or negative is "no limit": the worker is reloaded every time it dies
+        # and is never quarantined (a positive N reintroduces the budget).
+        unlimited = self._max_respawns <= 0
+        if unlimited or self._respawns < self._max_respawns:
             self._respawns += 1
             self._set_state(self.STATE_RESTARTING)
-            logger.warning(
-                f"[{self._model_name}] respawning inference worker "
-                f"({self._respawns}/{self._max_respawns})"
-            )
+            if unlimited:
+                logger.warning(
+                    f"[{self._model_name}] respawning inference worker "
+                    f"(respawn #{self._respawns}; no restart limit)"
+                )
+            else:
+                logger.warning(
+                    f"[{self._model_name}] respawning inference worker "
+                    f"({self._respawns}/{self._max_respawns})"
+                )
             self._respawn_task = asyncio.create_task(
                 self._respawn(), name=f"ovworker-respawn-{self._model_name}"
             )
@@ -586,6 +605,19 @@ class WorkerSupervisor:
             raise
         except Exception as e:
             if self._closed:
+                return
+            if self._max_respawns <= 0:
+                # No restart limit: a failed reload is never given up on -- keep
+                # trying to bring the worker back (backed off) until it comes up
+                # or the model is explicitly unloaded.
+                logger.error(
+                    f"[{self._model_name}] worker respawn failed: {e}; "
+                    f"will keep trying to reload it (no restart limit)"
+                )
+                self._set_state(self.STATE_RESTARTING)
+                self._respawn_task = asyncio.create_task(
+                    self._respawn(), name=f"ovworker-respawn-{self._model_name}"
+                )
                 return
             logger.error(f"[{self._model_name}] worker respawn failed: {e}")
             self._set_state(self.STATE_DEAD)

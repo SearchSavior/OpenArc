@@ -145,3 +145,32 @@ def test_model_load_config_worker_line_limit_validation() -> None:
     # (a ~60 KB goose prompt) could never get through.
     with pytest.raises(ValueError):
         _cfg(worker_line_limit=4096)
+
+
+def test_model_load_config_worker_max_respawns_validation() -> None:
+    from src.server.schemas.registration import (
+        EngineType,
+        ModelLoadConfig,
+        ModelType,
+    )
+
+    def _cfg(**kwargs) -> ModelLoadConfig:
+        return ModelLoadConfig(
+            model_path="/models/mock",
+            model_name="max-respawns-model",
+            model_type=ModelType.LLM,
+            engine=EngineType.OV_GENAI,
+            device="CPU",
+            **kwargs,
+        )
+
+    # Default unset: the supervisor falls back to its own default (2), so the
+    # field is Optional and admits None.
+    assert _cfg().worker_max_respawns is None
+    # A positive number is the per-load-episode respawn budget.
+    assert _cfg(worker_max_respawns=5).worker_max_respawns == 5
+    # 0 and a negative number are both accepted (not rejected by a lower
+    # bound): they mean "no limit" -- the worker is always loaded and is never
+    # automatically unloaded/quarantined.
+    assert _cfg(worker_max_respawns=0).worker_max_respawns == 0
+    assert _cfg(worker_max_respawns=-3).worker_max_respawns == -3

@@ -31,6 +31,7 @@ def _load_config(
     name: str = "stub-vlm",
     model_type: ModelType = ModelType.VLM,
     worker_line_limit: Optional[int] = None,
+    worker_max_respawns: Optional[int] = None,
 ) -> ModelLoadConfig:
     return ModelLoadConfig(
         model_path=str(tmp_path),
@@ -39,6 +40,7 @@ def _load_config(
         engine=EngineType.OV_GENAI,
         device="CPU",
         worker_line_limit=worker_line_limit,
+        worker_max_respawns=worker_max_respawns,
     )
 
 
@@ -226,17 +228,26 @@ def test_cancel_stops_stream_early(tmp_path, monkeypatch) -> None:
     asyncio.run(_run())
 
 
+class _FakeRegistry:
+    """Minimal stand-in for ModelRegistry for tests that only need to observe
+    how the facade's on_dead callback reports a permanently dead worker."""
+
+    def __init__(self):
+        self.unloaded: list = []
+
+    async def register_unload(self, model_name: str, administrative: bool = False) -> bool:
+        self.unloaded.append(model_name)
+        return True
+
+
 def test_respawn_budget_exhaustion_unloads_model(tmp_path, monkeypatch) -> None:
-    class _FakeRegistry:
-        def __init__(self):
-            self.unloaded: list = []
-
-        async def register_unload(self, model_name: str, administrative: bool = False) -> bool:
-            self.unloaded.append(model_name)
-            return True
-
+    """With a positive budget (1, read from the load config and applied in
+    start()), the worker is reloaded once and is then quarantined (unloaded
+    from the registry) on the next failure -- the original respawn-budget
+    behaviour, now driven by the per-model worker_max_respawns field (the
+    supervisor's default of 2 is overridden by the config)."""
     monkeypatch.setenv("OPENARC_WORKER_STUB", "1")
-    config = _load_config(tmp_path)
+    config = _load_config(tmp_path, worker_max_respawns=1)
 
     async def _run():
         registry = _FakeRegistry()
@@ -244,25 +255,100 @@ def test_respawn_budget_exhaustion_unloads_model(tmp_path, monkeypatch) -> None:
             # _FakeRegistry duck-types ModelRegistry for this test.
             config,
             registry=registry,  # pyright: ignore[reportArgumentType]
-            max_respawns=0,
             load_timeout=30.0,
         )
         await facade.load_model(config)
+        # The per-model override wins over the supervisor's default of 2.
+        assert facade.status()["max_respawns"] == 1
+        first_pid = facade.worker_pid
 
+        # First crash: within the budget, the worker is brought back up.
         with pytest.raises(proto.RemoteWorkerError):
             await _drain(facade, _gen_config("CRASH"))
+        await _wait_for_respawn(facade, first_pid)
+        assert facade.status()["respawns"] == 1
+        assert not registry.unloaded  # not quarantined until the budget is spent
 
-        # Budget of 0: no respawn; the facade reports the death to the registry.
+        # Second crash: the budget is spent, so the model is quarantined
+        # (unloaded) instead of reloaded once more.
+        second_pid = facade.worker_pid
+        with pytest.raises(proto.RemoteWorkerError):
+            await _drain(facade, _gen_config("CRASH"))
         await _wait_for_state(facade, "dead")
         for _ in range(500):
             if registry.unloaded:
                 break
             await asyncio.sleep(0.01)
         assert registry.unloaded == [config.model_name]
+        # The process was not respawned a third time.
+        assert facade.worker_pid == second_pid
 
         # And further requests fail fast.
         with pytest.raises(proto.RemoteWorkerDeadError):
             await _drain(facade, _gen_config("again"))
+        await facade._supervisor.unload()
+
+    asyncio.run(_run())
+
+
+def test_worker_max_respawns_zero_is_unlimited(tmp_path, monkeypatch) -> None:
+    """worker_max_respawns=0 means no limit: past the default budget of 2 the
+    worker is reloaded on every crash and is never quarantined/unloaded."""
+    monkeypatch.setenv("OPENARC_WORKER_STUB", "1")
+    config = _load_config(tmp_path, worker_max_respawns=0)
+
+    async def _run():
+        registry = _FakeRegistry()
+        facade = RemoteOVGenAI_VLM(
+            # _FakeRegistry duck-types ModelRegistry for this test.
+            config,
+            registry=registry,  # pyright: ignore[reportArgumentType]
+            load_timeout=30.0,
+        )
+        await facade.load_model(config)
+        assert facade.status()["max_respawns"] == 0
+
+        # Crash well past the default budget of 2: each crash respawns a fresh
+        # worker that returns ready, and nobody unloads the model.
+        pid = facade.worker_pid
+        for _ in range(6):
+            with pytest.raises(proto.RemoteWorkerError):
+                await _drain(facade, _gen_config("CRASH"))
+            await _wait_for_respawn(facade, pid)
+            pid = facade.worker_pid
+            assert not registry.unloaded
+        assert facade.status()["state"] == "ready"
+        assert facade.status()["respawns"] == 6
+        assert registry.unloaded == []
+        await facade._supervisor.unload()
+
+    asyncio.run(_run())
+
+
+def test_worker_max_respawns_negative_is_unlimited(tmp_path, monkeypatch) -> None:
+    """A negative worker_max_respawns is also 'no limit' (never quarantined)."""
+    monkeypatch.setenv("OPENARC_WORKER_STUB", "1")
+    config = _load_config(tmp_path, worker_max_respawns=-1)
+
+    async def _run():
+        registry = _FakeRegistry()
+        facade = RemoteOVGenAI_VLM(
+            # _FakeRegistry duck-types ModelRegistry for this test.
+            config,
+            registry=registry,  # pyright: ignore[reportArgumentType]
+            load_timeout=30.0,
+        )
+        await facade.load_model(config)
+        assert facade.status()["max_respawns"] == -1
+
+        pid = facade.worker_pid
+        for _ in range(4):
+            with pytest.raises(proto.RemoteWorkerError):
+                await _drain(facade, _gen_config("CRASH"))
+            await _wait_for_respawn(facade, pid)
+            assert not registry.unloaded
+        assert facade.status()["state"] == "ready"
+        assert registry.unloaded == []
         await facade._supervisor.unload()
 
     asyncio.run(_run())
