@@ -16,6 +16,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from src.server.deps import _registry
 from src.server.routes.openai import router as openai_router
 from src.server.routes.openarc import router as openarc_router
+from src.engine.worker.protocol import RemoteWorkerDeadError
 
 logger = logging.getLogger(__name__)
 _access_logger = logging.getLogger("openarc.access")
@@ -114,8 +115,20 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Unhandled exception: {exc}", exc_info=True)
-    logger.error(f"Full traceback:\n{''.join(traceback.format_tb(exc.__traceback__))}")
+    # A worker still being respawned within its budget (the exception's
+    # will_respawn, set by the supervisor) is a one-line note; only a terminal
+    # death emits the full "Unhandled exception" / "Full traceback".
+    healing = isinstance(exc, RemoteWorkerDeadError) and exc.will_respawn
+    if healing:
+        logger.warning(
+            f"Worker restart in progress for {request.method} "
+            f"{request.url.path} ({exc})"
+        )
+    else:
+        logger.error(f"Unhandled exception: {exc}", exc_info=True)
+        logger.error(
+            f"Full traceback:\n{''.join(traceback.format_tb(exc.__traceback__))}"
+        )
     return JSONResponse(
         status_code=500, content={"status": "error", "detail": str(exc)}
     )

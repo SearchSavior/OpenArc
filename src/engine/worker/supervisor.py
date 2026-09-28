@@ -206,6 +206,9 @@ class WorkerSupervisor:
             cwd=os.getcwd(),
             env=self._build_env(),
         )
+        # Log the started worker's pid from the supervisor so it lands on the
+        # server's stdout / openarc.log (the analogue of "Started server process [pid]").
+        logger.info(f"[{self._model_name}] inference worker started (pid={self.pid})")
         # Note: the child's stdout/stderr readers keep asyncio's default
         # readline limit, so this side never calls readline() on them --
         # see _read_lines (protocol lines can be very large, see
@@ -242,18 +245,27 @@ class WorkerSupervisor:
                 f"worker did not finish loading within {timeout:.0f}s"
             ) from e
         self._set_state(self.STATE_READY)
-        logger.info(f"[{self._model_name}] inference worker ready (pid={self.pid})")
+        logger.info(f"[{self._model_name}] model loaded (pid={self.pid})")
 
     # -- sending -----------------------------------------------------------------
     async def _send(self, data: bytes) -> None:
         proc = self._proc
+        # A failed write (or an already-exited proc) means the worker died before
+        # the reader loop noticed: carry the same will_respawn decision as the
+        # other death sites -- defaulting it to False was the one spot that let a
+        # still-respawning worker leak a full "respawn budget is exhausted" /
+        # "Exception in ASGI application" trace even under no respawncap.
         if proc is None or proc.stdin is None or proc.returncode is not None:
-            raise proto.RemoteWorkerDeadError("worker process is not running")
+            raise proto.RemoteWorkerDeadError(
+                "worker process is not running", will_respawn=self._will_respawn()
+            )
         try:
             proc.stdin.write(data)
             await proc.stdin.drain()
         except (ConnectionResetError, BrokenPipeError, ValueError, OSError) as e:
-            raise proto.RemoteWorkerDeadError(f"cannot write to worker process: {e}") from e
+            raise proto.RemoteWorkerDeadError(
+                f"cannot write to worker process: {e}", will_respawn=self._will_respawn()
+            ) from e
 
     # -- request API ----------------------------------------------------------------
     async def begin_run(
@@ -267,8 +279,12 @@ class WorkerSupervisor:
         (None) or raises.
         """
         if self._state != self.STATE_READY:
+            # Not READY = loading, or respawning / terminated. Mirror the
+            # supervisor's own heal-vs-terminal decision: short while restarting,
+            # a full trace once it is terminal.
             raise proto.RemoteWorkerDeadError(
-                f"inference worker not ready (state={self._state})"
+                f"inference worker not ready (state={self._state})",
+                will_respawn=self._will_respawn(),
             )
         loop = asyncio.get_running_loop()
         req = _PendingRequest(uuid.uuid4().hex)
@@ -496,7 +512,11 @@ class WorkerSupervisor:
             # RemoteWorkerDeadErrors -- the supervisor owns recovery (respawn
             # within budget, or an unload once it is exhausted), and the
             # registry must not double-act by unloading on the request error.
-            exc = proto.RemoteWorkerDeadError(message, original_type=err.get("type"))
+            exc = proto.RemoteWorkerDeadError(
+                message,
+                original_type=err.get("type"),
+                will_respawn=self._will_respawn(),
+            )
             self._fail_load(exc)
             self._fail_all_active(exc)
         elif mtype == proto.MSG_BYE:
@@ -538,6 +558,15 @@ class WorkerSupervisor:
             self._finish_request(req_id, exc)
 
     # -- death & respawn ------------------------------------------------------------------
+    def _will_respawn(self) -> bool:
+        """Whether the supervisor will still respawn the worker on this death.
+
+        True while in budget (a positive one not yet spent, or the unlimited
+        ``max_respawns <= 0``); otherwise terminal. The single heal-vs-terminal
+        decision the rest of the log path keys off, from the supervisor's counters.
+        """
+        return self._max_respawns <= 0 or self._respawns < self._max_respawns
+
     def _on_process_exited(self, code: Optional[int]) -> None:
         if self._death_handled:
             return
@@ -553,7 +582,8 @@ class WorkerSupervisor:
             f"[{self._model_name}] inference worker exited unexpectedly{detail}{suffix}"
         )
         death_error = proto.RemoteWorkerDeadError(
-            f"inference worker process exited unexpectedly{detail}{suffix}"
+            f"inference worker process exited unexpectedly{detail}{suffix}",
+            will_respawn=self._will_respawn(),
         )
         was_loading = self._load_future is not None and not self._load_future.done()
         self._fail_load(death_error)
@@ -570,26 +600,33 @@ class WorkerSupervisor:
         # 0 or negative is "no limit": the worker is reloaded every time it dies
         # and is never quarantined (a positive N reintroduces the budget).
         unlimited = self._max_respawns <= 0
+        cause = self._fatal_error or "process exited"
         if unlimited or self._respawns < self._max_respawns:
+            # Still inside the respawn budget: a HEALING event -- log a single short
+            # cause line, no traceback (the worker is merely restarting, in budget).
             self._respawns += 1
             self._set_state(self.STATE_RESTARTING)
             if unlimited:
                 logger.warning(
                     f"[{self._model_name}] respawning inference worker "
-                    f"(respawn #{self._respawns}; no restart limit)"
+                    f"(respawn #{self._respawns}; no restart limit); cause: {cause}"
                 )
             else:
                 logger.warning(
                     f"[{self._model_name}] respawning inference worker "
-                    f"({self._respawns}/{self._max_respawns})"
+                    f"({self._respawns}/{self._max_respawns}); cause: {cause}"
                 )
             self._respawn_task = asyncio.create_task(
                 self._respawn(), name=f"ovworker-respawn-{self._model_name}"
             )
         else:
+            # Respawn budget exhausted: the model is now TERMINAL -- a full
+            # traceback is allowed (emitted by the next request that sees the dead worker).
             self._set_state(self.STATE_DEAD)
             logger.error(
-                f"[{self._model_name}] respawn budget exhausted; worker is dead"
+                f"[{self._model_name}] respawn budget exhausted "
+                f"({self._respawns}/{self._max_respawns}); worker is dead; "
+                f"cause: {cause}"
             )
             if self._on_dead is not None:
                 asyncio.create_task(self._fire_on_dead())

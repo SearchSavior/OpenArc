@@ -53,6 +53,36 @@ _TOOL_PARSERS = {
 }
 
 
+def _end_stream_on_worker_restart(
+    *,
+    label: str,
+    request_id: str,
+    created_ts: int,
+    model_name: str,
+    object_name: str,
+    choice: dict,
+    cause: object,
+) -> List[bytes]:
+    """End a stream courteously (a short note + a graceful terminal + [DONE])
+    when the worker is being restarted within its respawn budget, so its in-flight
+    requests end cleanly instead of escaping to the ASGI handler as a full trace.
+    """
+    logger.warning(
+        f"{label} {model_name}: worker restart in progress ({cause}); "
+        f"ending stream for {request_id}"
+    )
+    _terminal = json.dumps(
+        {
+            "id": request_id,
+            "object": object_name,
+            "created": created_ts,
+            "model": model_name,
+            "choices": [choice],
+        }
+    )
+    return [f"data: {_terminal}\n\n".encode(), b"data: [DONE]\n\n"]
+
+
 def _get_record(model_name: str):
     """Return the loaded ModelRecord for a model_name, or None.
 
@@ -294,6 +324,20 @@ async def openai_chat_completions(
 
                         if isinstance(item, dict):
                             if item.get("error"):
+                                # A still-restarting worker (respawning within its budget): end this
+                                # stream courteously via the helper (a short note, no traceback).
+                                if item.get("will_respawn"):
+                                    for _chunk in _end_stream_on_worker_restart(
+                                        label="[chat/completions]",
+                                        request_id=request_id,
+                                        created_ts=created_ts,
+                                        model_name=model_name,
+                                        object_name="chat.completion.chunk",
+                                        choice={"index": 0, "delta": {}, "finish_reason": "error"},
+                                        cause=item["error"],
+                                    ):
+                                        yield _chunk
+                                    return
                                 raise RuntimeError(item["error"])
                             if "chat_delta" in item:
                                 # Parsed deltas from Qwen35ToolCallStreamer
@@ -463,6 +507,20 @@ async def openai_completions(request: OpenAICompletionRequest, raw_request: Requ
 
                         if isinstance(item, dict):
                             if item.get("error"):
+                                # A still-restarting worker (respawning within its budget): end this
+                                # stream courteously via the helper (a short note, no traceback).
+                                if item.get("will_respawn"):
+                                    for _chunk in _end_stream_on_worker_restart(
+                                        label="[completions]",
+                                        request_id=request_id,
+                                        created_ts=created_ts,
+                                        model_name=model_name,
+                                        object_name="text_completion.chunk",
+                                        choice={"index": 0, "text": "", "finish_reason": "error"},
+                                        cause=item["error"],
+                                    ):
+                                        yield _chunk
+                                    return
                                 raise RuntimeError(item["error"])
                             metrics_data = item.get("metrics", item)
                             continue

@@ -311,7 +311,15 @@ class _Worker:
             logger.info(f"[{load_config.model_name}] pipeline ready")
             await self.send(proto.encode_response(proto.MSG_LOAD_OK, req_id=msg["req_id"]))
         except Exception as e:
-            logger.error(f"[{self.model_name or 'load'}] pipeline load failed", exc_info=True)
+            # ERROR logs the message only; the full traceback goes to DEBUG,
+            # suppressed at the worker's default INFO (the supervisor forwards
+            # the worker's log, so a per-call trace would flood the openarc log).
+            logger.error(f"[{self.model_name or 'load'}] pipeline load failed: {e}")
+            logger.debug(
+                f"[{self.model_name or 'load'}] pipeline load failed ({type(e).__name__}); "
+                "full traceback follows",
+                exc_info=True,
+            )
             if proto.is_non_recoverable_error(e):
                 # The device is wedged: this process's ov::Core is poisoned
                 # and no in-process retry can fix it -- take the process down
@@ -376,9 +384,21 @@ class _Worker:
         """The shared error ladder for failed runs (reused by protocol
         variants): recoverable -> MSG_ERROR (worker stays up); non-recoverable
         (wedged device / native failure) -> MSG_FATAL + exit so the supervisor
-        respawns a clean process."""
-        logger.error(f"[{self.model_name}] {method_name} failed", exc_info=True)
-        if proto.is_non_recoverable_error(e):
+        respawns a clean process.
+
+        ERROR logs the message only (what the openarc log always shows); the
+        full traceback goes to DEBUG, suppressed at the worker's default INFO
+        but surfaced if an operator lowers the level -- the supervisor forwards
+        the worker's stderr line-by-line, so a full trace would flood the log."""
+        recoverable = not proto.is_non_recoverable_error(e)
+        logger.error(f"[{self.model_name}] {method_name} failed: {e}")
+        logger.debug(
+            f"[{self.model_name}] {method_name} raised {type(e).__name__}: "
+            + ("recoverable (worker stays up)" if recoverable
+               else "non-recoverable (worker will exit for a respawn)"),
+            exc_info=True,
+        )
+        if not recoverable:
             try:
                 await self.send(
                     proto.encode_response(proto.MSG_FATAL, error=proto.serialize_error(e))

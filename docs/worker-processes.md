@@ -77,7 +77,7 @@ in the server, so the public response shapes are unchanged.
 
 ## What you will see in `openarc.log`
 
-- `spawning inference worker: ...` / `inference worker ready (pid=...)`
+- `spawning inference worker: ...`, then `inference worker started (pid=...)` when the process is up (once per start/respawn), then `model loaded (pid=...)` when its model has loaded
 - the worker's own stdout of OpenVINO/OpenCL (forwarded from its stderr),
   prefixed with `[<model> pid=...]`
 - `inference worker exited unexpectedly (code=...)` + `respawning inference worker (n/<budget>)` on recovery — or `respawning inference worker (respawn #n; no restart limit)` when `worker_max_respawns` is `0`/negative (no limit)
