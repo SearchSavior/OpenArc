@@ -48,7 +48,20 @@ get a clean Core is a new process. That is why:
 | **recoverable inference error** (the worker stays up) | the model is unloaded as before — now guaranteed clean, because unload is a process kill. |
 | **non-recoverable error** (`CL_*` / driver failure) | the worker reports `FATAL` and exits; the supervisor **respawns a fresh process and re-runs the same load**, transparently. |
 | **native crash / OOM-kill** (no `FATAL` message) | the supervisor detects the dead process and respawns it the same way. |
-| **respawn budget exhausted** (2 respawns per load episode) | the model is unloaded from the registry: readiness drops, and an operator reloads it with a fresh budget. |
+| **respawn budget exhausted** | the worker keeps crashing past its budget, so the model is unloaded from the registry: readiness drops, and an operator reloads it with a fresh budget (see below). |
+
+The **respawn budget** is per load episode: after a crash the supervisor runs a
+fresh process (re-runs the same load) at most `worker_max_respawns` times before
+it gives up, at which point the model is unloaded from the registry and
+readiness drops. The default is **2** — the worker is reloaded twice, and on the
+**3rd** failure it is quarantined (the historical "does not recover after a few
+retries, so we unload it" behaviour). Lower it for a model you suspect is
+permanently wedged, or set **`0` or a negative number for no limit**, in which
+case the worker is reloaded on **every** crash and is **never** automatically
+unloaded (useful for a model that crashes transiently but would otherwise be
+permanently quarantined). It is per-model config, not an environment variable:
+
+    openarc add --model-name foo --model-path /models/foo --en ovgenai --mt llm --d GPU --worker-max-respawns 0
 
 A PING watchdog (every 30 s, 5 s timeout) kills a worker that stops
 responding, so a wedged-but-alive process is recovered the same way.
@@ -67,8 +80,8 @@ in the server, so the public response shapes are unchanged.
 - `spawning inference worker: ...` / `inference worker ready (pid=...)`
 - the worker's own stdout of OpenVINO/OpenCL (forwarded from its stderr),
   prefixed with `[<model> pid=...]`
-- `inference worker exited unexpectedly (code=...)` + `respawning inference worker (n/2)` on recovery
-- `respawn budget exhausted; worker is dead` + the resulting unload
+- `inference worker exited unexpectedly (code=...)` + `respawning inference worker (n/<budget>)` on recovery — or `respawning inference worker (respawn #n; no restart limit)` when `worker_max_respawns` is `0`/negative (no limit)
+- `respawn budget exhausted; worker is dead` + the resulting unload — only when `worker_max_respawns` is a positive number; with `0`/negative it never fires
 
 ## Operator knobs
 
@@ -78,9 +91,13 @@ in the server, so the public response shapes are unchanged.
 | `OPENARC_VLM_WORKER=0` | additionally disable the worker process for VLMs only (stage-1 escape hatch) |
 | `OPENARC_OPENVINO_WORKER=0` | master switch: disable worker processes for the plain-openvino engines (Kokoro, Qwen3-ASR, Qwen3-TTS) and restore the historical in-process behaviour |
 
-Everything else (respawn budget, watchdog timings, unload timeouts) is
-configurable on `WorkerSupervisor` for now and will get config-file support in
-a later stage.
+The respawn budget has config-file support: `worker_max_respawns` in the model
+config, set via `openarc add --worker-max-respawns` (positive `N` = the number
+of reloads per load episode before the model is quarantined; `0` or negative
+= no limit, the worker is always reloaded and is never automatically unloaded).
+The remaining per-load settings (watchdog timings, unload timeouts) are still
+only `WorkerSupervisor` parameters and will get config-file support in a later
+stage.
 
 ## Implementation map
 
