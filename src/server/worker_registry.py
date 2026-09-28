@@ -89,10 +89,33 @@ def _mark_inference_error(packet: WorkerPacket, exc: BaseException) -> None:
     packet.metrics = None
 
 
+def _log_inference_failure(label: str, exc: BaseException) -> None:
+    """Log a failed inference.
+
+    A worker still being respawned within its budget (``will_respawn``) gets a
+    single short, cause-only line; only a terminal death or a non-recovery
+    failure logs the full traceback.
+    """
+    if isinstance(exc, RemoteWorkerDeadError) and exc.will_respawn:
+        logger.warning(
+            f"{label}: inference worker is being restarted within its respawn "
+            f"budget (cause only): {exc}"
+        )
+        return
+    logger.error(label, exc_info=True)
+
+
 async def _signal_stream_error(packet: WorkerPacket, exc: BaseException) -> None:
     if packet.stream_queue is None:
         return
-    await packet.stream_queue.put({"error": str(exc)})
+    # Carry the supervisor's heal-vs-terminal decision (will_respawn) onto the
+    # item, so the route can end the stream courteously for a healing worker.
+    await packet.stream_queue.put(
+        {
+            "error": str(exc),
+            "will_respawn": bool(getattr(exc, "will_respawn", False)),
+        }
+    )
     await packet.stream_queue.put(None)
 
 
@@ -109,15 +132,22 @@ def _commit_completed_packet(
         return False
     if completed.error is not None:
         if isinstance(completed.error, RemoteWorkerDeadError):
-            # The worker PROCESS died (crash, wedge, or it is mid-respawn).
-            # The supervisor owns recovery: it respawns a fresh process within
-            # budget, or unloads the model itself once the budget is
-            # exhausted. The registry must NOT double-act by unloading here --
-            # that would kill an in-flight respawn.
-            logger.error(
-                f"[{model_name}] Inference failed because the inference worker "
-                f"process died; the supervisor is handling recovery."
-            )
+            # The worker process is dead: the supervisor owns recovery (respawn
+            # within budget, then unload), so the registry must not also unload.
+            if getattr(completed.error, "will_respawn", False):
+                # Healing: supervisor respawning within budget -- log a short, cause-only line.
+                logger.warning(
+                    f"[{model_name}] Inference hit a worker crash; the supervisor "
+                    f"is restarting it within budget (cause: {completed.error})."
+                )
+            else:
+                # Terminal: respawn budget exhausted -- a full traceback is allowed.
+                logger.error(
+                    f"[{model_name}] Inference failed because the inference "
+                    f"worker process died and its respawn budget is exhausted "
+                    f"(cause: {completed.error}).",
+                    exc_info=True,
+                )
             if packet.result_future is not None and not packet.result_future.done():
                 packet.result_future.set_exception(completed.error)
             return False
@@ -177,7 +207,7 @@ class InferWorker:
                     await packet.stream_queue.put({"metrics": metrics})
                 await packet.stream_queue.put(None)
         except Exception as e:
-            logger.error("LLM inference failed!", exc_info=True)
+            _log_inference_failure("LLM inference failed!", e)
             _mark_inference_error(packet, e)
             if packet.gen_config.stream:
                 await _signal_stream_error(packet, e)
@@ -212,7 +242,7 @@ class InferWorker:
                     await packet.stream_queue.put({"metrics": metrics})
                 await packet.stream_queue.put(None)
         except Exception as e:
-            logger.error("VLM inference failed!", exc_info=True)
+            _log_inference_failure("VLM inference failed!", e)
             _mark_inference_error(packet, e)
             if packet.gen_config.stream:
                 await _signal_stream_error(packet, e)
@@ -242,7 +272,7 @@ class InferWorker:
             logger.warning(f"Whisper request rejected: {e}")
             packet.request_error = e
         except Exception as e:
-            logger.error("Whisper inference failed!", exc_info=True)
+            _log_inference_failure("Whisper inference failed!", e)
             _mark_inference_error(packet, e)
 
         return packet
@@ -259,7 +289,7 @@ class InferWorker:
             logger.warning(f"Qwen3 ASR request rejected: {e}")
             packet.request_error = e
         except Exception as e:
-            logger.error("Qwen3 ASR inference failed!", exc_info=True)
+            _log_inference_failure("Qwen3 ASR inference failed!", e)
             _mark_inference_error(packet, e)
             packet.segments = None
 
@@ -299,7 +329,7 @@ class InferWorker:
                 "total_samples": sum(len(chunk) for chunk in audio_chunks) if audio_chunks else 0
             }
         except Exception as e:
-            logger.error("Kokoro inference failed!", exc_info=True)
+            _log_inference_failure("Kokoro inference failed!", e)
             _mark_inference_error(packet, e)
 
         return packet
@@ -346,7 +376,7 @@ class InferWorker:
                 "duration_sec": len(wav) / sr if sr > 0 else 0,
             }
         except Exception as e:
-            logger.error("Qwen3 TTS inference failed!", exc_info=True)
+            _log_inference_failure("Qwen3 TTS inference failed!", e)
             _mark_inference_error(packet, e)
 
         return packet
@@ -369,8 +399,8 @@ class InferWorker:
             try:
                 async for tchunk in async_gen:
                     await packet.stream_queue.put(_pcm(tchunk))
-            except Exception:
-                logger.error("Qwen3 TTS streaming inference failed!", exc_info=True)
+            except Exception as e:
+                _log_inference_failure("Qwen3 TTS streaming inference failed!", e)
             finally:
                 await packet.stream_queue.put(None)
         else:
@@ -381,8 +411,8 @@ class InferWorker:
                 try:
                     for tchunk in sync_gen:
                         asyncio.run_coroutine_threadsafe(packet.stream_queue.put(_pcm(tchunk)), loop).result()
-                except Exception:
-                    logger.error("Qwen3 TTS streaming inference failed!", exc_info=True)
+                except Exception as e:
+                    _log_inference_failure("Qwen3 TTS streaming inference failed!", e)
                 finally:
                     asyncio.run_coroutine_threadsafe(packet.stream_queue.put(None), loop).result()
 
@@ -408,7 +438,7 @@ class InferWorker:
             packet.metrics = metrics
 
         except Exception as e:
-            logger.error("EMB inference failed!", exc_info=True)
+            _log_inference_failure("EMB inference failed!", e)
             _mark_inference_error(packet, e)
             if getattr(packet.gen_config, "stream", False):
                 await _signal_stream_error(packet, e)
@@ -432,7 +462,7 @@ class InferWorker:
             packet.metrics = metrics
 
         except Exception as e:
-            logger.error("Reranking failed!", exc_info=True)
+            _log_inference_failure("Reranking failed!", e)
             _mark_inference_error(packet, e)
             if getattr(packet.gen_config, "stream", False):
                 await _signal_stream_error(packet, e)
@@ -892,6 +922,9 @@ class WorkerRegistry:
         try:
             q = self._get_model_queue(model_name)
             await q.put(packet)
+            # Set once the terminal error item has been handed to the consumer, so
+            # the trailing result_future block doesn't re-raise an already-surfaced error.
+            stream_error_surfaced = False
             while True:
                 try:
                     item = await stream_queue.get()
@@ -906,13 +939,17 @@ class WorkerRegistry:
                 if item is None:
                     break
                 if isinstance(item, dict) and item.get("error"):
-                    raise RuntimeError(item["error"])
+                    # Surface the error to the consumer (yield, don't raise); the route
+                    # owns the heal-vs-terminal decision via the item's will_respawn.
+                    stream_error_surfaced = True
+                    yield item
+                    break
                 yield item
-            if result_future.done():
+            if not stream_error_surfaced and result_future.done():
                 exc = result_future.exception()
                 if exc is not None:
                     raise exc
-            else:
+            elif not stream_error_surfaced:
                 await result_future
         finally:
             if not result_future.done():

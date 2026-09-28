@@ -129,7 +129,22 @@ class RemoteWorkerDeadError(RemoteWorkerError):
     Distinct from a plain RemoteWorkerError on purpose: a dead worker is the
     supervisor's problem (it respawns within budget, or unloads the model once
     the budget is exhausted), so the registry must NOT also trigger an unload.
+
+    ``will_respawn`` is the supervisor's heal-vs-terminal decision (True = a
+    restart within budget, so log a single short, cause-only line; False =
+    terminal/exhausted, so a full traceback is expected). Defaults to False.
     """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        original_type: Optional[str] = None,
+        will_respawn: bool = False,
+    ) -> None:
+        super().__init__(message)
+        self.original_type = original_type
+        self.will_respawn = will_respawn
 
 
 # OpenCL / driver conditions that poison the process-wide ov::Core: once one
