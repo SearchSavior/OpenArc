@@ -16,6 +16,7 @@ from src.server.schemas.registration import (
     ModelType,
     ToolCallParser,
 )
+from src.server.utils.context import resolve_context_window
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ class ModelRecord:
     device: str = ""
     runtime_config: Dict[str, Any] = field(default_factory=dict)
     tool_call_parser: Optional[ToolCallParser] = None
+    context_window: Optional[int] = None
 
     # Model-level request defaults surfaced from config.yaml. Stored as plain
     # dicts (already validated by ModelLoadConfig) and used to seed per-request
@@ -61,6 +63,7 @@ class ModelRecord:
             "tool_call_parser": (
                 self.tool_call_parser.value if self.tool_call_parser else None
             ),
+            "context_window": self.context_window,
             "status": self.status.value,
             "time_loaded": self.time_loaded.isoformat(),
         }
@@ -110,6 +113,13 @@ class ModelRegistry:
         # anything is loaded, so a mismatched config.yaml fails fast.
         loader.validate_config_blocks()
 
+        # Resolve the effective context window. An explicit value on the load config
+        # (e.g. `openarc add --context-window`, or the `context_window` key in
+        # config.yaml) wins; otherwise it is discovered from the model's config.json.
+        context_window = await asyncio.to_thread(
+            resolve_context_window, loader.model_path, loader.context_window
+        )
+
         # Create a model record with LOADING status
         record = ModelRecord(
             model_path=loader.model_path,
@@ -119,6 +129,7 @@ class ModelRegistry:
             device=loader.device,
             runtime_config=loader.runtime_config,
             tool_call_parser=loader.tool_call_parser,
+            context_window=context_window,
             model_config_blocks=dict(loader.model_config_blocks or {}),
             status=ModelStatus.LOADING,
         )

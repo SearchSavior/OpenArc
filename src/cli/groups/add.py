@@ -73,9 +73,14 @@ from ..utils import validate_model_path
     required=False,
     default=None,
     help='Tool-call output format for this model (qwen35 XML, hermes JSON, gemma4 call syntax, or museglimmer Harmony atem). llm/vlm only; required for tool calling.')
+@click.option('--context-window', '--cw',
+    type=int,
+    required=False,
+    default=None,
+    help='Context window (tokens) for this model, advertised in the /v1/models response so clients can size their conversation (e.g. for auto-compaction). When omitted the value is discovered from the model\'s config.json (first present of max_position_embeddings / n_positions / seq_len / seq_length / n_ctx / sliding_window).')
 @config_options
 @click.pass_context
-def add(ctx, model_path, model_name, engine, model_type, device, runtime_config, cache_dir, draft_model_path, draft_device, num_assistant_tokens, assistant_confidence_threshold, tool_call_parser, **config_values):
+def add(ctx, model_path, model_name, engine, model_type, device, runtime_config, cache_dir, draft_model_path, draft_device, num_assistant_tokens, assistant_confidence_threshold, tool_call_parser, context_window, **config_values):
     """- Add a model configuration to the config file.
 
     \b
@@ -162,6 +167,8 @@ def add(ctx, model_path, model_name, engine, model_type, device, runtime_config,
         entry["load_config"]["assistant_confidence_threshold"] = assistant_confidence_threshold
     if tool_call_parser:
         entry["load_config"]["tool_call_parser"] = tool_call_parser
+    if context_window is not None:
+        entry["load_config"]["context_window"] = context_window
 
     ctx.obj.server_config.save_model_entry(model_name, entry)
     console.print(f"[green]Model configuration saved:[/green] {model_name}")
