@@ -5,7 +5,9 @@ Responsibilities:
   * spawn the child (``src.engine.worker.worker_process``) with the same
     interpreter, sys.path and working directory the parent runs with,
   * speak the line protocol on the child's stdin/stdout,
-  * forward the child's stderr to the openarc log (OpenVINO/OpenCL output),
+  * hand each worker its own log file over the environment, so the worker itself
+    writes its logging and native (C-level) stderr there -- nothing of its output
+    reaches the openarc log,
   * watch the process: PING watchdog, death detection, and -- when the child
     dies while serving -- respawn a fresh process and re-run the same load,
     within a per-load budget (a fresh process gets a fresh, unpoisoned
@@ -40,6 +42,17 @@ logger = logging.getLogger(__name__)
 # Sentinel the supervisor puts on a request queue to tell the client-side
 # generator: "the stream has ended; now await the result future".
 EOF = object()
+
+
+def _sanitize_for_filename(name: str) -> str:
+    """Make a model name safe as a file-name fragment: the worker's log-file
+    name is derived from the model name verbatim (per the
+    "<base>-worker-<model>.log" rule), but a path separator in it would let the
+    file escape the log directory, so reduce "/", "\\", and NUL to "-".
+    """
+    for separator in ("/", "\\", "\x00", os.sep):
+        name = name.replace(separator, "-")
+    return name
 
 
 class _PendingRequest:
@@ -178,6 +191,33 @@ class WorkerSupervisor:
             f"import sys; from {self.WORKER_ENTRY} import main; sys.exit(main())",
         ]
 
+    def _worker_logfile_env(self) -> str:
+        """The env key the supervisor hands the worker its log file in:
+        OPENARC_WORKER_LOGFILE_<model>, the dash rewritten to an underscore (an
+        env-var name rule) so one key names one worker. The worker rebuilds the
+        SAME key from OPENARC_WORKER_MODEL (see worker_process), so the two must
+        match."""
+        return f"OPENARC_WORKER_LOGFILE_{self._model_name.replace('-', '_')}"
+
+    def _worker_log_file(self) -> Optional[str]:
+        """The worker's own log file -- the value handed over via
+        _worker_logfile_env. A value already set in that env key wins (honoured
+        as is, the override); else derive it from OPENARC_LOG_FILE by splicing
+        "-worker-<model>" into the base name before ".log" (beside the main log,
+        path separators reduced to "-" so the name can't escape its directory).
+        None when no main-log location is known."""
+        preset = os.environ.get(self._worker_logfile_env(), "").strip()
+        if preset:
+            return preset
+        main_log = os.environ.get("OPENARC_LOG_FILE", "").strip()
+        if not main_log:
+            return None
+        directory, name = os.path.split(main_log)
+        base, _ext = os.path.splitext(name)
+        return os.path.join(
+            directory, f"{base}-worker-{_sanitize_for_filename(self._model_name)}.log"
+        )
+
     def _build_env(self) -> Dict[str, str]:
         env = dict(os.environ)
         # The child must import exactly the code the parent is running,
@@ -193,6 +233,17 @@ class WorkerSupervisor:
         # per-model worker_line_limit travels in the environment, not the
         # protocol.
         env["OPENARC_WORKER_LINE_LIMIT"] = str(self._line_limit)
+        # The model name is always passed (the worker's own identity, and we need
+        # it for other worker-side things soon too): the worker learns it at
+        # startup, before the LOAD message names it, and uses it to read its OWN
+        # log-file env var exactly.
+        env["OPENARC_WORKER_MODEL"] = self._model_name
+        # Also hand the worker its own log file as a per-model env var (a path,
+        # value ending in .log); the worker logs all its output there. The
+        # supervisor opens no file and forwards nothing; a pre-set value wins.
+        worker_log_file = self._worker_log_file()
+        if worker_log_file is not None:
+            env[self._worker_logfile_env()] = worker_log_file
         return env
 
     async def _spawn(self) -> None:
@@ -452,13 +503,17 @@ class WorkerSupervisor:
         self._on_process_exited(proc.returncode)
 
     async def _stderr_pump(self) -> None:
+        # This reads the WORKER child's stderr (the pipe opened at _spawn), never
+        # our own: the supervisor/server's own log reaches openarc.log via the
+        # separate launch_server dictConfig, independent of this pipe. The worker
+        # now puts all of its output in its own file, so this pipe is empty -- we
+        # just drain it to EOF (so the worker can't stall on a full pipe, and the
+        # unload's pipe wait can finish) and forward nothing.
         proc = self._proc
         assert proc is not None and proc.stderr is not None
         try:
             async for line in self._read_lines(proc.stderr):
-                text = line.decode("utf-8", errors="replace").rstrip()
-                if text:
-                    logger.info(f"[{self._model_name} pid={proc.pid}] {text}")
+                pass
         except asyncio.CancelledError:
             raise
         except Exception:

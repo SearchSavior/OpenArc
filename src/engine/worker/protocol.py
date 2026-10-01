@@ -11,7 +11,9 @@ child's stdin/stdout using one JSON object per line:
 
 stdout is reserved for protocol traffic; everything the worker would like to
 say that is not protocol (logging, OpenVINO/OpenCL diagnostics, Python
-tracebacks) must go to stderr, where the parent forwards it to openarc.log.
+tracebacks) goes to the worker's OWN log file -- the supervisor hands it the
+path, and the worker redirects its stderr into that file -- so no child output
+is ever forwarded into openarc.log.
 
 Why a process boundary at all: openvino_genai pipelines share a
 process-wide singleton ``ov::Core``. When the GPU plugin wedges

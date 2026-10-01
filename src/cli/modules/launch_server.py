@@ -8,6 +8,12 @@ from pathlib import Path
 # Setting this to /dev/null effectively disables file logging if desired.
 default_log_file = Path(__file__).parent.parent.parent.parent / "openarc.log"
 log_file = Path(os.getenv("OPENARC_LOG_FILE", default_log_file))
+# Publish the resolved main-log path back to the environment so the worker
+# supervisors (spawned later, deep in the registry) can derive each worker's own
+# per-model log file beside it -- "<base>-worker-<model>.log" in the same
+# directory. Without this, a shell that never set OPENARC_LOG_FILE would leave
+# the supervisor unable to place the worker log file next to the main log.
+os.environ["OPENARC_LOG_FILE"] = str(log_file)
 
 def _level_from_verbose(verbose: int) -> str:
     # our own code (src.* and OpenArc loggers)
