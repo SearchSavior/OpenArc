@@ -77,11 +77,41 @@ in the server, so the public response shapes are unchanged.
 
 ## What you will see in `openarc.log`
 
+The worker's own logging is **no longer here** — it goes to the worker's own
+file (below). This file carries only the **supervisor's** view of the worker's
+lifecycle:
+
 - `spawning inference worker: ...`, then `inference worker started (pid=...)` when the process is up (once per start/respawn), then `model loaded (pid=...)` when its model has loaded
-- the worker's own stdout of OpenVINO/OpenCL (forwarded from its stderr),
-  prefixed with `[<model> pid=...]`
 - `inference worker exited unexpectedly (code=...)` + `respawning inference worker (n/<budget>)` on recovery — or `respawning inference worker (respawn #n; no restart limit)` when `worker_max_respawns` is `0`/negative (no limit)
 - `respawn budget exhausted; worker is dead` + the resulting unload — only when `worker_max_respawns` is a positive number; with `0`/negative it never fires
+
+## What you will see in the worker's own log file
+
+Each worker's **full** logging goes to a file beside the main log, named after
+it with `-worker-<model>` spliced in before the `.log` — so `openarc.log`
+becomes `openarc-worker-<model>.log` (in the same directory; the model name is
+used verbatim, only path separators reduced to `-`). Its location follows the
+main log: set `OPENARC_LOG_FILE=/some/dir/openarc.log` and the worker file is
+`/some/dir/openarc-worker-<model>.log`; with it unset, the log defaults to the
+project-root `openarc.log`. The supervisor hands each worker its model name in
+`OPENARC_WORKER_MODEL` and its log-file path in the per-model
+`OPENARC_WORKER_LOGFILE_<model>` (dashes in the model name become underscores in
+both), so the worker reads its own key exactly -- a sibling model's key in the
+server's environment can't be mistaken for its own; a value already set there
+pins a worker's file instead, which the tests use to keep it in a temp dir.
+
+**Only the worker writes to this file** — never the server, never the supervisor
+— so it holds the worker's side alone and the main log keeps only the
+supervisor's. It carries the full log at the worker's normal verbosity: the
+pipeline build/load, every OpenVINO/OpenCL diagnostic (written straight to the
+process's stderr, which the worker redirects into this file at startup rather
+than onto the pipe, which the supervisor only drains, forwarding nothing), and
+the full traceback of any load or inference failure. That is the point: the
+per-request tracebacks that would previously flood `openarc.log` (once per
+concurrent in-flight request, for a worker that is only restarting within its
+respawn budget) now land here instead, leaving `openarc.log` quiet. Workers
+append across respawns, so a file holds the full history of every episode of a
+model's life; rotate it the same way you already rotate `openarc.log`.
 
 ## Operator knobs
 
@@ -90,6 +120,9 @@ in the server, so the public response shapes are unchanged.
 | `OPENARC_OVGENAI_WORKER=0` | master switch: disable worker processes for all OpenVINO GenAI models (VLM/LLM/Whisper) and restore the historical in-process behaviour |
 | `OPENARC_VLM_WORKER=0` | additionally disable the worker process for VLMs only (stage-1 escape hatch) |
 | `OPENARC_OPENVINO_WORKER=0` | master switch: disable worker processes for the plain-openvino engines (Kokoro, Qwen3-ASR, Qwen3-TTS) and restore the historical in-process behaviour |
+| `OPENARC_LOG_FILE` | set the main log file; each worker's own log then lands beside it, named `<base>-worker-<model>.log` |
+| `OPENARC_WORKER_MODEL` | not an operator knob: the supervisor always sets it to the model name, so the child can name its own log-file key exactly |
+| `OPENARC_WORKER_LOGFILE_<model>` | pin one worker's own file instead (model name with `-` written as `_`); it is the value the child reads, and an already-set value wins over the derived path |
 
 The respawn budget has config-file support: `worker_max_respawns` in the model
 config, set via `openarc add --worker-max-respawns` (positive `N` = the number

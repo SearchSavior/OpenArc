@@ -4,8 +4,12 @@ Entry point of an OpenArc inference worker process.
 One of these runs per loaded model. It owns the OpenVINO / openvino.genai
 pipeline for that model -- the main server process never builds one.
 Communication with the supervisor is one JSON object per line over stdin
-(commands) / stdout (responses); all logging and OpenVINO/OpenCL diagnostics
-go to stderr, which the supervisor forwards to the openarc log.
+(commands) / stdout (responses). The worker's full logging -- and any
+OpenVINO/OpenCL diagnostics written straight to its process's stderr -- is
+redirected at startup into the log file the supervisor hands over (beside the
+main openarc.log, named openarc-worker-<model>.log). The worker never writes to
+the supervisor's pipe; with no file handed over (a caller that bypassed the
+supervisor's spawn env) it just logs to its own stderr and nothing is forwarded.
 
 Exit codes: 0 = clean unload / parent gone; 1 = fatal (MSG_FATAL was sent)
 or unhandled crash. The supervisor treats every non-clean exit as "the
@@ -65,17 +69,76 @@ def _make_model(load_config: ModelLoadConfig) -> Any:
     return OVGenAI_Whisper(load_config)
 
 
-def _configure_logging() -> None:
-    """Point the root logger at stderr; stdout is the protocol channel."""
-    handler = logging.StreamHandler(sys.stderr)
-    handler.setFormatter(
-        logging.Formatter(
-            "%(asctime)s %(levelname)s [worker pid=%(process)d] %(name)s: %(message)s"
-        )
+_WORKER_LOG_FORMAT = (
+    "%(asctime)s %(levelname)s [worker pid=%(process)d] %(name)s: %(message)s"
+)
+
+
+# The supervisor hands each worker its own log file in a per-model env var named
+# OPENARC_WORKER_LOGFILE_<model> (dashes -> underscores). We know our model name
+# from OPENARC_WORKER_MODEL (handed over at spawn), so we look up our OWN key that
+# way -- no prefix scan -- so a sibling model's key inherited from the server's
+# environment can't be mistaken for ours.
+_WORKER_MODEL_ENV = "OPENARC_WORKER_MODEL"
+_WORKER_LOGFILE_ENV_PREFIX = "OPENARC_WORKER_LOGFILE_"
+
+
+def _worker_logfile_from_env(model_name: str) -> Optional[str]:
+    """The log file the supervisor handed us: our per-model key
+    OPENARC_WORKER_LOGFILE_<model> (dash -> underscore; it matches the
+    supervisor's _worker_logfile_env because both splice the same model name),
+    or None if it handed none -- then we log to our own stderr and the supervisor
+    forwards nothing.
+    """
+    if not model_name:
+        return None
+    key = _WORKER_LOGFILE_ENV_PREFIX + model_name.replace("-", "_")
+    value = os.environ.get(key, "").strip()
+    return value or None
+
+
+def _redirect_stderr_to(path: str) -> None:
+    """Redirect fd 2 -- catching output that native C libraries (OpenVINO/
+    OpenCL) write straight to the descriptor, bypassing Python logging -- to
+    *path*, appending. The destination is a bare fd (so it is not GC-closed
+    twice) re-targeted onto fd 2 with dup2, which also closes the inherited
+    pipe's write end; sys.stderr is then rebuilt on a private dup of it
+    (closefd=False) so the StreamHandler keeps writing to the file."""
+    directory = os.path.dirname(path)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+    old = sys.stderr
+    target_fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+    os.dup2(target_fd, 2)
+    os.close(target_fd)
+    sys.stderr = os.fdopen(
+        2, "a", encoding="utf-8", errors="replace", buffering=1, closefd=False
     )
+    if old is not sys.stderr:
+        # The inherited pipe's write end was already closed by the dup2 above;
+        # this merely silences a "close of a gone fd" when `old` is later GC'd.
+        try:
+            old.close()
+        except Exception:
+            pass
+
+
+def _configure_logging() -> None:
+    """Send all of our logging -- plus native C-level stderr -- into the log
+    file the supervisor handed over, keyed on our model name (which we know from
+    OPENARC_WORKER_MODEL), so our output never reaches the main log. With no file
+    handed over we just log to our own stderr and nothing is forwarded anywhere.
+    """
     root = logging.getLogger()
     root.setLevel(logging.INFO)
     root.handlers.clear()
+
+    log_file = _worker_logfile_from_env(os.environ.get(_WORKER_MODEL_ENV, "").strip())
+    if log_file is not None:
+        _redirect_stderr_to(log_file)
+
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter(_WORKER_LOG_FORMAT))
     root.addHandler(handler)
 
 
@@ -210,7 +273,9 @@ class _Worker:
 
     def __init__(self) -> None:
         self.model: Any = None
-        self.model_name = ""
+        # Our model name, known from startup: the supervisor passes it in
+        # OPENARC_WORKER_MODEL; _do_load sets it again from the LOAD config.
+        self.model_name = os.environ.get(_WORKER_MODEL_ENV, "")
         self.model_type: Optional[ModelType] = None
         self._active_gen: Optional[asyncio.Task] = None
         self._active_request_id: Optional[str] = None
@@ -311,15 +376,9 @@ class _Worker:
             logger.info(f"[{load_config.model_name}] pipeline ready")
             await self.send(proto.encode_response(proto.MSG_LOAD_OK, req_id=msg["req_id"]))
         except Exception as e:
-            # ERROR logs the message only; the full traceback goes to DEBUG,
-            # suppressed at the worker's default INFO (the supervisor forwards
-            # the worker's log, so a per-call trace would flood the openarc log).
-            logger.error(f"[{self.model_name or 'load'}] pipeline load failed: {e}")
-            logger.debug(
-                f"[{self.model_name or 'load'}] pipeline load failed ({type(e).__name__}); "
-                "full traceback follows",
-                exc_info=True,
-            )
+            # The full trace (with the exception message) is logged at ERROR to
+            # the worker's own log file; nothing of it reaches the main log.
+            logger.error(f"[{self.model_name or 'load'}] pipeline load failed", exc_info=True)
             if proto.is_non_recoverable_error(e):
                 # The device is wedged: this process's ov::Core is poisoned
                 # and no in-process retry can fix it -- take the process down
@@ -384,21 +443,9 @@ class _Worker:
         """The shared error ladder for failed runs (reused by protocol
         variants): recoverable -> MSG_ERROR (worker stays up); non-recoverable
         (wedged device / native failure) -> MSG_FATAL + exit so the supervisor
-        respawns a clean process.
-
-        ERROR logs the message only (what the openarc log always shows); the
-        full traceback goes to DEBUG, suppressed at the worker's default INFO
-        but surfaced if an operator lowers the level -- the supervisor forwards
-        the worker's stderr line-by-line, so a full trace would flood the log."""
-        recoverable = not proto.is_non_recoverable_error(e)
-        logger.error(f"[{self.model_name}] {method_name} failed: {e}")
-        logger.debug(
-            f"[{self.model_name}] {method_name} raised {type(e).__name__}: "
-            + ("recoverable (worker stays up)" if recoverable
-               else "non-recoverable (worker will exit for a respawn)"),
-            exc_info=True,
-        )
-        if not recoverable:
+        respawns a clean process."""
+        logger.error(f"[{self.model_name}] {method_name} failed", exc_info=True)
+        if proto.is_non_recoverable_error(e):
             try:
                 await self.send(
                     proto.encode_response(proto.MSG_FATAL, error=proto.serialize_error(e))
