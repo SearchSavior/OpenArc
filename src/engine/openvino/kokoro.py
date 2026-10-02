@@ -58,6 +58,18 @@ class OV_Kokoro(KModel):
         self.model = core.compile_model(self.model_path / "openvino_model.xml", self._device)
         return self.model
 
+    @torch.no_grad()
+    def forward_with_tokens(
+        self,
+        input_ids: torch.LongTensor,
+        ref_s: torch.FloatTensor,
+        speed: float = 1,
+    ) -> tuple[torch.FloatTensor, torch.LongTensor]:
+        """Run the compiled OpenVINO model. Without this override KModel's
+        PyTorch version runs on CPU and the compiled model is never called."""
+        outputs = self.model([input_ids, ref_s, torch.tensor(speed)])
+        return torch.from_numpy(outputs[0]), torch.from_numpy(outputs[1])
+
     async def unload_model(self, registry: ModelRegistry, model_name: str) -> bool:
         """Unregister model from registry and free memory resources.
 
