@@ -53,11 +53,24 @@ def _startup_context_window_warning(server_config, name: str):
               help="Load models on startup. Specify once followed by space-separated model names.")
 @click.option("--use-api-key", is_flag=True, default=False,
               help="Require OPENARC_API_KEY for all requests.")
+@click.option("--session-id-header", "--sih",
+              required=False,
+              help="""
+              - Request header carrying a client's session id (e.g. agent-session-id) for the
+              completions API. Clients may send this special header with each request to the
+              /v1/chat/completions endpoint as a notice, to which session the request belongs. When
+              set and incoming, OpenArc keeps an in-memory session as well for state about the
+              session's context, i.e. processed tokens. This survives a worker restart. The state
+              does not contain the sessions complete conversation - this is still required to be
+              sent with each request from the client, as per /v1/chat/completions contract.
+              When unset, or the set value is not present in request headers, no session handling
+              is done on the /v1/chat/completions API.
+              """)
 @click.option("-v", "--verbose", count=True, default=0,
               help="Increase verbosity: -v warnings, -vv info + HTTP requests, -vvv debug, -vvvv debug incl. third-party libraries.")
 @click.argument('startup_models', nargs=-1, required=False)
 @click.pass_context
-def start(ctx, host, port, load_models, use_api_key, verbose, startup_models):
+def start(ctx, host, port, load_models, use_api_key, session_id_header, verbose, startup_models):
     """
     - 'start' reads --host and --port from config or defaults to 0.0.0.0:8000
 
@@ -112,5 +125,12 @@ def start(ctx, host, port, load_models, use_api_key, verbose, startup_models):
         os.environ["OPENARC_API_KEY_REQUIRED"] = "false"
         console.print("[blue]OPENARC_API_KEY_REQUIRED=[/blue][yellow]False[/yellow] [dim][Clients do not need to authenticate.][/dim]")
 
+    if session_id_header:
+        os.environ["OPENARC_SESSION_ID_HEADER"] = session_id_header
+        console.print(f"[blue]OPENARC_SESSION_ID_HEADER=[/blue][green]{session_id_header}[/green] [dim][per-session in-memory current-context counter; survives a worker restart, re-based on full re-send][/dim]")
+    else:
+        os.environ["OPENARC_SESSION_ID_HEADER"] = ""
+        console.print(f"[blue]OPENARC_SESSION_ID_HEADER=[/blue][yellow]\"\"[/yellow] [dim][No session handling; behaviour is unaffected.][/dim]")
+
     console.print(f"[green]Starting OpenArc server on {host}:{port}[/green]")
-    start_server(host=host, port=port, verbose=verbose)
+    start_server(host=host, port=port, session_id_header=session_id_header, verbose=verbose)

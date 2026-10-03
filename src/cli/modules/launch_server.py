@@ -128,18 +128,26 @@ def _build_log_config(verbose: int):
 
 logger = logging.getLogger("OpenArc")
 
-def start_server(host: str = "0.0.0.0", port: int = 8001, reload: bool = False, verbose: int = 0):
+def start_server(host: str = "0.0.0.0", port: int = 8001, reload: bool = False, verbose: int = 0, session_id_header: str = ""):
     """
     Launches the OpenArc API server
 
     Args:
         host: Host to bind the server to
         port: Port to bind the server to
+        session_id_header: If set, name the client session-id header and enable
+            the server-side session on the shared registry before the app imports.
     """
 
     # applies only until uvicorn.run() installs the dict config below.
     logger.setLevel(getattr(logging, _level_from_verbose(verbose)))
     logging.getLogger().setLevel(getattr(logging, _root_level_from_verbose(verbose)))
+
+    # Re-point the shared session registry from the flag (an empty header = off),
+    # so a stale import-time value (e.g. a different run in-process) is never used.
+    from src.server.deps import _sessions
+
+    _sessions.reconfigure(session_id_header or None)
 
     print(f"Launching  {host}:{port}")
     print("--------------------------------")

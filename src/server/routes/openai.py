@@ -10,7 +10,9 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from src.server.deps import _registry, _workers, verify_api_key
+from src.server.deps import _registry, _sessions, _workers, verify_api_key
+from src.server.sessions import Session
+from src.engine.worker.protocol import RemoteWorkerDeadError
 from src.server.schemas.modeling.contract_kokoro import (
     KokoroLanguage,
     KokoroVoice,
@@ -62,6 +64,7 @@ def _end_stream_on_worker_restart(
     object_name: str,
     choice: dict,
     cause: object,
+    usage: Optional[dict] = None,
 ) -> List[bytes]:
     """End a stream courteously (a short note + a graceful terminal + [DONE])
     when the worker is being restarted within its respawn budget, so its in-flight
@@ -71,16 +74,39 @@ def _end_stream_on_worker_restart(
         f"{label} {model_name}: worker restart in progress ({cause}); "
         f"ending stream for {request_id}"
     )
-    _terminal = json.dumps(
-        {
-            "id": request_id,
-            "object": object_name,
-            "created": created_ts,
-            "model": model_name,
-            "choices": [choice],
-        }
-    )
+    terminal = {
+        "id": request_id,
+        "object": object_name,
+        "created": created_ts,
+        "model": model_name,
+        "choices": [choice],
+    }
+    # A session hands its last-known context on across the restart (not 0);
+    # None (no session) leaves the terminal unchanged.
+    if usage is not None:
+        terminal["usage"] = usage
+    _terminal = json.dumps(terminal)
     return [f"data: {_terminal}\n\n".encode(), b"data: [DONE]\n\n"]
+
+
+def _session_usage(session: Optional[Session], prompt_tokens=None, completion_tokens: int = 0) -> Optional[dict]:
+    """Usage block a session reports, or None (no session => the caller keeps the
+    plain per-request usage, so flag-off is unchanged).
+
+    `total_tokens` is the session's accumulated "current context" (goose shows it
+    before / context_window); it survives a worker restart and re-bases on a
+    re-send. prompt/completion keep the real per-request values (unaffected by
+    the session, so goose's output/c accounting still accumulates correctly);
+    for a failed/healing turn the prompt defaults to the retained current and the
+    output to 0 (nothing was produced)."""
+    if session is None:
+        return None
+    current = session.current_context
+    return {
+        "prompt_tokens": current if prompt_tokens is None else prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": current,
+    }
 
 
 def _get_record(model_name: str):
@@ -266,6 +292,15 @@ async def openai_chat_completions(
         created_ts = int(time.time())
         request_id = f"ov-{uuid.uuid4().hex[:24]}"
 
+        # --sih session (no-op otherwise): a proxy of the worker's ChatHistory
+        # usage (the "current context") so a worker restart reports the last-known
+        # value (not 0) until goose re-sends and the worker re-calibrates.
+        session = await _sessions.get_or_create(
+            _sessions.session_id_from(raw_request), model_name
+        )
+        if session is not None:
+            generation_config.session_id = session.session_id
+
         thinking_enabled = True
         if chat_template_kwargs:
             thinking_enabled = chat_template_kwargs.get(
@@ -335,6 +370,8 @@ async def openai_chat_completions(
                                         object_name="chat.completion.chunk",
                                         choice={"index": 0, "delta": {}, "finish_reason": "error"},
                                         cause=item["error"],
+                                        # Last-known context (not 0) across the restart.
+                                        usage=_session_usage(session),
                                     ):
                                         yield _chunk
                                     return
@@ -375,6 +412,16 @@ async def openai_chat_completions(
                 total_tokens = (metrics_data or {}).get(
                     "total_token", prompt_tokens + completion_tokens
                 )
+                # Only total_tokens becomes the session's accumulated current context
+                # (folded in first); prompt/completion stay the real per-request values.
+                usage = {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": total_tokens,
+                }
+                if session is not None:
+                    session.apply(metrics_data)
+                    usage = _session_usage(session, prompt_tokens, completion_tokens)
 
                 finish_reason = "tool_calls" if tool_call_sent else "stop"
 
@@ -390,18 +437,35 @@ async def openai_chat_completions(
                             "finish_reason": finish_reason,
                         }
                     ],
-                    "usage": {
-                        "prompt_tokens": prompt_tokens,
-                        "completion_tokens": completion_tokens,
-                        "total_tokens": total_tokens,
-                    },
+                    "usage": usage,
                 }
                 yield (f"data: {json.dumps(final_payload)}\n\n").encode()
                 yield b"data: [DONE]\n\n"
 
             return StreamingResponse(event_stream(), media_type="text/event-stream")
         else:
-            result = await _workers.generate(model_name, generation_config)
+            try:
+                result = await _workers.generate(model_name, generation_config)
+            except RemoteWorkerDeadError as exc:
+                # Restart: keep the session's last-known context visible (never 0);
+                # a terminal death (will_respawn False) re-raises to the 500 handler.
+                if session is not None and getattr(exc, "will_respawn", False):
+                    return {
+                        "id": request_id,
+                        "object": "chat.completion",
+                        "created": created_ts,
+                        "model": model_name,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "message": {"role": "assistant", "content": None},
+                                "finish_reason": "error",
+                            }
+                        ],
+                        "usage": _session_usage(session),
+                        "error": str(exc),
+                    }
+                raise
             text = result.get("text", "")
             metrics = result.get("metrics", {}) or {}
 
@@ -428,6 +492,17 @@ async def openai_chat_completions(
             else:
                 message["content"] = content_text if content_text else text
 
+            # Only total_tokens becomes the session's accumulated current context
+            # (folded in first); prompt/completion stay the real per-request values.
+            usage = {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens,
+            }
+            if session is not None:
+                session.apply(metrics)
+                usage = _session_usage(session, prompt_tokens, completion_tokens)
+
             return {
                 "id": request_id,
                 "object": "chat.completion",
@@ -440,11 +515,7 @@ async def openai_chat_completions(
                         "finish_reason": finish_reason,
                     }
                 ],
-                "usage": {
-                    "prompt_tokens": prompt_tokens,
-                    "completion_tokens": completion_tokens,
-                    "total_tokens": total_tokens,
-                },
+                "usage": usage,
                 "metrics": metrics,
             }
     except ValueError as exc:

@@ -28,6 +28,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 from src.engine.worker import protocol as proto
+from src.engine.worker.session import WorkerSessionManager
 from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_GenConfig
 from src.server.schemas.modeling.contract_whisper import OVGenAI_WhisperGenConfig
 from src.server.schemas.registration import ModelLoadConfig, ModelType
@@ -280,6 +281,9 @@ class _Worker:
         self._active_gen: Optional[asyncio.Task] = None
         self._active_request_id: Optional[str] = None
         self._send_lock = asyncio.Lock()
+        # Per-session usage; a server-side Session mirrors it so the reported
+        # "current context" survives a worker restart.
+        self._worker_sessions = WorkerSessionManager()
 
     async def send(self, data: bytes) -> None:
         async with self._send_lock:
@@ -462,8 +466,12 @@ class _Worker:
         self._active_request_id = msg.get("request_id")
         try:
             gen_config = self._validate_gen_config(json.loads(msg["gen_config"]))
+            session_id = getattr(gen_config, "session_id", None)
             run = getattr(self.model, method_name)(gen_config)
             async for item in run:
+                # Report this turn's usage for a session (augment no-ops without input_token).
+                if session_id and isinstance(item, dict):
+                    self._worker_sessions.augment(session_id, item)
                 await self.send(proto.encode_response(proto.MSG_ITEM, req_id=req_id, item=item))
             await self.send(proto.encode_response(proto.MSG_DONE, req_id=req_id))
         except asyncio.CancelledError:
