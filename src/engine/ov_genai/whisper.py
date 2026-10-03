@@ -9,6 +9,7 @@ import librosa
 import numpy as np
 from openvino_genai import WhisperPipeline
 
+from src.engine.audio import AudioDecodeError
 from src.server.model_registry import ModelRegistry
 from src.server.schemas.registration import ModelLoadConfig
 from src.server.schemas.modeling.contract_whisper import OVGenAI_WhisperGenConfig
@@ -31,7 +32,10 @@ class OVGenAI_Whisper:
         
         audio_buffer = io.BytesIO(audio_bytes)
         
-        audio, sr = librosa.load(audio_buffer, sr=16000, mono=True)
+        try:
+            audio, sr = librosa.load(audio_buffer, sr=16000, mono=True)
+        except Exception as e:
+            raise AudioDecodeError(f"Unreadable audio: {e}") from e
 
         return audio.astype(np.float32).tolist()
 

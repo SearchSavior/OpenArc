@@ -12,6 +12,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional, Union
 from src.engine.ov_genai.llm import OVGenAI_LLM
 from src.engine.ov_genai.vlm import OVGenAI_VLM
 from src.engine.ov_genai.whisper import OVGenAI_Whisper
+from src.engine.audio import AudioDecodeError
 from src.engine.openvino.kokoro import OV_Kokoro
 from src.engine.openvino.qwen3_asr.qwen3_asr import OVQwen3ASR
 from src.engine.openvino.qwen3_tts.qwen3_tts import OVQwen3TTS
@@ -70,6 +71,8 @@ class WorkerPacket:
     response: Optional[str] = None
     metrics: Optional[Dict[str, Any]] = None
     segments: Optional[List[Dict[str, Any]]] = None
+    # A bad request (e.g. undecodable audio): fail this request, keep the model loaded.
+    request_error: Optional[BaseException] = None
     # Orchestration plumbing
     result_future: Optional[asyncio.Future] = None
     stream_queue: Optional[asyncio.Queue] = None
@@ -96,6 +99,10 @@ def _commit_completed_packet(
     registry: ModelRegistry,
 ) -> bool:
     """Complete the request future. Return True if the worker should exit."""
+    if completed.request_error is not None:
+        if packet.result_future is not None and not packet.result_future.done():
+            packet.result_future.set_exception(completed.request_error)
+        return False
     if completed.error is not None:
         logger.error(
             f"[{model_name}] Inference failed, triggering model unload..."
@@ -214,6 +221,9 @@ class InferWorker:
 
             packet.response = final_text
             packet.metrics = metrics
+        except AudioDecodeError as e:
+            logger.warning(f"Whisper request rejected: {e}")
+            packet.request_error = e
         except Exception as e:
             logger.error("Whisper inference failed!", exc_info=True)
             _mark_inference_error(packet, e)
@@ -228,6 +238,9 @@ class InferWorker:
         try:
             assert isinstance(packet.gen_config, OV_Qwen3ASRGenConfig), "Expected OV_Qwen3ASRGenConfig for Qwen3 ASR inference"
             packet.response, packet.metrics, packet.segments = await asr_model.transcribe(packet.gen_config)
+        except AudioDecodeError as e:
+            logger.warning(f"Qwen3 ASR request rejected: {e}")
+            packet.request_error = e
         except Exception as e:
             logger.error("Qwen3 ASR inference failed!", exc_info=True)
             _mark_inference_error(packet, e)
