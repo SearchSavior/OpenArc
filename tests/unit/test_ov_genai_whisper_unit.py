@@ -152,3 +152,10 @@ def test_unload_model_resets_state(monkeypatch: pytest.MonkeyPatch, load_config:
     registry.register_unload.assert_called_once_with("model-name")
     gc_mock.assert_called_once()
 
+
+def test_prepare_audio_rejects_garbage(load_config: ModelLoadConfig) -> None:
+    from src.engine.audio import AudioDecodeError
+
+    whisper = OVGenAI_Whisper(load_config)
+    with pytest.raises(AudioDecodeError, match="Unreadable audio"):
+        whisper.prepare_audio(OVGenAI_WhisperGenConfig(audio_base64=base64.b64encode(b"not audio" * 100).decode()))

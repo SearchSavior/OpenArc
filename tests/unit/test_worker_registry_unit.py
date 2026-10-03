@@ -1,4 +1,5 @@
 import asyncio
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest  # type: ignore[import]
 
@@ -402,3 +403,43 @@ def test_missing_model_queue(worker_registry: worker_module.WorkerRegistry) -> N
     with pytest.raises(ValueError):
         worker_registry._get_model_queue("missing")
 
+
+
+def test_undecodable_audio_fails_whisper_and_qwen3_requests_not_models() -> None:
+    from src.engine.audio import AudioDecodeError
+
+    class BadWhisper:
+        async def transcribe(self, cfg):
+            raise AudioDecodeError("Unreadable audio: nope")
+            yield  # pragma: no cover
+
+    class BadQwen3:
+        async def transcribe(self, cfg):
+            raise AudioDecodeError("Unreadable audio: nope")
+
+    w = worker_module.WorkerPacket(request_id="w", id_model="whisper", gen_config=OVGenAI_WhisperGenConfig(audio_base64="AAA"))
+    done = asyncio.run(worker_module.InferWorker.infer_whisper(w, BadWhisper()))  # type: ignore[arg-type]
+    assert done.error is None and isinstance(done.request_error, AudioDecodeError)
+
+    q = worker_module.WorkerPacket(request_id="q", id_model="qwen3", gen_config=OV_Qwen3ASRGenConfig(audio_base64="AAA"))
+    done = asyncio.run(worker_module.InferWorker.infer_qwen3_asr(q, BadQwen3()))  # type: ignore[arg-type]
+    assert done.error is None and isinstance(done.request_error, AudioDecodeError)
+
+
+def test_commit_request_error_fails_future_and_keeps_worker() -> None:
+    async def _run():
+        registry = MagicMock()
+        registry.register_unload = AsyncMock()
+        fut = asyncio.get_running_loop().create_future()
+        packet = worker_module.WorkerPacket(request_id="r", id_model="m", gen_config=OVGenAI_WhisperGenConfig(audio_base64="AAA"),
+                                            result_future=fut)
+        packet.request_error = ValueError("bad audio")
+        exit_worker = worker_module._commit_completed_packet(packet, packet, "m", registry)
+        await asyncio.sleep(0)
+        return exit_worker, fut, registry
+
+    exit_worker, fut, registry = asyncio.run(_run())
+    assert exit_worker is False
+    with pytest.raises(ValueError, match="bad audio"):
+        fut.result()
+    registry.register_unload.assert_not_called()
