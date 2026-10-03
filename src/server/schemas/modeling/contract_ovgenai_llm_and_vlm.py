@@ -86,6 +86,15 @@ class OVGenAI_GenConfig(BaseModel):
         default=None,
         description="Request ID for tracking and cancellation."
     )
+    session_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Client session id (from the --sih header), routed to the worker so its "
+            "usage tracker can report the per-request 'current context' (mirrored in "
+            "a server-side Session that survives a restart). None => no session "
+            "handling (dropped on the wire when None)."
+        )
+    )
     seed: Optional[int] = Field(
         default=None,
         description="Fix the RNG seed used for generation. Setting this will cause the model to return the same text for the same prompt."

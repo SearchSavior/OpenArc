@@ -6,11 +6,15 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from src.server.model_registry import ModelRegistry
 from src.server.worker_registry import WorkerRegistry
+from src.server.sessions import SessionRegistry
 
 logger = logging.getLogger(__name__)
 
 _registry = ModelRegistry()
 _workers = WorkerRegistry(_registry)
+# Per-session "current context" proxy; a no-op unless --sih names a header
+# (it exports OPENARC_SESSION_ID_HEADER; empty/unset => off, no behaviour change).
+_sessions = SessionRegistry(os.getenv("OPENARC_SESSION_ID_HEADER") or None)
 
 API_KEY = os.getenv("OPENARC_API_KEY")
 AUTH_REQUIRED = os.getenv("OPENARC_API_KEY_REQUIRED", "false").lower() == "true"
