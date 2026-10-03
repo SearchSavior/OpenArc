@@ -727,6 +727,11 @@ async def openai_audio_speech(request: OpenAISpeechRequest):
                     raise ValueError(f"Unknown Kokoro language code: '{request.language}'. See KokoroLanguage for valid values.")
             if "response_format" not in gen_config.model_fields_set and request.response_format is not None:
                 gen_config.response_format = request.response_format
+            if gen_config.stream:
+                return StreamingResponse(
+                    _workers.stream_generate_speech_kokoro(request.model, gen_config),
+                    media_type="audio/L16;rate=24000;channels=1",
+                )
             result = await _workers.generate_speech_kokoro(request.model, gen_config)
 
         metrics = result.get("metrics", {})

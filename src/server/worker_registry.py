@@ -275,6 +275,28 @@ class InferWorker:
         return packet
 
     @staticmethod
+    async def infer_kokoro_stream(packet: WorkerPacket, kokoro_model: OV_Kokoro) -> WorkerPacket:
+        """Stream Kokoro PCM chunks (int16 LE bytes) onto packet.stream_queue as each
+        text chunk finishes; ends with None."""
+        if packet.stream_queue is None:
+            raise RuntimeError("infer_kokoro_stream requires stream_queue")
+        chunks = samples = 0
+        try:
+            async for chunk in kokoro_model.chunk_forward_pass(packet.gen_config):
+                audio = chunk.audio.numpy() if hasattr(chunk.audio, "numpy") else np.asarray(chunk.audio)
+                pcm = np.clip(audio * 32768.0, -32768.0, 32767.0).astype(np.int16).tobytes()
+                await packet.stream_queue.put(pcm)
+                chunks += 1
+                samples += len(audio)
+        except Exception:
+            logger.error("Kokoro streaming inference failed!", exc_info=True)
+        finally:
+            await packet.stream_queue.put(None)
+        packet.response = ""
+        packet.metrics = {"chunks_processed": chunks, "total_samples": samples}
+        return packet
+
+    @staticmethod
     async def infer_qwen3_tts(packet: WorkerPacket, tts_model: OVQwen3TTS) -> WorkerPacket:
         """Generate speech audio for a single packet using the OVQwen3TTS engine."""
         try:
@@ -469,7 +491,10 @@ class QueueWorker:
                 logger.info(f"[Kokoro Worker: {model_name}] Shutdown signal received.")
                 break
 
-            completed_packet = await InferWorker.infer_kokoro(packet, kokoro_model)
+            if getattr(packet.gen_config, "stream", False) and packet.stream_queue is not None:
+                completed_packet = await InferWorker.infer_kokoro_stream(packet, kokoro_model)
+            else:
+                completed_packet = await InferWorker.infer_kokoro(packet, kokoro_model)
 
             if completed_packet.metrics:
                 logger.info(f"[Kokoro Worker: {model_name}] Metrics: {completed_packet.metrics}")
@@ -956,6 +981,28 @@ class WorkerRegistry:
             result_future=result_future,
         )
         q = self._get_qwen3_tts_queue(model_name)
+        await q.put(packet)
+        while True:
+            item = await stream_queue.get()
+            if item is None:
+                break
+            yield item
+
+    async def stream_generate_speech_kokoro(
+        self, model_name: str, gen_config: OV_KokoroGenConfig,
+    ) -> AsyncIterator[bytes]:
+        """Stream raw int16 LE mono PCM chunks at 24 kHz (RFC 4856 audio/L16 on the HTTP layer)."""
+        request_id = uuid.uuid4().hex
+        stream_queue: asyncio.Queue = asyncio.Queue()
+        result_future: asyncio.Future = asyncio.get_running_loop().create_future()
+        packet = WorkerPacket(
+            request_id=request_id,
+            id_model=model_name,
+            gen_config=gen_config,
+            stream_queue=stream_queue,
+            result_future=result_future,
+        )
+        q = self._get_kokoro_queue(model_name)
         await q.put(packet)
         while True:
             item = await stream_queue.get()
