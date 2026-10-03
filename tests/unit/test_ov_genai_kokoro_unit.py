@@ -446,3 +446,15 @@ def test_exact_sinegen_matches_upstream_below_float_limit() -> None:
     with kokoro_module._exact_sinegen():
         assert kokoro_module.istftnet.SineGen._f02sine is kokoro_module._f02sine_exact
     assert kokoro_module.istftnet.SineGen._f02sine is kokoro_module._ORIGINAL_F02SINE
+
+
+def test_stream_chunks_shortens_only_the_first_chunk(load_config: ModelLoadConfig) -> None:
+    kokoro = OV_Kokoro(load_config)
+    first = "This opening sentence is deliberately long, so that it runs well past the streaming limit, which is about one hundred and twenty characters."
+    text = first + " Second sentence. Third sentence here."
+
+    chunks = kokoro._stream_chunks(text, 400)
+
+    assert len(chunks[0]) <= kokoro_module.STREAM_FIRST_CHUNK_CHARS
+    assert " ".join(chunks).split() == text.split()
+    assert kokoro._stream_chunks("Short. Text.", 400) == kokoro.make_chunks("Short. Text.", 400)

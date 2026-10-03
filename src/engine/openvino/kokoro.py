@@ -45,6 +45,10 @@ GPU_DECODER_BUCKETS = (64, 96, 128, 192, 256, 384, 512)
 SAMPLES_PER_FRAME = 600
 # CPU threads for the OpenVINO front end on the GPU path.
 FRONT_CPU_THREADS = 4
+# When streaming, the first text chunk is cut to about this many characters
+# (a short sentence) so the first audio is ready quickly; later chunks use the
+# request's character_count_chunk.
+STREAM_FIRST_CHUNK_CHARS = 120
 # Bump when the converted graphs change, to invalidate cached IRs.
 _IR_VERSION = 2
 
@@ -500,6 +504,16 @@ class OV_Kokoro(KModel):
 
         return chunks
 
+    def _stream_chunks(self, text: str, chunk_size: int) -> list[str]:
+        """make_chunks, except the first chunk is cut down to a short sentence or
+        clause so a streaming client gets audio as soon as possible."""
+        chunks = self.make_chunks(text, chunk_size)
+        if not chunks or len(chunks[0]) <= STREAM_FIRST_CHUNK_CHARS:
+            return chunks
+        head = self.make_chunks(chunks[0], STREAM_FIRST_CHUNK_CHARS)
+        rest = " ".join(head[1:])
+        return head[:1] + (self.make_chunks(rest, chunk_size) if rest else []) + chunks[1:]
+
     async def chunk_forward_pass(
         self, config: OV_KokoroGenConfig
     ) -> AsyncIterator[StreamChunk]:
@@ -513,7 +527,10 @@ class OV_Kokoro(KModel):
         # blended FloatTensor; otherwise the plain voice name.
         voice_arg = self._resolve_voice(config, pipeline)
 
-        text_chunks = self.make_chunks(config.input, config.character_count_chunk)
+        if getattr(config, "stream", False):
+            text_chunks = self._stream_chunks(config.input, config.character_count_chunk)
+        else:
+            text_chunks = self.make_chunks(config.input, config.character_count_chunk)
         total_chunks = len(text_chunks)
 
         for idx, chunk_text in enumerate(text_chunks):
