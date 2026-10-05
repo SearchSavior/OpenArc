@@ -34,6 +34,7 @@ import sys
 import uuid
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Optional, Tuple, Union
 
+from src.engine.worker import platform_support
 from src.engine.worker import protocol as proto
 from src.server.schemas.registration import ModelLoadConfig
 
@@ -88,8 +89,14 @@ class WorkerSupervisor:
         ping_timeout: float = 5.0,
         restart_backoff: float = 0.5,
         on_dead: Optional[Callable[[], Awaitable[None]]] = None,
+        platform: Optional[platform_support.Platform] = None,
     ) -> None:
         self._model_name = model_name
+        # The host this supervisor runs on, chosen once (the spawn flags, the
+        # PYTHONPATH separator, and the terminate strategy all key off it).
+        # Defaults to the real host; a test may inject the *other* platform to
+        # drive its pure decisions (see platform_support) without a real host.
+        self._platform = platform if platform is not None else platform_support.current_platform()
         self._max_respawns = max_respawns
         self._load_timeout = load_timeout
         self._unload_timeout = unload_timeout
@@ -227,7 +234,10 @@ class WorkerSupervisor:
         cwd = os.getcwd()
         if cwd not in paths:
             paths.insert(0, cwd)
-        env["PYTHONPATH"] = os.pathsep.join(paths)
+        # Join with the platform's path separator (":" on POSIX, ";" on Windows):
+        # reading the Platform keeps this a pure decision that a test can drive for
+        # whichever platform, and os.pathsep is the real host's value anyway.
+        env["PYTHONPATH"] = self._platform.pathsep.join(paths)
         # The child sizes its stdin reader with this limit BEFORE the LOAD
         # command arrives (the pipe reader is created at startup), so the
         # per-model worker_line_limit travels in the environment, not the
@@ -256,6 +266,11 @@ class WorkerSupervisor:
             stderr=asyncio.subprocess.PIPE,
             cwd=os.getcwd(),
             env=self._build_env(),
+            # Windows only: hide the per-worker console (a visible console would
+            # pop a window PER model/worker process), and create no new one.
+            # POSIX gets an empty dict -- the child needs no special flags, so the
+            # existing Linux/macOS behaviour is byte-for-byte unchanged.
+            **platform_support.make_spawn_kwargs(self._platform),
         )
         # Log the started worker's pid from the supervisor so it lands on the
         # server's stdout / openarc.log (the analogue of "Started server process [pid]").
@@ -399,20 +414,20 @@ class WorkerSupervisor:
                 logger.warning(
                     f"[{self._model_name}] worker did not exit after UNLOAD; terminating"
                 )
-                try:
-                    proc.terminate()
-                except ProcessLookupError:
-                    pass
+                # Graceful terminate: SIGTERM on POSIX, TerminateProcess on
+                # Windows (where the graceful and the hard step are the same
+                # call -- the ladder below still makes sense as a final resort).
+                platform_support.terminate(proc, self._platform)
                 try:
                     await asyncio.wait_for(proc.wait(), 5.0)
                 except asyncio.TimeoutError:
                     logger.warning(
-                        f"[{self._model_name}] worker did not exit after SIGTERM; killing"
+                        f"[{self._model_name}] worker did not exit after "
+                        f"{self._platform.terminate_signal}; forcing kill"
                     )
-                    try:
-                        proc.kill()
-                    except ProcessLookupError:
-                        pass
+                    # Hard terminate: SIGKILL on POSIX, TerminateProcess on
+                    # Windows (already ported by CPython for both platforms).
+                    platform_support.kill(proc, self._platform)
                     await proc.wait()
         await self._await_pipe_tasks()
         self._close_process_streams()
@@ -764,10 +779,10 @@ class WorkerSupervisor:
         proc = self._proc
         if proc is None or proc.returncode is not None:
             return
-        try:
-            proc.kill()
-        except ProcessLookupError:
-            pass
+        # Route the emergency terminate through the platform seam: SIGKILL on
+        # POSIX, TerminateProcess on Windows; the helper swallows the "already
+        # gone" case (a child that exited on its own before we got here).
+        platform_support.kill(proc, self._platform)
 
     def _set_state(self, state: str) -> None:
         if state != self._state:

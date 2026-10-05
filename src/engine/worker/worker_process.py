@@ -24,9 +24,11 @@ import json
 import logging
 import os
 import sys
+import threading
 import time
 from typing import Any, Dict, List, Optional
 
+from src.engine.worker import platform_support
 from src.engine.worker import protocol as proto
 from src.engine.worker.session import WorkerSessionManager
 from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_GenConfig
@@ -98,30 +100,54 @@ def _worker_logfile_from_env(model_name: str) -> Optional[str]:
     return value or None
 
 
-def _redirect_stderr_to(path: str) -> None:
+def _redirect_stderr_to(path: str) -> bool:
     """Redirect fd 2 -- catching output that native C libraries (OpenVINO/
     OpenCL) write straight to the descriptor, bypassing Python logging -- to
     *path*, appending. The destination is a bare fd (so it is not GC-closed
     twice) re-targeted onto fd 2 with dup2, which also closes the inherited
     pipe's write end; sys.stderr is then rebuilt on a private dup of it
-    (closefd=False) so the StreamHandler keeps writing to the file."""
-    directory = os.path.dirname(path)
-    if directory:
-        os.makedirs(directory, exist_ok=True)
-    old = sys.stderr
-    target_fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
-    os.dup2(target_fd, 2)
-    os.close(target_fd)
-    sys.stderr = os.fdopen(
-        2, "a", encoding="utf-8", errors="replace", buffering=1, closefd=False
-    )
-    if old is not sys.stderr:
-        # The inherited pipe's write end was already closed by the dup2 above;
-        # this merely silences a "close of a gone fd" when `old` is later GC'd.
-        try:
-            old.close()
-        except Exception:
-            pass
+    (closefd=False) so the StreamHandler keeps writing to the file.
+
+    These primitives (``os.open``/``os.dup2``/``os.fdopen``) are cross-platform,
+    so the redirect itself works on Windows. But the whole thing FAILS OPEN: if
+    the destination can't be opened (e.g. the log directory is not writable -- a
+    real hazard on a restricted Windows install or a read-only share), the
+    failure is logged and ``sys.stderr`` is left untouched (still the inherited
+    pipe the supervisor drains and forwards nothing from), so a problem opening
+    the LOG never takes the worker down or leaks into the main log. The mode it
+    requests (``0o644``) is ignored on Windows (no POSIX mode bits) but is valid
+    syntax everywhere, so this reads cleanly on all hosts.
+
+    Returns True when the redirect happened, False when it was skipped (so a
+    caller can note the worker logged to its own stderr instead); ``return`` only,
+    never raises -- a worker that can't reach its log file should keep running.
+    """
+    try:
+        directory = os.path.dirname(path)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+        old = sys.stderr
+        target_fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+        os.dup2(target_fd, 2)
+        os.close(target_fd)
+        sys.stderr = os.fdopen(
+            2, "a", encoding="utf-8", errors="replace", buffering=1, closefd=False
+        )
+        if old is not sys.stderr:
+            # The inherited pipe's write end was already closed by the dup2 above;
+            # this merely silences a "close of a gone fd" when `old` is later GC'd.
+            try:
+                old.close()
+            except Exception:
+                pass
+        return True
+    except Exception as e:
+        logger.error(
+            f"could not redirect the worker's stderr to {path!r} ({e}); "
+            f"keeping the inherited stderr (its output is not forwarded to the "
+            f"main log either, by the worker's log-isolation design)"
+        )
+        return False
 
 
 def _configure_logging() -> None:
@@ -164,6 +190,10 @@ def _worker_line_limit() -> int:
             f"invalid OPENARC_WORKER_LINE_LIMIT {raw!r}; using the protocol default"
         )
         return proto.PROTOCOL_LINE_LIMIT
+
+
+# Bytes the Windows stdin-reader thread pulls from fd 0 per blocking read.
+_WORKER_READ_CHUNK = 64 * 1024
 
 
 class _StubModel:
@@ -299,8 +329,22 @@ class _Worker:
         # itself is per-model (see ModelLoadConfig.worker_line_limit,
         # exported by the supervisor as OPENARC_WORKER_LINE_LIMIT).
         reader = asyncio.StreamReader(limit=_worker_line_limit())
-        protocol = asyncio.StreamReaderProtocol(reader)
-        await loop.connect_read_pipe(lambda: protocol, sys.stdin)
+        # On Windows the proactor registers sys.stdin with an IOCP
+        # (CreateIoCompletionPort), which throws WinError 6 on the inherited,
+        # non-overlapped stdin pipe -- the worker reads no command and the load
+        # budget expires. Read our stdin with a blocking os.read(0) on a daemon
+        # thread feeding the StreamReader instead (a plain read on fd 0 works);
+        # POSIX keeps the existing proactor read, byte-for-byte.
+        if platform_support.IS_WINDOWS:
+            threading.Thread(
+                target=self._read_stdin_thread,
+                args=(loop, reader),
+                daemon=True,
+                name=f"ovworker-stdin-{self.model_name or 'worker'}",
+            ).start()
+        else:
+            protocol = asyncio.StreamReaderProtocol(reader)
+            await loop.connect_read_pipe(lambda: protocol, sys.stdin)
         while True:
             try:
                 line = await reader.readline()
@@ -329,6 +373,22 @@ class _Worker:
                 logger.exception("failed to handle protocol message")
         if self._active_gen is not None and not self._active_gen.done():
             self._active_gen.cancel()
+
+    def _read_stdin_thread(self, loop: "asyncio.AbstractEventLoop", reader: asyncio.StreamReader) -> None:
+        """Windows stdin reader: a blocking os.read(0) on a daemon thread that
+        feeds the StreamReader, then EOFs it when the parent closes the pipe.
+        Bypasses the proactor's IOCP registration of the inherited stdin, which
+        fails (WinError 6) on the inherited, non-overlapped pipe."""
+        while True:
+            try:
+                data = os.read(0, _WORKER_READ_CHUNK)
+            except OSError:
+                data = b""
+            if data:
+                loop.call_soon_threadsafe(reader.feed_data, data)
+                continue
+            loop.call_soon_threadsafe(reader.feed_eof)
+            return
 
     # Overridable hooks so protocol variants (e.g. the plain-OpenVINO worker)
     # can subclass this loop without duplicating it.

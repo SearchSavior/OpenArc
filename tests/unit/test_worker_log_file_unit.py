@@ -74,23 +74,48 @@ def test_worker_log_file_keeps_the_main_log_directory(
     monkeypatch: "pytest.MonkeyPatch",
 ) -> None:
     # A directory component is (re)attached around the model-part splice, so the
-    # worker file lands in the SAME directory as the main log.
-    monkeypatch.setenv("OPENARC_LOG_FILE", "/var/log/openarc.log")
+    # worker file lands in the SAME directory as the main log. The EXPECTED
+    # value is built with os.path.join -- i.e. the host's separator ("\" on a
+    # Windows box) -- exactly the way the code builds it, so this holds on either
+    # host. The former hard-coded "/var/log/..." read back on Windows as
+    # "/var/log\\openarc-worker-mymodel.log"; a drive letter (e.g. C:/x/y) is a
+    # perfectly valid Windows path, so the point is the *shape follows
+    # os.path.join*, not that a path can never contain a colon.
+    main_log = "/var/log/openarc.log"
+    monkeypatch.setenv("OPENARC_LOG_FILE", main_log)
     monkeypatch.delenv("OPENARC_WORKER_LOGFILE_mymodel", raising=False)
     sup = WorkerSupervisor("mymodel")
-    assert sup._worker_log_file() == "/var/log/openarc-worker-mymodel.log"
+    result = sup._worker_log_file()
+    # The named intent: same directory as the main log, the model part spliced in.
+    # Both derived on the host, so the separator matches whatever os.path produces.
+    directory, _name = os.path.split(main_log)
+    assert result == os.path.join(directory, "openarc-worker-mymodel.log")
+    assert os.path.dirname(result) == os.path.dirname(main_log)
+    assert os.path.basename(result) == "openarc-worker-mymodel.log"
 
 
 def test_worker_log_file_is_per_model(monkeypatch: "pytest.MonkeyPatch") -> None:
     # Distinct models get distinct files: each model owns a process and a log.
-    monkeypatch.setenv("OPENARC_LOG_FILE", "/var/log/openarc.log")
+    # The expected paths are built with os.path.join (the host separator -- "\"
+    # on Windows) the same way the code builds them, so this holds on either host;
+    # the former hard-coded "/var/log/..." read back on Windows as
+    # "/var/log\\openarc-worker-alpha.log" (a drive letter, e.g. C:/x/y, is a
+    # valid Windows path, so the separator must simply follow os.path.join).
+    main_log = "/var/log/openarc.log"
+    monkeypatch.setenv("OPENARC_LOG_FILE", main_log)
     monkeypatch.delenv("OPENARC_WORKER_LOGFILE_alpha", raising=False)
     monkeypatch.delenv("OPENARC_WORKER_LOGFILE_beta", raising=False)
     a = WorkerSupervisor("alpha")._worker_log_file()
     b = WorkerSupervisor("beta")._worker_log_file()
-    assert a == "/var/log/openarc-worker-alpha.log"
-    assert b == "/var/log/openarc-worker-beta.log"
+    directory, _name = os.path.split(main_log)
+    assert a == os.path.join(directory, "openarc-worker-alpha.log")
+    assert b == os.path.join(directory, "openarc-worker-beta.log")
     assert a != b
+    # Same directory, only the model part of the name differs -- so neither can be
+    # mistaken for the other's file. (Basename is separator-free, holds on any host.)
+    assert os.path.dirname(a) == os.path.dirname(b)
+    assert os.path.basename(a) == "openarc-worker-alpha.log"
+    assert os.path.basename(b) == "openarc-worker-beta.log"
 
 
 def test_worker_log_file_honours_pre_set_override(
