@@ -1,0 +1,139 @@
+# Windows worker tests -- the "how do we test Windows from a Linux box" answer.
+#
+# This project has no local Windows environment, but the worker's Windows
+# behaviour is split in src/engine/worker/platform_support.py into a host-
+# independent DECISION and one host-specific EXECUTION:
+#
+#   * The DECISION (which platform, hide the per-worker console, ";"-joined
+#     PYTHONPATH, TerminateProcess) is pure and is asserted for BOTH platforms on
+#     any machine by tests/unit/test_worker_platform_unit.py -- which already runs
+#     in the normal ubuntu `Run Tests` job (it is under tests/unit). So the Windows
+#     *decision* is already covered on Linux.
+#
+#   * The one thing Linux genuinely cannot do is the EXECUTION: resolve the
+#     description into a real subprocess STARTUPINFO / STARTF_USESHOWWINDOW /
+#     CREATE_NO_WINDOW and actually spawn the child with it. That runs HERE, on a
+#     real windows-latest host.
+#
+# SCOPE -- why this job does NOT run the whole tests/unit suite
+# ----------------------------------------------------------------
+# A previous version ran `pytest tests/unit` in its entirety, which pulled in the
+# ~30 model/engine tests that need real downloaded model files, network, GPUs, or
+# Linux-only behaviour -- they fail on a fresh windows-latest runner for reasons
+# that have nothing to do with the worker, so that (correctly) painted the job red.
+# Instead this job runs ONLY the worker, and in two steps for maximum signal from a
+# single (manual, inconvenient) run:
+#
+#   step 1  the PURE worker tests (platform-decision + protocol + log-file) --
+#           no model / OpenVINO / GPU / network. These validate the Windows
+#           *decisions* and are guaranteed to run on any host, so a green here
+#           is unambiguous proof the seam is right.
+#   step 2  the REAL-SPAWN end to end (the stub-lifecycle tests spawn an actual
+#           python.exe child) + the win32-gated integration test -- run with
+#           `if: always()`, so it executes even if step 1 tripped, and any failure
+#           is the meaningful one: does the worker actually work on Windows?
+#           (Needs the OpenVINO/torch deps only where a test imports them; the
+#           stub lifecycle itself sets OPENARC_WORKER_STUB=1, so no model files.)
+#
+# It is `workflow_dispatch`-only on purpose (NOT on push/pull_request): uv sync
+# --frozen installs the full project (it is proven to succeed on windows-latest --
+# step "Sync dependencies" passed) but the broader suite is not yet Windows-ready,
+# so this opt-in job must not gate normal CI.
+name: Windows Worker Tests
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  windows-worker:
+    name: Worker Windows path (manual)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@v5
+        with:
+          # Automatically installs the Python version specified in your pyproject.toml
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: |
+          uv sync --frozen
+          uv sync --group test --frozen
+
+      - name: Worker platform / protocol tests (pure, cross-platform)
+        # No model / OpenVINO / GPU / network: these assert the Windows
+        # *decisions* (hidden console, ';' PYTHONPATH, TerminateProcess) and the
+        # host-independent protocol/log-file behaviour. Guaranteed to run on any
+        # host, so a pass here is a clean signal the seam is correct on Windows.
+        run: |
+          uv run pytest -W ignore -rs -v `
+            tests/unit/test_worker_platform_unit.py `
+            tests/unit/test_worker_protocol_unit.py `
+            tests/unit/test_worker_plain_protocol_unit.py `
+            tests/unit/test_worker_log_file_unit.py
+
+      - name: Worker spawn end-to-end + Windows-only assertions
+        # `if: always()` so this runs even if the previous step tripped. This is
+        # the part that truly needs Windows: the stub-lifecycle tests spawn a real
+        # python.exe child (auto-covering the Windows spawn/terminate), and the
+        # integration test asserts the spawn asked for a hidden console. -rs
+        # shows the skip reasons; -v so any real failure is easy to read.
+        #
+        # A worker redirects its FULL logging + native C-level stderr into its OWN
+        # per-model log file -- the supervisor drains the worker's stderr and
+        # forwards nothing to the main log (see test_worker_log_file_unit.py). So
+        # on a fresh runner the worker's real output is invisible unless we point
+        # that file at the checkout. Set OPENARC_LOG_FILE (a relative path -> the
+        # worker file lands beside it in <workspace>/openarc-logs/) so the next
+        # step can lift it out; pre-create that dir so the best-effort redirect
+        # (which makedirs's it) definitely succeeds.
+        env:
+          OPENARC_LOG_FILE: openarc-logs/openarc.log
+        if: always()
+        run: |
+          echo "Worker logs will land in: $env:OPENARC_LOG_FILE"
+          New-Item -ItemType Directory -Force -Path openarc-logs | Out-Null
+          uv run pytest -W ignore -rs -v `
+            tests/unit/test_remote_vlm_worker_unit.py `
+            tests/unit/test_worker_plain_unit.py `
+            tests/integration/test_worker_windows_integration.py
+
+      - name: Collect per-worker logs into an artifact
+        # The whole point of OPENARC_LOG_FILE above: surface what the worker
+        # ACTUALLY wrote -- its full logging and any native C-level stderr -- so a
+        # 30s load timeout or a startup crash on Windows is no longer invisible.
+        # (The supervisor drains the worker's stderr and forwards nothing, so this
+        # per-worker file is the only place its real output lands.) If no worker
+        # file was produced at all -- e.g. the spawn never even got far enough to
+        # log -- there is nothing to upload and the upload is a harmless no-op.
+        if: always()
+        shell: pwsh
+        run: |
+          echo "Capturing per-worker log files (the worker's real output, not the main log) ..."
+          New-Item -ItemType Directory -Force -Path "$env:GITHUB_WORKSPACE/_worker_logs" | Out-Null
+          Get-ChildItem -Recurse -Force -Path $env:GITHUB_WORKSPACE `
+            -Filter *.log -ErrorAction SilentlyContinue | ForEach-Object {
+              if ($_.FullName -notlike '*_worker_logs*') {
+                Copy-Item -LiteralPath $_.FullName `
+                  -Destination "$env:GITHUB_WORKSPACE/_worker_logs/" -Force -ErrorAction SilentlyContinue
+              }
+            }
+          $found = @(Get-ChildItem -Path "$env:GITHUB_WORKSPACE/_worker_logs" `
+            -Filter *.log -ErrorAction SilentlyContinue)
+          echo "Captured $($found.Count) worker log file(s):"
+          $found | ForEach-Object { "  {0}  ({1} bytes)" -f $_.Name, $_.Length }
+
+      - name: Upload per-worker logs to a build artifact
+        # Downloadable from the run's Artifacts tab: the next time a worker fails
+        # to load on Windows, the real cause (an import/redirect failure, or an
+        # IPC/loop problem) is right here instead of being discarded.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openarc-worker-logs
+          path: ${{ github.workspace }}/_worker_logs/*.log
+          if-no-files-found: ignore
+          retention-days: 3
