@@ -1,4 +1,7 @@
-from src.engine.ov_genai.utils import extract_scheduler_config_from_loader
+from src.engine.ov_genai.utils import (
+    apply_temperature,
+    extract_scheduler_config_from_loader,
+)
 import asyncio
 import base64
 import gc
@@ -415,7 +418,7 @@ class OVGenAI_VLM:
         """
         generation_kwargs = self.model_path.get_generation_config() if self.model_path else GenerationConfig()
         generation_kwargs.max_new_tokens = config.max_tokens
-        generation_kwargs.temperature = config.temperature
+        apply_temperature(generation_kwargs, config.temperature)
         generation_kwargs.top_k = config.top_k
         generation_kwargs.top_p = config.top_p
         generation_kwargs.repetition_penalty = config.repetition_penalty

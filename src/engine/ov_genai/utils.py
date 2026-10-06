@@ -2,12 +2,25 @@
 import logging
 from typing import Literal
 
-from openvino_genai import SchedulerConfig
+from openvino_genai import GenerationConfig, SchedulerConfig
 
 from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import SchedulerConfigSchema
 from src.server.schemas.registration import ModelLoadConfig
 
 logger = logging.getLogger(__name__)
+
+
+def apply_temperature(generation_config: GenerationConfig, temperature: float) -> None:
+    """Set the sampling temperature, falling back to greedy decoding at zero.
+
+    OpenAI treats temperature 0 as greedy, but OpenVINO GenAI rejects a
+    non-positive temperature while do_sample is true, and that failure unloads
+    the model.
+    """
+    generation_config.temperature = temperature
+    if temperature <= 0:
+        generation_config.do_sample = False
+
 
 def generate_ov_scheduler_config(scheduler_config: SchedulerConfigSchema) -> dict:
   """Generates a SchedulerConfig object from the scheduler config model.

@@ -53,7 +53,7 @@ class OVGenAI_GenConfig(BaseModel):
         description="Confidence threshold for accepting draft tokens (typically 0.3-0.5)"
     )
 
-    stream: bool = Field(
+    stream: Optional[bool] = Field(
         default=False,
         description="Stream output in chunks of tokens."
     )

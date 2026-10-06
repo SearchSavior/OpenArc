@@ -253,3 +253,20 @@ def test_resolve_prompt_strips_stray_token_for_text_only_chat(
     prompt, images = vlm._resolve_prompt_and_images(config)
     assert images == []
     assert tok not in prompt
+
+
+class DummyVlmGenerationConfig:
+    pass
+
+
+def test_vlm_create_generation_config_zero_temperature_disables_sampling(
+    monkeypatch: pytest.MonkeyPatch, load_config: ModelLoadConfig
+) -> None:
+    monkeypatch.setattr(vlm_module, "GenerationConfig", DummyVlmGenerationConfig)
+    vlm = OVGenAI_VLM(load_config)
+    vlm.model_path = None
+
+    config = vlm.create_generation_config(OVGenAI_GenConfig(temperature=0.0))
+
+    assert config.do_sample is False
+    assert config.temperature == 0.0
