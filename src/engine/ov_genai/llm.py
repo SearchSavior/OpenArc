@@ -1,5 +1,6 @@
 from src.engine.ov_genai.utils import (
     apply_temperature,
+    build_structured_output_config,
     extract_scheduler_config_from_loader,
 )
 import asyncio
@@ -350,4 +351,8 @@ class OVGenAI_LLM:
             else:
                 default_tokens = int(os.getenv('OPENARC_DEFAULT_NUM_ASSISTANT_TOKENS', '3'))
                 generation_kwargs.num_assistant_tokens = default_tokens
+
+        structured_output = build_structured_output_config(config.response_format)
+        if structured_output is not None:
+            generation_kwargs.structured_output_config = structured_output
         return generation_kwargs

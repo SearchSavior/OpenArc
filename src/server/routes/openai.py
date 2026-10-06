@@ -205,6 +205,7 @@ async def openai_chat_completions(
             "seed": request.seed,
             "frequency_penalty": request.frequency_penalty,
             "presence_penalty": request.presence_penalty,
+            "response_format": request.response_format,
         }
         if parser_module is not None:
             config_kwargs["tool_call_parser"] = tool_parser_name
