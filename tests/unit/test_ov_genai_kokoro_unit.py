@@ -295,3 +295,19 @@ def test_unload_model_resets_state(monkeypatch: pytest.MonkeyPatch, load_config:
     registry.register_unload.assert_called_once_with("model-name")
     gc_mock.assert_called_once()
 
+
+def test_pipeline_is_built_once_per_language(monkeypatch: pytest.MonkeyPatch, load_config: ModelLoadConfig) -> None:
+    built = []
+
+    class DummyPipeline:
+        def __init__(self, model, lang_code):
+            built.append(lang_code)
+
+    monkeypatch.setattr("kokoro.pipeline.KPipeline", DummyPipeline)
+    kokoro = OV_Kokoro(load_config)
+
+    first = kokoro._pipeline("a")
+    assert kokoro._pipeline("a") is first
+    kokoro._pipeline("b")
+
+    assert built == ["a", "b"]

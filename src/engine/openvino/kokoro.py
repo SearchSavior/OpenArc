@@ -39,6 +39,7 @@ class OV_Kokoro(KModel):
         super().__init__()
         self.model = None
         self._device = None
+        self._pipelines = {}
 
     def load_model(self, load_config: ModelLoadConfig):
         self.model_path = Path(load_config.model_path)
@@ -58,6 +59,15 @@ class OV_Kokoro(KModel):
         self.model = core.compile_model(self.model_path / "openvino_model.xml", self._device)
         return self.model
 
+    def _pipeline(self, lang_code: str):
+        """One KPipeline per language. Building one loads the G2P and spaCy
+        models, which costs ~0.9 s, so it must not happen per request."""
+        pipeline = self._pipelines.get(lang_code)
+        if pipeline is None:
+            from kokoro.pipeline import KPipeline
+            pipeline = KPipeline(model=self, lang_code=lang_code)
+            self._pipelines[lang_code] = pipeline
+        return pipeline
     @torch.no_grad()
     def forward_with_tokens(
         self,
@@ -84,7 +94,8 @@ class OV_Kokoro(KModel):
         if self.model is not None:
             del self.model
             self.model = None
-        
+        self._pipelines.clear()
+
         # Unregister from registry
         removed = await registry.register_unload(model_name)
         
@@ -174,9 +185,7 @@ class OV_Kokoro(KModel):
         Async generator yielding audio chunks from text.
         Uses asyncio.to_thread to offload inference calls.
         """
-        # Create pipeline with the language code from config
-        from kokoro.pipeline import KPipeline
-        pipeline = KPipeline(model=self, lang_code=config.lang_code.value)
+        pipeline = self._pipeline(config.lang_code.value)
 
         # Resolve the voice once. If voice_blend is set, this returns a
         # blended FloatTensor; otherwise the plain voice name.
