@@ -443,3 +443,42 @@ def test_commit_request_error_fails_future_and_keeps_worker() -> None:
     with pytest.raises(ValueError, match="bad audio"):
         fut.result()
     registry.register_unload.assert_not_called()
+def test_infer_kokoro_stream_puts_pcm_per_chunk_then_none() -> None:
+    import numpy as np
+    import torch
+    from src.engine.openvino.kokoro import StreamChunk
+
+    class FakeKokoro:
+        async def chunk_forward_pass(self, config):
+            for i, audio in enumerate((torch.tensor([0.0, 0.5, -0.5]), torch.tensor([1.0, -1.0]))):
+                yield StreamChunk(audio=audio, chunk_text=f"c{i}", chunk_index=i, total_chunks=2)
+
+    async def _run():
+        queue: asyncio.Queue = asyncio.Queue()
+        packet = worker_module.WorkerPacket(request_id="r", id_model="k", gen_config=None, stream_queue=queue)
+        done = await worker_module.InferWorker.infer_kokoro_stream(packet, FakeKokoro())  # type: ignore[arg-type]
+        items = []
+        while not queue.empty():
+            items.append(queue.get_nowait())
+        return done, items
+
+    done, items = asyncio.run(_run())
+    assert items[-1] is None and len(items) == 3
+    assert np.frombuffer(items[0], dtype=np.int16).tolist() == [0, 16384, -16384]
+    assert np.frombuffer(items[1], dtype=np.int16).tolist() == [32767, -32768]
+    assert done.metrics == {"chunks_processed": 2, "total_samples": 5}
+
+
+def test_infer_kokoro_stream_ends_stream_on_error() -> None:
+    class BrokenKokoro:
+        async def chunk_forward_pass(self, config):
+            raise RuntimeError("boom")
+            yield  # pragma: no cover
+
+    async def _run():
+        queue: asyncio.Queue = asyncio.Queue()
+        packet = worker_module.WorkerPacket(request_id="r", id_model="k", gen_config=None, stream_queue=queue)
+        await worker_module.InferWorker.infer_kokoro_stream(packet, BrokenKokoro())  # type: ignore[arg-type]
+        return [queue.get_nowait() for _ in range(queue.qsize())]
+
+    assert asyncio.run(_run()) == [None]

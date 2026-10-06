@@ -105,6 +105,11 @@ class OV_KokoroGenConfig(BaseModel):
     speed: float = Field(1.0, description="Speech speed multiplier")
     character_count_chunk: int = Field(400, description="Max characters per chunk")
     response_format: str = Field("wav", description="Output format")
+    stream: bool = Field(
+        False,
+        description="Stream raw int16 LE mono PCM at 24 kHz (audio/L16) chunk by chunk instead of one WAV. "
+        "The first chunk is kept short so audio starts quickly.",
+    )
 
     @field_validator("voice_blend")
     @classmethod
