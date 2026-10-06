@@ -96,6 +96,19 @@ class ModelRegistry:
         # Event subscribers
         self._on_loaded: List[Callable[[ModelRecord], Awaitable[None]]] = []
         self._on_unloaded: List[Callable[[ModelRecord], Awaitable[None]]] = []
+        # Whether a full registry teardown (shut down on Ctrl-C) is running: makes
+        # shutdown() idempotent and stops a late register_load or a re-entrant
+        # register_unload (some facades call it inside their own unload_model) from
+        # resurrecting a worker that is being torn down.
+        self._shutting_down = False
+        # Tasks started by register_unload; kept so shutdown() can await the live
+        # ones. Pruned of completed tasks in register_unload so this stays bounded
+        # over a long-running server.
+        self._unload_tasks: List[asyncio.Task] = []
+        # Per-model grace for a controlled shutdown; after it the subprocess
+        # transport is force-closed, so a hung worker can't strand an open pipe on
+        # a loop that is about to be closed.
+        self._shutdown_timeout: float = 10.0
 
     def add_on_loaded(self, callback: Callable[[ModelRecord], Awaitable[None]]) -> None:
         self._on_loaded.append(callback)
@@ -210,8 +223,10 @@ class ModelRegistry:
             if model_id is None:
                 return False
 
-            # Start background unload task
-            asyncio.create_task(self._unload_task(model_id))
+            # Start background unload task. Keep it so a full shutdown() can await
+            # the live ones; prune completed ones so the list stays bounded.
+            unload_task = asyncio.create_task(self._unload_task(model_id))
+            self._unload_tasks = [t for t in self._unload_tasks if not t.done()] + [unload_task]
             return True
 
     async def _load_task(self, model_id: str, load_config: ModelLoadConfig) -> None:
@@ -292,6 +307,128 @@ class ModelRegistry:
 
         except Exception as e:
             logger.info(f"Error during model unload: {e}")
+
+    async def _shutdown_one(self, record: "ModelRecord") -> None:
+        """Tear down one model: run its ``unload_model`` (which closes the
+        supervised worker's subprocess transport *while the loop is alive*) and
+        then unconditionally release that transport, so a hung or failed unload
+        can never leave an open pipe for GC to close after ``loop.close()`` --
+        the ``BaseSubprocessTransport.__del__`` -> ``Event loop is closed`` noise.
+        In-process engines have no ``_supervisor`` (a clean no-op here).
+        """
+        instance = record.model_instance
+        if instance is None:
+            return
+        # Best-effort graceful ask the worker to exit, then wait for it.
+        unload_fn = getattr(instance, "unload_model", None)
+        if unload_fn is not None:
+            try:
+                result = unload_fn(self, record.model_name)
+            except TypeError:
+                try:
+                    result = unload_fn()
+                except TypeError:
+                    result = None
+            if inspect.isawaitable(result):
+                try:
+                    await asyncio.wait_for(result, self._shutdown_timeout)
+                except asyncio.CancelledError:
+                    raise  # a real cancellation must propagate
+                except Exception as e:
+                    logger.warning(
+                        f"[{record.model_name}] worker unload unfinished/failed "
+                        f"({e!r}); forcing transport close"
+                    )
+        # Whatever the outcome, force the subprocess transport closed and drain its
+        # pipe-reader tasks. Both are idempotent (see supervisor) -- this release
+        # is the actual step that keeps Ctrl-C quiet.
+        supervisor = getattr(instance, "_supervisor", None)
+        if supervisor is not None:
+            try:
+                await supervisor._await_pipe_tasks()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                pass
+            try:
+                supervisor._close_process_streams()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                pass
+
+    async def shutdown(self) -> None:
+        """Tear down every registered worker on process exit.
+
+        Must run on the *live* event loop (the ASGI ``lifespan`` shutdown half,
+        the code after ``yield`` in server/main.py). It is the single reason a
+        controlled Ctrl-C stop is quiet rather than spamming::
+
+            Exception ignored in: <function BaseSubprocessTransport.__del__ ...>
+              ... base_subprocess.py (close) -> unix_events (write_eof) ->
+                  base_events (call_soon -> _check_closed)
+            RuntimeError: Event loop is closed
+
+        That traceback is Python's GC reaping a *still-open* subprocess pipe
+        transport after the loop has already been closed: on Ctrl-C nothing had
+        closed the transport (``supervisor.unload`` was never reached), so the
+        ``__del__`` does the closing -- too late. The fix is to close every
+        transport here, while the loop still runs. Closing a transport is
+        platform-agnostic, so the same call covers both POSIX
+        (UnixReadPipeTransport.write_eof) and Windows (the proactor / the child's
+        stdin write handle) -- which is exactly why the reported traceback is
+        identical on linux and windows.
+
+        Idempotent: a second call is a no-op (``self._shutting_down``).
+        """
+        if self._shutting_down:
+            return
+
+        # 1) Take ownership of everything and stop further mutation, under the lock,
+        #    so neither a late register_load nor a re-entrant register_unload can
+        #    spawn a fresh unload task that GC the loop after we've gone.
+        async with self._lock:
+            self._shutting_down = True
+            snapshot = list(self._models.items())
+            self._models.clear()
+            self._expected_models.clear()
+            drain: List[asyncio.Task] = [t for t in self._unload_tasks if not t.done()]
+            self._unload_tasks = []
+            for _mid, record in snapshot:
+                t = record.loading_task
+                if t is not None and not t.done():
+                    t.cancel()
+                    drain.append(t)
+        # 2) Let the captured background work finish, so the loop holds no callbacks
+        #    that still reference these record objects.
+        for fut in drain:
+            try:
+                await fut
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                pass
+        # 3) Tear each model down. ``_shutdown_one`` re-reads record.model_instance,
+        #    so a load that completed just before the cancel still has its supervisor
+        #    (subprocess + transport) closed here.
+        for _mid, record in snapshot:
+            try:
+                await self._shutdown_one(record)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.error(f"Error shutting down model {record.model_name}: {e}")
+        # 4) Fire on_unloaded so the WorkerRegistry cancels its per-model queue
+        #    worker tasks; reusing _on_model_unloaded keeps one queue-cancel path
+        #    rather than growing a second one.
+        for cb in self._on_unloaded:
+            for _mid, record in snapshot:
+                try:
+                    await cb(record)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    logger.error(f"on_unloaded callback failed during shutdown: {e}")
 
     async def status(self) -> dict:
         """Return registry status: total count and list of loaded models (public view)."""

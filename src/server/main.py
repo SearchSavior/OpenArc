@@ -92,6 +92,15 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    # Graceful shutdown: close every supervised worker's subprocess transport while
+    # the event loop is still running (see ModelRegistry.shutdown). Without this a
+    # Ctrl-C stop is loud -- a still-open transport is only freed by GC after the
+    # loop is closed, printing "Exception ignored ... RuntimeError: Event loop is
+    # closed". transport.close() is platform-agnostic, so this is the same fix for
+    # POSIX and Windows, which is why the reported traceback is identical on both.
+    await _registry.shutdown()
+    logger.info("OpenArc shutting down")
+
 
 app = FastAPI(lifespan=lifespan)
 
