@@ -374,6 +374,15 @@ class OV_Kokoro(KModel):
             cuts.append(pos)
         return cuts
 
+    def _pipeline(self, lang_code: str):
+        """One KPipeline per language. Building one loads the G2P and spaCy
+        models, which costs ~0.9 s, so it must not happen per request."""
+        pipeline = self._pipelines.get(lang_code)
+        if pipeline is None:
+            from kokoro.pipeline import KPipeline
+            pipeline = KPipeline(model=self, lang_code=lang_code)
+            self._pipelines[lang_code] = pipeline
+        return pipeline
     @torch.no_grad()
     def forward_with_tokens(
         self,
