@@ -245,10 +245,26 @@ async def openai_chat_completions(
                     tool_parser_name = parser_enum.value if parser_enum else None
                     break
 
+        # A tool_call_parser is only *truly required* when the client *mandates* a
+        # tool call (tool_choice == "required", or a named/dict selector). An agent
+        # (e.g. goose) attaches its whole tool catalogue to *every* request, even a
+        # plain "Hi", so keying the error on the mere presence of `tools` made any
+        # un-parser'd model unusable for such clients. Per the OpenAI contract a
+        # `tools` array is a permissive offer: a missing parser is a hard error only
+        # when a tool call is mandatory (tool_choice forced); for auto/none it
+        # degrades to plain text (select_streamer -> ChunkStreamer).
+        tool_choice_mandated = (
+            request.tool_choice == "required" or isinstance(request.tool_choice, dict)
+        )
         if tool_parser_name is None and request.tools:
-            raise ValueError(
-                f"Model '{request.model}' has no tool_call_parser configured; "
-                "set one under load_config in config.yaml (tool_call_parser: qwen35|hermes|gemma4|museglimmer')"
+            if tool_choice_mandated:
+                raise ValueError(
+                    f"Model '{request.model}' has no tool_call_parser configured; "
+                    "set one under load_config in config.yaml (tool_call_parser: qwen35|hermes|gemma4|museglimmer')"
+                )
+            logger.info(
+                f"[{request.model}] tools offered but no tool_call_parser registered; "
+                f"serving as plain text -- tool calls will not be parsed for this model"
             )
         parser_module = _TOOL_PARSERS.get(tool_parser_name) if tool_parser_name else None
 
