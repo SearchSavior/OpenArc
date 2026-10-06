@@ -3,7 +3,9 @@ import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
+import numpy as np
 import pytest  # type: ignore[import]
+import torch
 
 import src.engine.openvino.kokoro as kokoro_module
 from src.engine.openvino.kokoro import OV_Kokoro
@@ -99,6 +101,28 @@ def test_load_model_forwards_runtime_config(tmp_path: Path, monkeypatch: pytest.
     OV_Kokoro(load_config).load_model(load_config)
 
     core_instance.set_property.assert_called_once_with({"NUM_STREAMS": "2"})
+
+
+def test_forward_runs_compiled_model(load_config: ModelLoadConfig) -> None:
+    # KPipeline calls model(phonemes, ref_s, speed). That has to end up in the
+    # compiled OpenVINO model, not KModel's PyTorch forward on CPU.
+    kokoro = OV_Kokoro(load_config)
+    kokoro.vocab = {"a": 5, "b": 7}
+    kokoro.context_length = 512
+    audio = np.linspace(-1, 1, 2400, dtype=np.float32)
+    pred_dur = np.array([1, 2, 3, 1], dtype=np.int64)
+    kokoro.model = MagicMock(return_value=(audio, pred_dur))
+    ref_s = torch.zeros(1, 256)
+
+    out = kokoro("ab", ref_s, speed=1.5, return_output=True)
+
+    kokoro.model.assert_called_once()
+    input_ids, passed_ref_s, speed = kokoro.model.call_args.args[0]
+    assert input_ids.tolist() == [[0, 5, 7, 0]]
+    assert passed_ref_s is ref_s
+    assert speed.item() == 1.5
+    assert torch.equal(out.audio, torch.from_numpy(audio))
+    assert torch.equal(out.pred_dur, torch.from_numpy(pred_dur))
 
 
 def test_chunk_forward_pass_yields_chunks(monkeypatch: pytest.MonkeyPatch, load_config: ModelLoadConfig) -> None:
