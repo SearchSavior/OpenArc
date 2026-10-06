@@ -750,7 +750,9 @@ def test_select_streamer_picks_tool_streamer_for_qwen35_tools(
     )
 
 
-# ---- unset tool_call_parser ----
+# ---- unset tool_call_parser: a missing parser is only an error when the
+# client actually *mandates* a tool call (tool_choice "required", or a
+# named function selector); merely offering one is served as plain text ----
 
 
 @pytest.mark.asyncio
@@ -766,6 +768,7 @@ async def test_tools_request_rejected_without_parser(monkeypatch: pytest.MonkeyP
         model="demo-model",
         messages=[{"role": "user", "content": "Hi"}],
         tools=QWEN_TOOLS,
+        tool_choice="required",
         stream=False,
     )
 
@@ -1460,3 +1463,23 @@ async def test_openai_chat_completions_streaming_museglimmer_engine_stream(
     assert names == ["get_weather"]
     assert json.loads(args) == {"city": "Warsaw"}
     assert payloads[-1]["choices"][0]["finish_reason"] == "tool_calls"
+
+# A request that only *offers* tools (tool_choice left default = "none" is not
+# a mandate, so a missing parser must not 400; the request is served as plain
+# text. (Complement to the required/dict arm already tested above.)
+@pytest.mark.asyncio
+async def test_offered_tools_are_served_without_parameter(monkeypatch):
+    class _Workers:
+        async def generate(self, a, b):
+            return {"text": "An answer.", "metrics": {"input_token": 2, "new_token": 3, "total_token": 5}}
+    monkeypatch.setattr(openai_routes, "_workers", _Workers())
+    monkeypatch.setattr(openai_routes, "_registry", _FakeRegistry(None))
+    request = OpenAIChatCompletionRequest(
+        model="demo-model",
+        messages=[{"role": "user", "content": "Hi"}],
+        tools=QWEN_TOOLS,
+        stream=False,
+    )
+    response = await openai_routes.openai_chat_completions(request, _DummyRequest())
+    assert response["choices"][0]["finish_reason"] == "stop"
+    assert response["choices"][0]["message"]["content"].startswith("An answer.")
