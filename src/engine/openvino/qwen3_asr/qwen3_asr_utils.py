@@ -24,6 +24,8 @@ import librosa
 import numpy as np
 import soundfile as sf
 
+from src.engine.audio import AudioDecodeError
+
 AudioLike = Union[
     str,                      # wav path / URL / base64
     Tuple[np.ndarray, int],   # (waveform, sr)
@@ -198,6 +200,15 @@ def decode_base64_bytes(b64: str) -> bytes:
 
 
 def load_audio_any(x: str) -> Tuple[np.ndarray, int]:
+    try:
+        return _load_audio_any(x)
+    except AudioDecodeError:
+        raise
+    except Exception as e:
+        raise AudioDecodeError(f"Unreadable audio: {e}") from e
+
+
+def _load_audio_any(x: str) -> Tuple[np.ndarray, int]:
     if is_url(x):
         with urllib.request.urlopen(x) as resp:
             audio_bytes = resp.read()
