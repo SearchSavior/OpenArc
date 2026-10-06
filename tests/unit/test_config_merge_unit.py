@@ -244,3 +244,11 @@ def test_asr_yaml_default_yields_to_request() -> None:
     assert config.language == "Chinese"  # request wins
     assert config.max_chunk_sec == 25.0  # yaml default
     assert config.max_tokens == 1024  # engine default
+
+
+def test_stream_null_is_accepted() -> None:
+    # OpenAI-compatible clients send `stream: null`, and the chat route forwards
+    # request.stream (None when the client omits it); a bare `bool` field 400s.
+    config = build_config(OVGenAI_GenConfig, request={}, defaults={}, messages=[], stream=None)
+
+    assert not config.stream

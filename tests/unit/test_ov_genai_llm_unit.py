@@ -269,3 +269,33 @@ async def test_unload_model_resets_state(monkeypatch: pytest.MonkeyPatch, load_c
     registry.register_unload.assert_called_once_with("model-name")
     gc_mock.assert_called_once()
 
+
+
+class DummyGenerationConfig:
+    pass
+
+
+def test_create_generation_config_zero_temperature_disables_sampling(
+    monkeypatch: pytest.MonkeyPatch, load_config: ModelLoadConfig
+) -> None:
+    monkeypatch.setattr(llm_module, "GenerationConfig", DummyGenerationConfig)
+    llm = OVGenAI_LLM(load_config)
+    llm.model = None
+
+    config = llm.create_generation_config(OVGenAI_GenConfig(temperature=0.0))
+
+    assert config.do_sample is False
+    assert config.temperature == 0.0
+
+
+def test_create_generation_config_positive_temperature_keeps_sampling(
+    monkeypatch: pytest.MonkeyPatch, load_config: ModelLoadConfig
+) -> None:
+    monkeypatch.setattr(llm_module, "GenerationConfig", DummyGenerationConfig)
+    llm = OVGenAI_LLM(load_config)
+    llm.model = None
+
+    config = llm.create_generation_config(OVGenAI_GenConfig(temperature=0.7))
+
+    assert getattr(config, "do_sample", None) is None
+    assert config.temperature == 0.7
