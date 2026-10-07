@@ -3,6 +3,8 @@ Add command - Add a model configuration to the config file.
 """
 import json
 from pathlib import Path
+from typing import NoReturn
+import re
 
 import click
 
@@ -19,6 +21,54 @@ from ..modules.config_options import (
     resolve_config_values,
 )
 from ..utils import validate_model_path
+
+_SIZE_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*([KMGT])?i?B?\s*$", re.IGNORECASE)
+_SIZE_MULTIPLIERS = {"": 1, "K": 1024, "M": 1024**2, "G": 1024**3, "T": 1024**4}
+
+
+def _parse_size_bytes(value: str) -> int:
+    """Parse a size like '524288', '512K', '256MiB', '1G' into bytes."""
+    match = _SIZE_RE.match(value)
+    if not match:
+        raise ValueError(f"unrecognized size {value!r}")
+    number, suffix = match.groups()
+    return int(float(number) * _SIZE_MULTIPLIERS[(suffix or "").upper()])
+
+
+class ContextWindowType(click.ParamType):
+    """``--context-window`` accepts a positive integer (tokens) or ``auto``.
+
+    Opt-in: when omitted the load config carries no ``context_window``. ``auto``
+    reads the model's real max_position_embeddings; a plain integer is advertised
+    as-is (and warned if it exceeds that real limit).
+    """
+
+    name = "context_window"
+
+    MSG = "must be a positive integer (tokens) or 'auto'"
+
+    def convert(self, value, param, ctx):
+        # Raise UsageError directly (not self.fail): ParamType.fail's signature
+        # changed between click 8.2 and 8.4, UsageError(message) has not.
+        def _fail(extra: str = "") -> NoReturn:
+            raise click.UsageError(f"`{value}` {self.MSG} {extra}".strip())
+
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            _fail()
+        if isinstance(value, str):
+            token = value.strip()
+            if token.lower() == "auto":
+                return "auto"
+            try:
+                tokens = int(token)
+            except ValueError:
+                _fail()
+            if tokens <= 0:
+                _fail(f"(was {tokens})")
+            return tokens
+        _fail()
 
 
 @cli.command()
@@ -73,9 +123,28 @@ from ..utils import validate_model_path
     required=False,
     default=None,
     help='Tool-call output format for this model (qwen35 XML, hermes JSON, gemma4 call syntax, or museglimmer Harmony atem). llm/vlm only; required for tool calling.')
+@click.option('--context-window', '--cw',
+    type=ContextWindowType(),
+    required=False,
+    default=None,
+    help='Opt-in context window (tokens) advertised for this model in the /v1/models response '
+    '(as the OpenAI-standard context_window field and as meta.n_ctx) so clients can size their '
+    "conversation (e.g. for auto-compaction). Omit to leave it unset (nothing is advertised). "
+    "Use 'auto' to advertise the model's own max_position_embeddings read from config.json, "
+    "or a positive integer to advertise that value as-is; a pinned integer larger than the "
+    "model's real max_position_embeddings triggers a loud warning on `openarc serve`/`openarc load`.")
+@click.option('--worker-line-limit', '--wll',
+    required=False,
+    default=None,
+    help='Maximum size of one line on the IPC pipe to this model\'s inference worker (ovgenai only). Bytes, or K/M/G suffix (e.g. 512K, 256M, 1G). Default 256 MiB. Requests with larger payloads fail with a clear error; lowering it bounds IPC memory.')
+@click.option('--worker-max-respawns', '--wmr',
+    required=False,
+    default=None,
+    type=int,
+    help='Max times this model\'s inference worker is auto-reloaded after an unexpected crash/wedge within one load, before it is permanently unloaded (quarantined). Default 2 (the historical "reloaded twice, then quarantined on the 3rd failure" behaviour). 0 or a negative number = no limit: the worker is always reloaded and is never automatically unloaded. (ovgenai and plain-openvino models only; ignored by in-process engines.)')
 @config_options
 @click.pass_context
-def add(ctx, model_path, model_name, engine, model_type, device, runtime_config, cache_dir, draft_model_path, draft_device, num_assistant_tokens, assistant_confidence_threshold, tool_call_parser, **config_values):
+def add(ctx, model_path, model_name, engine, model_type, device, runtime_config, cache_dir, draft_model_path, draft_device, num_assistant_tokens, assistant_confidence_threshold, tool_call_parser, context_window, worker_line_limit, worker_max_respawns, **config_values):
     """- Add a model configuration to the config file.
 
     \b
@@ -162,6 +231,29 @@ def add(ctx, model_path, model_name, engine, model_type, device, runtime_config,
         entry["load_config"]["assistant_confidence_threshold"] = assistant_confidence_threshold
     if tool_call_parser:
         entry["load_config"]["tool_call_parser"] = tool_call_parser
+    if context_window is not None:
+        entry["load_config"]["context_window"] = context_window
+
+    limit_bytes: int | None = None
+    if worker_line_limit is not None:
+        try:
+            limit_bytes = _parse_size_bytes(worker_line_limit)
+        except ValueError as e:
+            console.print(f"[red]Error parsing --worker-line-limit:[/red] {e}")
+            console.print('[yellow]Examples: \'268435456\', \'512K\', \'256M\', \'1G\'[/yellow]')
+            ctx.exit(1)
+    if limit_bytes is not None:
+        if limit_bytes < 65536:
+            console.print(f"[red]Error: --worker-line-limit must be at least 65536 bytes (64 KiB), got {limit_bytes}.[/red]")
+            ctx.exit(1)
+        entry["load_config"]["worker_line_limit"] = limit_bytes
+
+    if worker_max_respawns is not None:
+        # 0 or a negative number means "no limit" (the worker is always reloaded
+        # and is never automatically unloaded); a positive number is the respawn
+        # budget. click already coerced it to int, so none is needed here -- the
+        # sentinel is meaningful rather than an error.
+        entry["load_config"]["worker_max_respawns"] = worker_max_respawns
 
     ctx.obj.server_config.save_model_entry(model_name, entry)
     console.print(f"[green]Model configuration saved:[/green] {model_name}")
@@ -184,6 +276,9 @@ _LOAD_OPTIONS = [
     "num_assistant_tokens",
     "assistant_confidence_threshold",
     "tool_call_parser",
+    "context_window",
+    "worker_line_limit",
+    "worker_max_respawns",
 ]
 
 # One help panel per config.yaml key, keyed by the command path rich_click

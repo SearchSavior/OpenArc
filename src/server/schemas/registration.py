@@ -1,6 +1,6 @@
 
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -9,7 +9,7 @@ from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import SchedulerCo
 
 class ModelStatus(str, Enum):
     """loading status.
-    
+
     Options:
     - LOADING: Model is currently being loaded in the background
     - LOADED: Model has been successfully loaded and is ready for inference
@@ -23,7 +23,7 @@ class ModelStatus(str, Enum):
 class ModelType(str, Enum):
     """
     Internal routing to the correct inference pipeline.
-    
+
     Options:
     - llm: Text-to-text LLM models
     - vlm: Image-to-text VLM models
@@ -33,9 +33,9 @@ class ModelType(str, Enum):
     - qwen3_tts_custom_voice: Qwen3-TTS with predefined speaker
     - qwen3_tts_voice_design: Qwen3-TTS with free-form voice description
     - qwen3_tts_voice_clone: Qwen3-TTS cloning a reference audio
-    - emb: Text-to-vector models    
-    - rerank: Reranker models"""    
-    
+    - emb: Text-to-vector models
+    - rerank: Reranker models"""
+
     LLM = "llm"
     VLM = "vlm"
     WHISPER = "whisper"
@@ -54,7 +54,7 @@ class EngineType(str, Enum):
     Options:
     - optimum: Optimum-Intel engine
     - ovgenai: OpenVINO GenAI engine"""
-    
+
     OV_OPTIMUM = "optimum"
     OV_GENAI = "ovgenai"
     OPENVINO = "openvino"
@@ -84,7 +84,7 @@ class ModelLoadConfig(BaseModel):
     model_path: str = Field(
         description="""
         Top level path to directory containing OpenVINO IR converted model.
-        
+
         OpenArc does not support runtime conversion and cannot pull from HF.""")
     model_name: str = Field(
         ...,
@@ -141,6 +141,63 @@ class ModelLoadConfig(BaseModel):
 
         When unset, /chat/completions requests containing tools are rejected
         with 400.""",
+    )
+    context_window: Optional[Union[int, str]] = Field(
+        default=None,
+        description="""
+        Opt-in context window (in tokens) advertised in /v1/models -- as the
+        OpenAI-standard ``context_window`` field and as ``meta.n_ctx``.
+
+        When unset (the default) nothing is advertised. Values:
+        - a positive integer: advertised as-is; if it exceeds the model's real
+          max_position_embeddings the load warns loudly.
+        - ``"auto"``: advertise the model's own max_position_embeddings read from
+          its config.json (the only key read -- it is found at the top level or,
+          for multimodal models, inside text_config / language_config / ...).
+        """,
+    )
+    worker_line_limit: Optional[int] = Field(
+        default=None,
+        ge=65536,
+        description="""
+        Maximum size, in bytes, of one line on the IPC pipe between the server
+        and this model's inference worker subprocess (ovgenai models only;
+        ignored by in-process engines).
+
+        A request whose JSON line exceeds the limit fails with a clear error
+        (the worker reports FATAL and the supervisor respawns it). When unset,
+        the protocol default of 256 MiB applies, which covers arbitrarily long
+        text conversations, dozens of images, and hours of audio. Lower it to
+        bound IPC memory on small machines or to reject oversized payloads;
+        raise it for very large single requests.
+
+        This is an IPC setting, not a compilation setting: changing it never
+        triggers a recompile or invalidates the OpenVINO model cache. It is
+        exported to this model's inference worker as the
+        OPENARC_WORKER_LINE_LIMIT environment variable and read at worker start,
+        so an override applies on the next worker (re)start instead.
+        """,
+    )
+    worker_max_respawns: Optional[int] = Field(
+        default=None,
+        description="""
+        Maximum number of times this model's inference worker is
+        auto-restarted after an unexpected crash/wedge within one load episode,
+        before it gives up and the model is unloaded from the registry (so
+        readiness drops and an operator must reload it). This is the respawn
+        budget of a load (ovgenai and plain-openvino models only; ignored by
+        in-process engines).
+
+        The worker is reloaded up to this many times, and on the next failure
+        after that it is quarantined (unloaded). When unset, the supervisor
+        default of 2 applies, so the worker is reloaded twice and quarantined
+        on the third failure -- hence the historical "reload did not work for
+        3 times" behaviour.
+
+        0 or a negative number means NO limit: the worker is always reloaded and
+        is never automatically unloaded. Set this for a model that crashes
+        transiently and would otherwise be permanently quarantined.
+        """,
     )
 
     # --- Model-level request defaults, authored in config.yaml ---

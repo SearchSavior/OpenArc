@@ -5,6 +5,8 @@ import os
 
 import click
 
+from src.server.utils.context import check_context_window_exceeded
+
 from ..main import cli, console
 
 
@@ -14,6 +16,24 @@ def serve():
     - Start the OpenArc server.
     """
     pass
+
+
+def _startup_context_window_warning(server_config, name: str):
+    """Mirror the server-side check up-front so a pinned context_window larger
+    than the real max_position_embeddings is warned about in the foreground.
+    Advertisement-only; returns None (unset / "auto" / a config that can't be
+    resolved) when there is nothing to warn about."""
+    try:
+        load_config = server_config.get_model_load_config(name)
+    except Exception:
+        return None
+    if load_config is None:
+        return None
+    return check_context_window_exceeded(
+        load_config.model_name,
+        load_config.model_path,
+        load_config.context_window,
+    )
 
 
 @serve.command("start")
@@ -33,11 +53,24 @@ def serve():
               help="Load models on startup. Specify once followed by space-separated model names.")
 @click.option("--use-api-key", is_flag=True, default=False,
               help="Require OPENARC_API_KEY for all requests.")
+@click.option("--session-id-header", "--sih",
+              required=False,
+              help="""
+              - Request header carrying a client's session id (e.g. agent-session-id) for the
+              completions API. Clients may send this special header with each request to the
+              /v1/chat/completions endpoint as a notice, to which session the request belongs. When
+              set and incoming, OpenArc keeps an in-memory session as well for state about the
+              session's context, i.e. processed tokens. This survives a worker restart. The state
+              does not contain the sessions complete conversation - this is still required to be
+              sent with each request from the client, as per /v1/chat/completions contract.
+              When unset, or the set value is not present in request headers, no session handling
+              is done on the /v1/chat/completions API.
+              """)
 @click.option("-v", "--verbose", count=True, default=0,
               help="Increase verbosity: -v warnings, -vv info + HTTP requests, -vvv debug, -vvvv debug incl. third-party libraries.")
 @click.argument('startup_models', nargs=-1, required=False)
 @click.pass_context
-def start(ctx, host, port, load_models, use_api_key, verbose, startup_models):
+def start(ctx, host, port, load_models, use_api_key, session_id_header, verbose, startup_models):
     """
     - 'start' reads --host and --port from config or defaults to 0.0.0.0:8000
 
@@ -72,6 +105,16 @@ def start(ctx, host, port, load_models, use_api_key, verbose, startup_models):
         os.environ["OPENARC_STARTUP_MODELS"] = ",".join(models_to_load)
         console.print(f"[blue]Models to load on startup:[/blue] {', '.join(models_to_load)}\n")
 
+        # Warn up-front (foreground) for startup models that pin an over-large
+        # context_window; register_load logs the same warning on the server side.
+        # Models missing from the config are already flagged above and skipped.
+        for name in models_to_load:
+            if name in missing:
+                continue
+            warning = _startup_context_window_warning(ctx.obj.server_config, name)
+            if warning:
+                console.print(f"[red bold]{warning}[/red bold]\n")
+
     if use_api_key:
         if not os.getenv("OPENARC_API_KEY"):
             console.print("[red]Error: You chose to require an API key but OPENARC_API_KEY has not been set.[/red]")
@@ -82,5 +125,12 @@ def start(ctx, host, port, load_models, use_api_key, verbose, startup_models):
         os.environ["OPENARC_API_KEY_REQUIRED"] = "false"
         console.print("[blue]OPENARC_API_KEY_REQUIRED=[/blue][yellow]False[/yellow] [dim][Clients do not need to authenticate.][/dim]")
 
+    if session_id_header:
+        os.environ["OPENARC_SESSION_ID_HEADER"] = session_id_header
+        console.print(f"[blue]OPENARC_SESSION_ID_HEADER=[/blue][green]{session_id_header}[/green] [dim][per-session in-memory current-context counter; survives a worker restart, re-based on full re-send][/dim]")
+    else:
+        os.environ["OPENARC_SESSION_ID_HEADER"] = ""
+        console.print(f"[blue]OPENARC_SESSION_ID_HEADER=[/blue][yellow]\"\"[/yellow] [dim][No session handling; behaviour is unaffected.][/dim]")
+
     console.print(f"[green]Starting OpenArc server on {host}:{port}[/green]")
-    start_server(host=host, port=port, verbose=verbose)
+    start_server(host=host, port=port, session_id_header=session_id_header, verbose=verbose)

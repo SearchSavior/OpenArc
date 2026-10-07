@@ -8,15 +8,20 @@ class OVGenAI_GenConfig(BaseModel):
     Supports both text-only and multimodal (text + image) messages.
     Supports OpenAI message format including tool calls and tool responses.
     """
-    messages: List[Dict[str, Any]] = Field(
+    # NOTE: messages / prompt / input_ids are Optional with a None default and
+    # MUST stay that way: they are round-tripped over the worker IPC as JSON,
+    # and pydantic validates null against the declared type on the way back.
+    # (Pydantic skips validation of defaults in-memory, which is how the
+    # non-optional-with-None-default variant of this bug survived in-process.)
+    messages: Optional[List[Dict[str, Any]]] = Field(
         default=None,
         description="List of conversation messages. Supports OpenAI message format including user/assistant/system/tool roles, tool_calls, and tool_call_id fields."
     )
-    prompt: str = Field(
+    prompt: Optional[str] = Field(
         default=None,
         description="Raw text prompt (used for /v1/completions endpoint instead of messages)"
     )
-    input_ids: List[int] = Field(
+    input_ids: Optional[List[int]] = Field(
         default=None,
         description="Pre-encoded input token IDs (used for benchmarking to bypass tokenization)"
     )
@@ -80,6 +85,15 @@ class OVGenAI_GenConfig(BaseModel):
     request_id: Optional[str] = Field(
         default=None,
         description="Request ID for tracking and cancellation."
+    )
+    session_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Client session id (from the --sih header), routed to the worker so its "
+            "usage tracker can report the per-request 'current context' (mirrored in "
+            "a server-side Session that survives a restart). None => no session "
+            "handling (dropped on the wire when None)."
+        )
     )
     seed: Optional[int] = Field(
         default=None,

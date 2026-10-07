@@ -7,7 +7,7 @@ icon: lucide/terminal
 
 After installation run ```openarc --help``` to see focused usage documentation inside the openarc command line tool.
 
-This page contains example commands to help you choose models and configure OpenArc. 
+This page contains example commands to help you choose models and configure OpenArc.
 
 === "add"
 

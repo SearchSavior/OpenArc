@@ -372,7 +372,10 @@ def test_infer_llm_stream_error_is_not_silent_success() -> None:
     assert result.error is not None
     assert result.response is None
     first = asyncio.run(packet.stream_queue.get())
-    assert first == {"error": "decode failed"}
+    # `_signal_stream_error` now carries the heal-vs-terminal decision as
+    # ``will_respawn`` on the item (here False) so the route can end the stream
+    # gracefully; a genuine failure is still logged in full.
+    assert first == {"error": "decode failed", "will_respawn": False}
     assert asyncio.run(packet.stream_queue.get()) is None
 
 

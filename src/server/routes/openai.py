@@ -10,7 +10,9 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from src.server.deps import _registry, _workers, verify_api_key
+from src.server.deps import _registry, _sessions, _workers, verify_api_key
+from src.server.sessions import Session
+from src.engine.worker.protocol import RemoteWorkerDeadError
 from src.server.schemas.modeling.contract_kokoro import (
     KokoroLanguage,
     KokoroVoice,
@@ -51,6 +53,60 @@ _TOOL_PARSERS = {
     "gemma4": gemma4,
     "museglimmer": museglimmer,
 }
+
+
+def _end_stream_on_worker_restart(
+    *,
+    label: str,
+    request_id: str,
+    created_ts: int,
+    model_name: str,
+    object_name: str,
+    choice: dict,
+    cause: object,
+    usage: Optional[dict] = None,
+) -> List[bytes]:
+    """End a stream courteously (a short note + a graceful terminal + [DONE])
+    when the worker is being restarted within its respawn budget, so its in-flight
+    requests end cleanly instead of escaping to the ASGI handler as a full trace.
+    """
+    logger.warning(
+        f"{label} {model_name}: worker restart in progress ({cause}); "
+        f"ending stream for {request_id}"
+    )
+    terminal = {
+        "id": request_id,
+        "object": object_name,
+        "created": created_ts,
+        "model": model_name,
+        "choices": [choice],
+    }
+    # A session hands its last-known context on across the restart (not 0);
+    # None (no session) leaves the terminal unchanged.
+    if usage is not None:
+        terminal["usage"] = usage
+    _terminal = json.dumps(terminal)
+    return [f"data: {_terminal}\n\n".encode(), b"data: [DONE]\n\n"]
+
+
+def _session_usage(session: Optional[Session], prompt_tokens=None, completion_tokens: int = 0) -> Optional[dict]:
+    """Usage block a session reports, or None (no session => the caller keeps the
+    plain per-request usage, so flag-off is unchanged).
+
+    `total_tokens` is the session's accumulated "current context" (goose shows it
+    before / context_window); it survives a worker restart and re-bases on a
+    re-send. prompt/completion keep the real per-request values (unaffected by
+    the session, so goose's output/c accounting still accumulates correctly);
+    for a failed/healing turn the prompt defaults to the retained current and the
+    output to 0 (nothing was produced)."""
+    if session is None:
+        return None
+    current = session.current_context
+    return {
+        "prompt_tokens": current if prompt_tokens is None else prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": current,
+    }
 
 
 def _get_record(model_name: str):
@@ -141,17 +197,29 @@ def _apply_tool_choice(
 async def openai_list_models():
     try:
         registry_status = await _registry.status()
+        created = int(datetime.datetime.now().timestamp())
 
         models = []
-        for model_name in registry_status["openai_model_names"]:
-            models.append(
-                {
-                    "id": model_name,
-                    "object": "model",
-                    "created": int(datetime.datetime.now().timestamp()),
-                    "owned_by": "OpenArc",
-                }
-            )
+        for entry in registry_status["models"]:
+            model_name = entry["model_name"]
+            context_window = entry.get("context_window")
+
+            item: Dict[str, Any] = {
+                "id": model_name,
+                "object": "model",
+                "created": created,
+                "owned_by": "OpenArc",
+            }
+
+            # Opt-in: the record only carries a value when the operator set
+            # load_config.context_window, so nothing is advertised unless it was.
+            # context_window (OpenAI-standard) and meta.n_ctx (llama.cpp/Ollama)
+            # are emitted from the same resolved value.
+            if isinstance(context_window, int) and context_window > 0:
+                item["context_window"] = context_window
+                item["meta"] = {"n_ctx": context_window}
+
+            models.append(item)
 
         return {"object": "list", "data": models}
     except Exception as exc:
@@ -177,10 +245,26 @@ async def openai_chat_completions(
                     tool_parser_name = parser_enum.value if parser_enum else None
                     break
 
+        # A tool_call_parser is only *truly required* when the client *mandates* a
+        # tool call (tool_choice == "required", or a named/dict selector). An agent
+        # (e.g. goose) attaches its whole tool catalogue to *every* request, even a
+        # plain "Hi", so keying the error on the mere presence of `tools` made any
+        # un-parser'd model unusable for such clients. Per the OpenAI contract a
+        # `tools` array is a permissive offer: a missing parser is a hard error only
+        # when a tool call is mandatory (tool_choice forced); for auto/none it
+        # degrades to plain text (select_streamer -> ChunkStreamer).
+        tool_choice_mandated = (
+            request.tool_choice == "required" or isinstance(request.tool_choice, dict)
+        )
         if tool_parser_name is None and request.tools:
-            raise ValueError(
-                f"Model '{request.model}' has no tool_call_parser configured; "
-                "set one under load_config in config.yaml (tool_call_parser: qwen35|hermes|gemma4|museglimmer')"
+            if tool_choice_mandated:
+                raise ValueError(
+                    f"Model '{request.model}' has no tool_call_parser configured; "
+                    "set one under load_config in config.yaml (tool_call_parser: qwen35|hermes|gemma4|museglimmer')"
+                )
+            logger.info(
+                f"[{request.model}] tools offered but no tool_call_parser registered; "
+                f"serving as plain text -- tool calls will not be parsed for this model"
             )
         parser_module = _TOOL_PARSERS.get(tool_parser_name) if tool_parser_name else None
 
@@ -223,6 +307,15 @@ async def openai_chat_completions(
         model_name = request.model
         created_ts = int(time.time())
         request_id = f"ov-{uuid.uuid4().hex[:24]}"
+
+        # --sih session (no-op otherwise): a proxy of the worker's ChatHistory
+        # usage (the "current context") so a worker restart reports the last-known
+        # value (not 0) until goose re-sends and the worker re-calibrates.
+        session = await _sessions.get_or_create(
+            _sessions.session_id_from(raw_request), model_name
+        )
+        if session is not None:
+            generation_config.session_id = session.session_id
 
         thinking_enabled = True
         if chat_template_kwargs:
@@ -282,6 +375,22 @@ async def openai_chat_completions(
 
                         if isinstance(item, dict):
                             if item.get("error"):
+                                # A still-restarting worker (respawning within its budget): end this
+                                # stream courteously via the helper (a short note, no traceback).
+                                if item.get("will_respawn"):
+                                    for _chunk in _end_stream_on_worker_restart(
+                                        label="[chat/completions]",
+                                        request_id=request_id,
+                                        created_ts=created_ts,
+                                        model_name=model_name,
+                                        object_name="chat.completion.chunk",
+                                        choice={"index": 0, "delta": {}, "finish_reason": "error"},
+                                        cause=item["error"],
+                                        # Last-known context (not 0) across the restart.
+                                        usage=_session_usage(session),
+                                    ):
+                                        yield _chunk
+                                    return
                                 raise RuntimeError(item["error"])
                             if "chat_delta" in item:
                                 # Parsed deltas from Qwen35ToolCallStreamer
@@ -319,6 +428,16 @@ async def openai_chat_completions(
                 total_tokens = (metrics_data or {}).get(
                     "total_token", prompt_tokens + completion_tokens
                 )
+                # Only total_tokens becomes the session's accumulated current context
+                # (folded in first); prompt/completion stay the real per-request values.
+                usage = {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": total_tokens,
+                }
+                if session is not None:
+                    session.apply(metrics_data)
+                    usage = _session_usage(session, prompt_tokens, completion_tokens)
 
                 finish_reason = "tool_calls" if tool_call_sent else "stop"
 
@@ -334,18 +453,35 @@ async def openai_chat_completions(
                             "finish_reason": finish_reason,
                         }
                     ],
-                    "usage": {
-                        "prompt_tokens": prompt_tokens,
-                        "completion_tokens": completion_tokens,
-                        "total_tokens": total_tokens,
-                    },
+                    "usage": usage,
                 }
                 yield (f"data: {json.dumps(final_payload)}\n\n").encode()
                 yield b"data: [DONE]\n\n"
 
             return StreamingResponse(event_stream(), media_type="text/event-stream")
         else:
-            result = await _workers.generate(model_name, generation_config)
+            try:
+                result = await _workers.generate(model_name, generation_config)
+            except RemoteWorkerDeadError as exc:
+                # Restart: keep the session's last-known context visible (never 0);
+                # a terminal death (will_respawn False) re-raises to the 500 handler.
+                if session is not None and getattr(exc, "will_respawn", False):
+                    return {
+                        "id": request_id,
+                        "object": "chat.completion",
+                        "created": created_ts,
+                        "model": model_name,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "message": {"role": "assistant", "content": None},
+                                "finish_reason": "error",
+                            }
+                        ],
+                        "usage": _session_usage(session),
+                        "error": str(exc),
+                    }
+                raise
             text = result.get("text", "")
             metrics = result.get("metrics", {}) or {}
 
@@ -372,6 +508,17 @@ async def openai_chat_completions(
             else:
                 message["content"] = content_text if content_text else text
 
+            # Only total_tokens becomes the session's accumulated current context
+            # (folded in first); prompt/completion stay the real per-request values.
+            usage = {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens,
+            }
+            if session is not None:
+                session.apply(metrics)
+                usage = _session_usage(session, prompt_tokens, completion_tokens)
+
             return {
                 "id": request_id,
                 "object": "chat.completion",
@@ -384,11 +531,7 @@ async def openai_chat_completions(
                         "finish_reason": finish_reason,
                     }
                 ],
-                "usage": {
-                    "prompt_tokens": prompt_tokens,
-                    "completion_tokens": completion_tokens,
-                    "total_tokens": total_tokens,
-                },
+                "usage": usage,
                 "metrics": metrics,
             }
     except ValueError as exc:
@@ -451,6 +594,20 @@ async def openai_completions(request: OpenAICompletionRequest, raw_request: Requ
 
                         if isinstance(item, dict):
                             if item.get("error"):
+                                # A still-restarting worker (respawning within its budget): end this
+                                # stream courteously via the helper (a short note, no traceback).
+                                if item.get("will_respawn"):
+                                    for _chunk in _end_stream_on_worker_restart(
+                                        label="[completions]",
+                                        request_id=request_id,
+                                        created_ts=created_ts,
+                                        model_name=model_name,
+                                        object_name="text_completion.chunk",
+                                        choice={"index": 0, "text": "", "finish_reason": "error"},
+                                        cause=item["error"],
+                                    ):
+                                        yield _chunk
+                                    return
                                 raise RuntimeError(item["error"])
                             metrics_data = item.get("metrics", item)
                             continue

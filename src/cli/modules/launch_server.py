@@ -8,6 +8,12 @@ from pathlib import Path
 # Setting this to /dev/null effectively disables file logging if desired.
 default_log_file = Path(__file__).parent.parent.parent.parent / "openarc.log"
 log_file = Path(os.getenv("OPENARC_LOG_FILE", default_log_file))
+# Publish the resolved main-log path back to the environment so the worker
+# supervisors (spawned later, deep in the registry) can derive each worker's own
+# per-model log file beside it -- "<base>-worker-<model>.log" in the same
+# directory. Without this, a shell that never set OPENARC_LOG_FILE would leave
+# the supervisor unable to place the worker log file next to the main log.
+os.environ["OPENARC_LOG_FILE"] = str(log_file)
 
 def _level_from_verbose(verbose: int) -> str:
     # our own code (src.* and OpenArc loggers)
@@ -122,18 +128,26 @@ def _build_log_config(verbose: int):
 
 logger = logging.getLogger("OpenArc")
 
-def start_server(host: str = "0.0.0.0", port: int = 8001, reload: bool = False, verbose: int = 0):
+def start_server(host: str = "0.0.0.0", port: int = 8001, reload: bool = False, verbose: int = 0, session_id_header: str = ""):
     """
     Launches the OpenArc API server
 
     Args:
         host: Host to bind the server to
         port: Port to bind the server to
+        session_id_header: If set, name the client session-id header and enable
+            the server-side session on the shared registry before the app imports.
     """
 
     # applies only until uvicorn.run() installs the dict config below.
     logger.setLevel(getattr(logging, _level_from_verbose(verbose)))
     logging.getLogger().setLevel(getattr(logging, _root_level_from_verbose(verbose)))
+
+    # Re-point the shared session registry from the flag (an empty header = off),
+    # so a stale import-time value (e.g. a different run in-process) is never used.
+    from src.server.deps import _sessions
+
+    _sessions.reconfigure(session_id_header or None)
 
     print(f"Launching  {host}:{port}")
     print("--------------------------------")
