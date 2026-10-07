@@ -1,6 +1,6 @@
 
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -142,20 +142,18 @@ class ModelLoadConfig(BaseModel):
         When unset, /chat/completions requests containing tools are rejected
         with 400.""",
     )
-    context_window: Optional[int] = Field(
+    context_window: Optional[Union[int, str]] = Field(
         default=None,
         description="""
-        Context window (in tokens), advertised in ``/v1/models`` (as the
-        OpenAI-standard ``context_window`` field and as ``meta.n_ctx`` so
-        agent clients can display and use it for things like auto-compaction.
+        Opt-in context window (in tokens) advertised in /v1/models -- as the
+        OpenAI-standard ``context_window`` field and as ``meta.n_ctx``.
 
-        When set to a positive integer it overrides automatic discovery and is
-        used as-is. When None (or <= 0) the value is discovered from the model's
-        config.json -- searched at the top level first, and (because multimodal
-        models nest their language config under ``text_config`` / ``language_config``
-        / ``llm_config`` / ...) then inside those nested per-modality sections --
-        using the first present key of
-        max_position_embeddings / n_positions / seq_len / seq_length / n_ctx / sliding_window.
+        When unset (the default) nothing is advertised. Values:
+        - a positive integer: advertised as-is; if it exceeds the model's real
+          max_position_embeddings the load warns loudly.
+        - ``"auto"``: advertise the model's own max_position_embeddings read from
+          its config.json (the only key read -- it is found at the top level or,
+          for multimodal models, inside text_config / language_config / ...).
         """,
     )
 

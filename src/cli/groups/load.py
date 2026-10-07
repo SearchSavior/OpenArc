@@ -66,6 +66,12 @@ def load(ctx, model_names):
             if response.status_code == 200:
                 console.print(f"[green]{name} loaded![/green]\n")
                 successful_loads.append(name)
+                # If the server detected that this model's context_window is pinned
+                # larger than its real max_position_embeddings it relays a loud
+                # warning so the operator who just ran `openarc load` sees it too.
+                warning = response.json().get("warning")
+                if warning:
+                    console.print(f"[red bold]{warning}[/red bold]\n")
             else:
                 console.print(f"[red]error: {response.status_code}[/red]")
                 console.print(f"[red]Response:[/red] {response.text}\n")
