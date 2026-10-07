@@ -98,7 +98,7 @@ class TestOperatorMaxNumBatchedTokens:
 
 def test_context_window_does_not_drive_scheduler():
     """The context window is advertisement only: it never enters the compiled
-    scheduler config. An explicit (or discovered) context_window with an
+    scheduler config. An opt-in context_window (a pinned int or "auto") with an
     all-unset scheduler block must emit no scheduler_config at all -- proving
     the two are decoupled.
     """

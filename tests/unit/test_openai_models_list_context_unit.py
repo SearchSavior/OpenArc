@@ -1,16 +1,18 @@
-"""Unit tests for the /v1/models context-window propagation.
+"""Unit tests for the /v1/models context-window advertisement.
 
-These exercise the actual ``openai_list_models`` handler end to end: a model is
+Exercises the actual ``openai_list_models`` handler end to end: a model is
 registered in a real ``ModelRegistry`` (with a fake factory, so no heavy engine
-is loaded), then the OpenAI-compatible ``/v1/models`` response is built. The
-assertions confirm the two fields that OpenArc propagates to chat clients:
+is loaded), then the OpenAI-compatible ``/v1/models`` response is built.
 
-* ``context_window`` -- the OpenAI-standard field clients read to size
-  context / auto-compaction, and
-* ``meta.n_ctx`` -- the non-standard field some clients read from /v1/models.
+Advertisement is opt-in, so these pin the resulting behavior:
 
-When neither can be resolved (no config.json, no explicit value) the response
-must omit both so clients fall back to their own defaults.
+* ``context_window`` unset -> nothing is advertised (the opt-out default), so the
+  entry has no ``context_window`` / ``meta`` keys at all -- no default is even
+  read from config.json.
+* ``context_window: "auto"`` -> the model's ``max_position_embeddings`` is
+  advertised (in ``context_window`` and ``meta.n_ctx``); the decoy keys other
+  exporters use are not.
+* a positive integer -> that exact value is advertised (used as-is).
 """
 
 import asyncio
@@ -31,7 +33,11 @@ from src.server.schemas.registration import (
 
 
 def _write_model_dir(tmp_path: Path, name: str, payload: dict | None) -> str:
-    """Create a fake model directory; only writes config.json when ``payload`` is set."""
+    """Create a fake model directory; only writes config.json when ``payload`` is set.
+
+    Also drops the _model.bin/_model.xml the model-path check expects, so a
+    later real load is not what we are testing here (the factory is faked).
+    """
     model_dir = tmp_path / name
     model_dir.mkdir(parents=True)
     if payload is not None:
@@ -39,7 +45,9 @@ def _write_model_dir(tmp_path: Path, name: str, payload: dict | None) -> str:
     return str(model_dir)
 
 
-def _load_config(name: str, model_path: str, context_window: int | None = None) -> ModelLoadConfig:
+def _load_config(
+    name: str, model_path: str, context_window: int | str | None = None
+) -> ModelLoadConfig:
     kwargs = dict(
         model_path=model_path,
         model_name=name,
@@ -53,7 +61,11 @@ def _load_config(name: str, model_path: str, context_window: int | None = None) 
     return ModelLoadConfig(**kwargs)
 
 
-def _register(monkeypatch: pytest.MonkeyPatch, registry: ModelRegistry, load_config: ModelLoadConfig):
+def _register(
+    monkeypatch: pytest.MonkeyPatch,
+    registry: ModelRegistry,
+    load_config: ModelLoadConfig,
+) -> None:
     async def _noop_unload(*_args, **_kwargs):
         return None
 
@@ -68,122 +80,138 @@ def _register(monkeypatch: pytest.MonkeyPatch, registry: ModelRegistry, load_con
     asyncio.run(_run())
 
 
-def test_list_models_emits_context_window_and_meta_ncx(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    # max_position_embeddings precedes n_ctx in the priority list, so it wins.
-    model_path = _write_model_dir(
-        tmp_path, "ctx-model", {"max_position_embeddings": 131072, "n_ctx": 32768}
-    )
-    registry = ModelRegistry()
-    _register(monkeypatch, registry, _load_config("ctx-model", model_path))
+def _list(monkeypatch: pytest.MonkeyPatch, registry: ModelRegistry) -> list:
     monkeypatch.setattr(openai_module, "_registry", registry)
 
     async def _run():
         return await openai_module.openai_list_models()
 
     response = asyncio.run(_run())
+    return {entry["id"]: entry for entry in response["data"]}
 
-    assert response["object"] == "list"
-    entry = response["data"][0]
-    assert entry["id"] == "ctx-model"
+
+# --- opt-out: the default advertises nothing ---------------------------
+
+def test_unset_advertises_nothing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # config.json *does* carry a window, but nothing is advertised because the
+    # operator never opted in -- a default must not be read or advertised.
+    model_path = _write_model_dir(tmp_path, "unset", {"max_position_embeddings": 131072})
+    registry = ModelRegistry()
+    _register(monkeypatch, registry, _load_config("unset", model_path))
+
+    entry = _list(monkeypatch, registry)["unset"]
     assert entry["object"] == "model"
     assert entry["owned_by"] == "OpenArc"
-    # Both the standard field and the non-standard meta.n_ctx are emitted from one value.
-    assert entry["context_window"] == 131072
-    assert entry["meta"] == {"n_ctx": 131072}
-
-
-def test_list_models_omits_context_fields_when_unknown(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    # No config.json, no explicit value -> context_window is None -> omit both.
-    model_path = _write_model_dir(tmp_path, "no-ctx", None)
-    registry = ModelRegistry()
-    _register(monkeypatch, registry, _load_config("no-ctx", model_path))
-    monkeypatch.setattr(openai_module, "_registry", registry)
-
-    async def _run():
-        return await openai_module.openai_list_models()
-
-    response = asyncio.run(_run())
-    entry = response["data"][0]
-    assert entry["id"] == "no-ctx"
     assert "context_window" not in entry
     assert "meta" not in entry
 
 
-def test_list_models_explicit_override_flows_through(
+def test_auto_with_no_config_advertises_nothing(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # An explicit value must be what the response advertises (and what meta.n_ctx mirrors).
-    model_path = _write_model_dir(tmp_path, "override", {"max_position_embeddings": 9999})
+    # "auto" but config.json has no max_position_embeddings -> still nothing.
+    model_path = _write_model_dir(tmp_path, "auto-none", None)
     registry = ModelRegistry()
-    _register(monkeypatch, registry, _load_config("override", model_path, context_window=5000))
-    monkeypatch.setattr(openai_module, "_registry", registry)
+    _register(monkeypatch, registry, _load_config("auto-none", model_path, "auto"))
 
-    async def _run():
-        return await openai_module.openai_list_models()
-
-    response = asyncio.run(_run())
-    entry = response["data"][0]
-    assert entry["context_window"] == 5000
-    assert entry["meta"] == {"n_ctx": 5000}
+    entry = _list(monkeypatch, registry)["auto-none"]
+    assert "context_window" not in entry
+    assert "meta" not in entry
 
 
-def test_list_models_mixed_models(
+# --- opt-in via "auto": advertises only max_position_embeddings --------
+
+def test_auto_advertises_max_position_embeddings(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    known = _write_model_dir(tmp_path, "known", {"seq_len": 6000})
-    unknown = _write_model_dir(tmp_path, "unknown", None)
+    # max_position_embeddings wins; the decoy n_ctx/sliding_window are ignored.
+    model_path = _write_model_dir(
+        tmp_path,
+        "auto",
+        {
+            "max_position_embeddings": 131072,
+            "n_ctx": 32768,
+            "sliding_window": 512,
+        },
+    )
     registry = ModelRegistry()
-    _register(monkeypatch, registry, _load_config("known", known))
-    _register(monkeypatch, registry, _load_config("unknown", unknown))
-    monkeypatch.setattr(openai_module, "_registry", registry)
+    _register(monkeypatch, registry, _load_config("auto", model_path, "auto"))
 
-    async def _run():
-        return await openai_module.openai_list_models()
-
-    response = asyncio.run(_run())
-    entries = {e["id"]: e for e in response["data"]}
-
-    assert entries["known"]["context_window"] == 6000
-    assert entries["known"]["meta"] == {"n_ctx": 6000}
-    assert "context_window" not in entries["unknown"]
-    assert "meta" not in entries["unknown"]
+    entry = _list(monkeypatch, registry)["auto"]
+    assert entry["context_window"] == 131072
+    assert entry["meta"] == {"n_ctx": 131072}
 
 
-def test_list_models_discovers_nested_text_config(
+def test_auto_discovers_nested_text_config(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # The reported symptom, end to end: a multimodal / VLM config.json nests the
-    # window under ``text_config`` (and carries a decoy top-level sliding_window).
-    # A flat top-level scan would advertise nothing; the section-aware scan must
-    # surface the real window in BOTH fields clients read.
+    # The reported symptom: a multimodal config nests the window under text_config
+    # with a decoy top-level sliding_window. "auto" surfaces the real window in
+    # both fields clients read.
     model_path = _write_model_dir(
         tmp_path,
         "qwen25vl",
         {
-            "architectures": ["Qwen2_5_VLForConditionalGeneration"],
             "model_type": "qwen2_5_vl",
-            "sliding_window": 512,  # top-level decoy (lower priority)
-            "text_config": {
-                "model_type": "qwen2_5_vl_text",
-                "max_position_embeddings": 32768,
-            },
+            "sliding_window": 512,
+            "text_config": {"max_position_embeddings": 32768},
             "vision_config": {"model_type": "qwen2_5_vl"},
         },
     )
     registry = ModelRegistry()
-    _register(monkeypatch, registry, _load_config("qwen25vl", model_path))
-    monkeypatch.setattr(openai_module, "_registry", registry)
+    _register(monkeypatch, registry, _load_config("qwen25vl", model_path, "auto"))
 
-    async def _run():
-        return await openai_module.openai_list_models()
-
-    response = asyncio.run(_run())
-    entry = response["data"][0]
-    assert entry["id"] == "qwen25vl"
-    # Both advertised fields surface the nested (text_config) value, not the decoy.
+    entry = _list(monkeypatch, registry)["qwen25vl"]
     assert entry["context_window"] == 32768
     assert entry["meta"] == {"n_ctx": 32768}
+
+
+# --- opt-in via an explicit integer: advertised as-is ------------------
+
+def test_explicit_int_advertised_as_is(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A pinned integer is advertised verbatim -- not the config.json value.
+    model_path = _write_model_dir(tmp_path, "pinned", {"max_position_embeddings": 9999})
+    registry = ModelRegistry()
+    _register(monkeypatch, registry, _load_config("pinned", model_path, 5000))
+
+    entry = _list(monkeypatch, registry)["pinned"]
+    assert entry["context_window"] == 5000
+    assert entry["meta"] == {"n_ctx": 5000}
+
+
+# --- the advertised value is what is warned about ----------------------
+
+def test_explicit_over_advertises_the_larger_value(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A pin above the real limit is what gets advertised (the warning, logged
+    # server-side, is about this advertised value); the real limit is not emitted.
+    model_path = _write_model_dir(tmp_path, "over", {"max_position_embeddings": 32768})
+    registry = ModelRegistry()
+    _register(monkeypatch, registry, _load_config("over", model_path, 131072))
+
+    entry = _list(monkeypatch, registry)["over"]
+    assert entry["context_window"] == 131072
+    assert entry["meta"] == {"n_ctx": 131072}
+
+
+def test_mixed_models(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # One model opts in via "auto"; another leaves it unset. Only the opted-in
+    # one carries the fields.
+    opted_in = _write_model_dir(tmp_path, "on", {"max_position_embeddings": 131072})
+    opted_out = _write_model_dir(tmp_path, "off", {"max_position_embeddings": 6000})
+    registry = ModelRegistry()
+    _register(monkeypatch, registry, _load_config("on", opted_in, "auto"))
+    _register(monkeypatch, registry, _load_config("off", opted_out))
+
+    entries = _list(monkeypatch, registry)
+    assert entries["on"]["context_window"] == 131072
+    assert entries["on"]["meta"] == {"n_ctx": 131072}
+    assert "context_window" not in entries["off"]
+    assert "meta" not in entries["off"]

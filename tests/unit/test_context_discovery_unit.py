@@ -1,110 +1,111 @@
-"""Unit tests for context-window discovery (pure stdlib, no heavy deps).
+"""Unit tests for the opt-in context-window advertisement (pure stdlib).
 
-These exercise the field-priority resolution
-(max_position_embeddings / n_positions / seq_len / seq_length / n_ctx /
-sliding_window) and the explicit-override precedence used to propagate a model's
-context window through /v1/models.
+Exercises the three new rules:
+- only ``max_position_embeddings`` is read from ``config.json`` (the other names
+  some exporters use for the same concept are ignored);
+- advertisement is opt-in (unset -> nothing; ``"auto"`` -> discover; int -> as-is);
+- a *pinned* value above the model's real limit yields a loud warning.
 """
 
 import json
 
-import pytest  # type: ignore[import]
-
 from src.server.utils.context import (
-    CONTEXT_FIELD_PRIORITY,
+    CONTEXT_FIELD,
+    _coerce_positive_int,
+    check_context_window_exceeded,
+    format_context_window_warning,
+    is_auto,
     read_context_window_from_config,
     resolve_context_window,
 )
 
 
 def _write_config(directory, payload) -> str:
-    """Write ``payload`` as ``config.json`` inside ``directory`` and return its path."""
+    """Write ``payload`` as ``config.json`` inside ``directory``; return its path."""
     (directory / "config.json").write_text(json.dumps(payload), encoding="utf-8")
     return str(directory)
 
 
-def _all_keys_config() -> dict:
-    return {
-        "max_position_embeddings": 128000,
-        "n_positions": 40960,
-        "seq_len": 8192,
-        "seq_length": 16384,
-        "n_ctx": 32768,
-        "sliding_window": 512,
-    }
+def _dir_without_config(directory) -> str:
+    (directory / "tokenizer_config.json").write_text("{}", encoding="utf-8")
+    return str(directory)
 
 
-def test_priority_list_matches_spec(tmp_path) -> None:
-    assert CONTEXT_FIELD_PRIORITY == [
-        "max_position_embeddings",
-        "n_positions",
-        "seq_len",
-        "seq_length",
-        "n_ctx",
-        "sliding_window",
-    ]
+# --- only max_position_embeddings is read ------------------------------
+
+def test_only_max_position_embeddings_key(tmp_path) -> None:
+    assert CONTEXT_FIELD == "max_position_embeddings"
 
 
-def test_first_present_key_wins(tmp_path) -> None:
-    # max_position_embeddings is present, so it wins regardless of the (smaller)
-    # values in the later-priority keys.
-    path = _write_config(tmp_path, _all_keys_config())
+def test_ignores_other_names(tmp_path) -> None:
+    # n_positions / seq_len / seq_length / n_ctx / sliding_window are no longer read.
+    path = _write_config(
+        tmp_path,
+        {
+            "n_positions": 40960,
+            "seq_len": 8192,
+            "seq_length": 16384,
+            "n_ctx": 32768,
+            "sliding_window": 512,
+        },
+    )
+    assert read_context_window_from_config(path) is None
+    assert resolve_context_window(path, "auto") is None
+
+
+def test_reads_flat_max_position_embeddings(tmp_path) -> None:
+    path = _write_config(tmp_path, {"max_position_embeddings": 128000})
     assert read_context_window_from_config(path) == 128000
 
 
-def test_n_ctx_used_when_earlier_keys_absent(tmp_path) -> None:
-    path = _write_config(tmp_path, {"n_ctx": 4096, "model_type": "llm"})
-    assert read_context_window_from_config(path) == 4096
-
-
-def test_sliding_window_is_last_resort(tmp_path) -> None:
-    # Only a later-priority key present -> it is used.
-    path = _write_config(tmp_path, {"architectures": ["X"], "sliding_window": 512})
-    assert read_context_window_from_config(path) == 512
-
-
-def test_earlier_key_precedes_sliding_window(tmp_path) -> None:
-    # n_ctx appears before sliding_window in the priority list.
-    path = _write_config(tmp_path, {"sliding_window": 512, "n_ctx": 4096})
-    assert read_context_window_from_config(path) == 4096
-
-
-def test_present_but_null_falls_through_to_next(tmp_path) -> None:
-    path = _write_config(tmp_path, {"max_position_embeddings": None, "n_ctx": 4096})
-    assert read_context_window_from_config(path) == 4096
-
-
-def test_present_but_zero_is_skipped(tmp_path) -> None:
-    path = _write_config(tmp_path, {"max_position_embeddings": 0, "n_ctx": 4096})
-    assert read_context_window_from_config(path) == 4096
-
-
-def test_all_keys_zero_returns_none(tmp_path) -> None:
-    path = _write_config(tmp_path, {k: 0 for k in CONTEXT_FIELD_PRIORITY})
+def test_zero_or_null_max_ignored(tmp_path) -> None:
+    path = _write_config(tmp_path, {"max_position_embeddings": 0, "text_config": {}})
     assert read_context_window_from_config(path) is None
 
 
-def test_bool_value_is_not_a_window_size(tmp_path) -> None:
-    # A lone boolean must not be mistaken for an integer window size.
-    path = _write_config(tmp_path, {"max_position_embeddings": True})
-    assert read_context_window_from_config(path) is None
+def test_nested_text_config_discovered(tmp_path) -> None:
+    # Multimodal models nest max_position_embeddings under text_config; the
+    # top-level sliding_window is a decoy that is simply never read.
+    path = _write_config(
+        tmp_path,
+        {
+            "model_type": "qwen2_5_vl",
+            "sliding_window": 512,
+            "text_config": {"max_position_embeddings": 131072},
+            "vision_config": {"model_type": "qwen2_5_vl"},
+        },
+    )
+    assert read_context_window_from_config(path) == 131072
 
 
-def test_bool_key_falls_through_to_next(tmp_path) -> None:
-    path = _write_config(tmp_path, {"max_position_embeddings": True, "n_ctx": 8192})
-    assert read_context_window_from_config(path) == 8192
+def test_named_section_prefers_language_over_arbitrary(tmp_path) -> None:
+    # text_config wins over an arbitrary nested dict, regardless of file order.
+    path = _write_config(
+        tmp_path,
+        {
+            "something": {"max_position_embeddings": 111},
+            "text_config": {"max_position_embeddings": 888},
+        },
+    )
+    assert read_context_window_from_config(path) == 888
 
 
-def test_float_value_is_coerced_to_int(tmp_path) -> None:
-    path = _write_config(tmp_path, {"max_position_embeddings": 128000.0})
-    result = read_context_window_from_config(path)
-    assert result == 128000
-    assert isinstance(result, int)
+def test_deeply_nested_section_reached(tmp_path) -> None:
+    path = _write_config(tmp_path, {"model": {"text_config": {"max_position_embeddings": 5555}}})
+    assert read_context_window_from_config(path) == 5555
+
+
+def test_file_model_path_uses_parent_dir(tmp_path) -> None:
+    model_dir = tmp_path / "model"
+    model_dir.mkdir()
+    _write_config(model_dir, {"max_position_embeddings": 9999})
+    (model_dir / "transformer_model.json").write_text("{}", encoding="utf-8")
+    got = read_context_window_from_config(str(model_dir / "transformer_model.json"))
+    assert got == 9999
 
 
 def test_missing_config_returns_none(tmp_path) -> None:
-    (tmp_path / "tokenizer_config.json").write_text("{}", encoding="utf-8")
-    assert read_context_window_from_config(str(tmp_path)) is None
+    assert read_context_window_from_config(_dir_without_config(tmp_path)) is None
 
 
 def test_malformed_json_returns_none(tmp_path) -> None:
@@ -117,158 +118,115 @@ def test_non_dict_json_returns_none(tmp_path) -> None:
     assert read_context_window_from_config(str(tmp_path)) is None
 
 
-def test_file_model_path_uses_parent_dir(tmp_path) -> None:
-    # When model_path points at a file (not a dir), config.json is looked up in
-    # the containing directory, matching how a tokenizer/model file ships.
-    model_dir = tmp_path / "model"
-    model_dir.mkdir()
-    _write_config(model_dir, {"n_ctx": 9999})
-    (model_dir / "transformer_model.json").write_text("{}", encoding="utf-8")
-    assert read_context_window_from_config(str(model_dir / "transformer_model.json")) == 9999
+def test_float_is_truncated(tmp_path) -> None:
+    path = _write_config(tmp_path, {"max_position_embeddings": 128000.0})
+    result = read_context_window_from_config(path)
+    assert result == 128000
+    assert isinstance(result, int)
 
 
-def test_explicit_override_wins_over_derivation(tmp_path) -> None:
-    path = _write_config(tmp_path, {"n_ctx": 40960})
-    assert resolve_context_window(path, explicit=99999) == 99999
+# --- opt-in resolution ------------------------------------------------
+
+def test_unset_is_opt_out(tmp_path) -> None:
+    # Unset -> nothing is read or advertised (config.json is not even touched).
+    path = _write_config(tmp_path, {"max_position_embeddings": 131072})
+    assert resolve_context_window(path, None) is None
 
 
-def test_explicit_zero_falls_through_to_derivation(tmp_path) -> None:
-    path = _write_config(tmp_path, {"n_ctx": 40960})
-    assert resolve_context_window(path, explicit=0) == 40960
+def test_auto_discovers(tmp_path) -> None:
+    path = _write_config(tmp_path, {"max_position_embeddings": 32768})
+    assert resolve_context_window(path, "auto") == 32768
+    assert resolve_context_window(path, "AUTO") == 32768
+    assert resolve_context_window(path, "  auto  ") == 32768
 
 
-def test_explicit_negative_falls_through_to_derivation(tmp_path) -> None:
-    path = _write_config(tmp_path, {"n_ctx": 40960})
-    assert resolve_context_window(path, explicit=-5) == 40960
+def test_auto_with_no_config_returns_none(tmp_path) -> None:
+    assert resolve_context_window(_dir_without_config(tmp_path), "auto") is None
 
 
-def test_explicit_none_falls_through_to_derivation(tmp_path) -> None:
-    path = _write_config(tmp_path, {"n_ctx": 40960})
-    assert resolve_context_window(path, explicit=None) == 40960
+def test_explicit_int_used_as_is(tmp_path) -> None:
+    path = _write_config(tmp_path, {"max_position_embeddings": 40960})
+    assert resolve_context_window(path, 5000) == 5000
+    assert resolve_context_window(path, 8192) == 8192
 
 
-# --- nested per-modality sections (multimodal / VLM configs) -----------------
-#
-# A flat, top-level-only scan is the bug this fix closes: Qwen2-VL / Qwen2.5-VL
-# / Qwen3-VL / Qwen3.5 / Gemma3 / Mistral-Small nest max_position_embeddings
-# inside text_config / language_config instead of at the top level.
+def test_non_positive_explicit_is_none(tmp_path) -> None:
+    path = _write_config(tmp_path, {"max_position_embeddings": 40960})
+    assert resolve_context_window(path, 0) is None
+    assert resolve_context_window(path, -5) is None
 
 
-def test_nested_text_config_discovered(tmp_path) -> None:
-    # The realistic Qwen2.5-VL shape: the window lives under `text_config`,
-    # while the (decoy) top level / vision_config carry nothing usable.
-    path = _write_config(
-        tmp_path,
-        {
-            "architectures": ["Qwen2_5_VLForConditionalGeneration"],
-            "model_type": "qwen2_5_vl",
-            "text_config": {
-                "model_type": "qwen2_5_vl_text",
-                "architectures": ["Qwen2_5_VLForCausalLM"],
-                "max_position_embeddings": 32768,
-                "hidden_size": 4096,
-            },
-            "vision_config": {
-                "model_type": "qwen2_5_vl",
-                "architectures": ["Qwen2_5_VisionTransformer"],
-            },
-        },
-    )
-    assert read_context_window_from_config(path) == 32768
+def test_garbage_string_is_none(tmp_path) -> None:
+    # An unparseable, non-"auto" string advertises nothing (opt-in stays off).
+    path = _write_config(tmp_path, {"max_position_embeddings": 40960})
+    assert resolve_context_window(path, "garbage") is None
 
 
-def test_nested_section_beats_top_level_lower_priority(tmp_path) -> None:
-    # The exact "wrong section" trap: a lower-priority key at the TOP level
-    # (sliding_window) would win for a flat scan, but the higher-priority key
-    # nested in text_config (max_position_embeddings) must win instead.
-    path = _write_config(
-        tmp_path,
-        {
-            "architectures": ["Qwen3_5ForConditionalGeneration"],
-            "model_type": "qwen3_5",
-            "sliding_window": 512,  # top-level, lower priority
-            "text_config": {
-                "model_type": "qwen3_5_text",
-                "architectures": ["Qwen3_5ForCausalLM"],
-                "max_position_embeddings": 32768,
-            },
-        },
-    )
-    assert read_context_window_from_config(path) == 32768
+def test_numeric_string_is_coerced(tmp_path) -> None:
+    path = _write_config(tmp_path, {"max_position_embeddings": 40960})
+    assert resolve_context_window(path, "32768") == 32768
 
 
-def test_language_config_section_fallback(tmp_path) -> None:
-    # Some families (Gemma3 / Mistral-Small 3.2) nest under `language_config`.
-    path = _write_config(
-        tmp_path,
-        {
-            "model_type": "gemma3",
-            "language_config": {"max_position_embeddings": 131072},
-            "vision_config": {"sliding_window": 512},
-        },
-    )
-    assert read_context_window_from_config(path) == 131072
+# --- coercion + auto helpers ------------------------------------------
+
+def test_coerce_positive_int() -> None:
+    assert _coerce_positive_int(10) == 10
+    assert _coerce_positive_int(0) is None
+    assert _coerce_positive_int(-1) is None
+    assert _coerce_positive_int(None) is None
+    assert _coerce_positive_int(True) is None       # a lone bool is not a window size
+    assert _coerce_positive_int(12.9) == 12         # floats are truncated
+    assert _coerce_positive_int("32768") == 32768
+    assert _coerce_positive_int("auto") is None
+    assert _coerce_positive_int("  16 384 ") is None
 
 
-def test_named_section_preferred_over_arbitrary_nested(tmp_path) -> None:
-    # With multiple nested dicts carrying the key, the named language section
-    # wins over an arbitrary nested section -- deterministic regardless of the
-    # order the keys happen to appear in the file.
-    path = _write_config(
-        tmp_path,
-        {
-            "something": {"max_position_embeddings": 111},  # arbitrary, appears first
-            "text_config": {"max_position_embeddings": 888},  # named, must win
-        },
-    )
-    assert read_context_window_from_config(path) == 888
+def test_is_auto() -> None:
+    assert is_auto("auto") is True
+    assert is_auto("AUTO") is True
+    assert is_auto(" auto ") is True
+    assert is_auto("autoish") is False
+    assert is_auto(42) is False
+    assert is_auto(None) is False
 
 
-def test_priority_within_nested_section_still_applies(tmp_path) -> None:
-    # Inside a section the field priority still holds: max_position_embeddings is
-    # absent, so the section's n_ctx is used (not a spurious value elsewhere).
-    path = _write_config(
-        tmp_path,
-        {
-            "model_type": "gemma3",
-            "language_config": {"n_ctx": 8192},
-            "vision_config": {"sliding_window": 512},
-        },
-    )
-    assert read_context_window_from_config(path) == 8192
+# --- loud warning for an over-large pin -------------------------------
+
+def test_warns_when_pinned_above_real(tmp_path) -> None:
+    path = _write_config(tmp_path, {"max_position_embeddings": 32768})
+    msg = check_context_window_exceeded("model", path, 131072)
+    assert msg is not None
+    assert "131072" in msg and "32768" in msg
+    assert msg.strip().startswith("!!!")
 
 
-def test_deeply_nested_section_reached_by_fallback(tmp_path) -> None:
-    # A section nested one level deeper than the named list is still reached by the
-    # generic recursive fallback (so the window is never lost to extra nesting).
-    path = _write_config(
-        tmp_path,
-        {
-            "model": {"text_config": {"max_position_embeddings": 5555}},
-        },
-    )
-    assert read_context_window_from_config(path) == 5555
+def test_no_warn_when_pinned_at_or_below(tmp_path) -> None:
+    path = _write_config(tmp_path, {"max_position_embeddings": 32768})
+    assert check_context_window_exceeded("model", path, 32768) is None  # equal
+    assert check_context_window_exceeded("model", path, 16000) is None  # below
 
 
-def test_explicit_override_wins_over_nested_discovery(tmp_path) -> None:
-    # An explicit value still short-circuits discovery, even when the discovered
-    # value lives in a nested section.
-    path = _write_config(
-        tmp_path,
-        {"text_config": {"max_position_embeddings": 131072}},
-    )
-    assert resolve_context_window(path, explicit=5000) == 5000
+def test_no_warn_when_unset_or_auto(tmp_path) -> None:
+    path = _write_config(tmp_path, {"max_position_embeddings": 32768})
+    assert check_context_window_exceeded("model", path, None) is None
+    assert check_context_window_exceeded("model", path, "auto") is None
 
 
-def test_nested_section_no_keys_returns_none(tmp_path) -> None:
-    # A multimodal config where neither the top level nor any nested section
-    # carries any of the candidate keys -> None (nothing advertised / enforced).
-    path = _write_config(
-        tmp_path,
-        {
-            "model_type": "qwen3_5",
-            "text_config": {"hidden_size": 4096, "num_attention_heads": 32},
-            "vision_config": {"initializer_range": 0.02},
-        },
-    )
-    assert read_context_window_from_config(path) is None
+def test_no_warn_when_real_limit_unknown(tmp_path) -> None:
+    # Pinned value but no max_position_embeddings to compare against -> no
+    # warning (an honest "unknown", not a false positive).
+    path = _write_config(tmp_path, {"n_ctx": 4096})
+    assert check_context_window_exceeded("model", path, 131072) is None
+
+
+def test_numeric_string_pin_still_warns(tmp_path) -> None:
+    # A pin that arrives as a string (e.g. quoted in config.yaml) still warns.
+    path = _write_config(tmp_path, {"max_position_embeddings": 32768})
+    assert check_context_window_exceeded("model", path, "131072") is not None
+
+
+def test_format_contains_model_and_ratio() -> None:
+    msg = format_context_window_warning("qwen-demo", 131072, 32768)
+    assert "qwen-demo" in msg
+    assert "131072" in msg and "32768" in msg
+    assert "4.0x" in msg

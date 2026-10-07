@@ -16,7 +16,10 @@ from src.server.schemas.registration import (
     ModelType,
     ToolCallParser,
 )
-from src.server.utils.context import resolve_context_window
+from src.server.utils.context import (
+    check_context_window_exceeded,
+    resolve_context_window,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +42,10 @@ class ModelRecord:
     runtime_config: Dict[str, Any] = field(default_factory=dict)
     tool_call_parser: Optional[ToolCallParser] = None
     context_window: Optional[int] = None
+    # Set when a pinned context_window exceeds the real max_position_embeddings.
+    # Kept out of registered_models() so it never reaches /v1/models; the load
+    # endpoint relays it to the CLI as a loud warning.
+    context_window_warning: Optional[str] = None
 
     # Model-level request defaults surfaced from config.yaml. Stored as plain
     # dicts (already validated by ModelLoadConfig) and used to seed per-request
@@ -113,12 +120,23 @@ class ModelRegistry:
         # anything is loaded, so a mismatched config.yaml fails fast.
         loader.validate_config_blocks()
 
-        # Resolve the effective context window. An explicit value on the load config
-        # (e.g. `openarc add --context-window`, or the `context_window` key in
-        # config.yaml) wins; otherwise it is discovered from the model's config.json.
+        # Opt-in advertisement: None stays None (nothing read); "auto" discovers
+        # max_position_embeddings; a positive int is advertised as-is.
         context_window = await asyncio.to_thread(
             resolve_context_window, loader.model_path, loader.context_window
         )
+
+        # A pinned int above the real max_position_embeddings advertises a window
+        # the model can't use: log it loudly and stash it for the load endpoint to
+        # relay to the CLI. None/ "auto" and an unknown real limit never warn.
+        context_window_warning = await asyncio.to_thread(
+            check_context_window_exceeded,
+            loader.model_name,
+            loader.model_path,
+            loader.context_window,
+        )
+        if context_window_warning:
+            logger.warning("Model '%s':\n%s", loader.model_name, context_window_warning)
 
         # Create a model record with LOADING status
         record = ModelRecord(
@@ -130,6 +148,7 @@ class ModelRegistry:
             runtime_config=loader.runtime_config,
             tool_call_parser=loader.tool_call_parser,
             context_window=context_window,
+            context_window_warning=context_window_warning,
             model_config_blocks=dict(loader.model_config_blocks or {}),
             status=ModelStatus.LOADING,
         )
@@ -278,6 +297,17 @@ class ModelRegistry:
                 "models": models_public,
                 "openai_model_names": [record.model_name for record in self._models.values()],
             }
+
+    def get_context_window_warning(self, model_name: str) -> Optional[str]:
+        """The over-sized-context warning stashed on a model's record, or None.
+
+        None for an unset context_window, for "auto", or if the model is gone.
+        Consulted by POST /openarc/load so the CLI can print it.
+        """
+        for record in self._models.values():
+            if record.model_name == model_name:
+                return record.context_window_warning
+        return None
 
     async def readiness(self) -> dict:
         """Return readiness: ready only when every expected model is loaded.

@@ -3,6 +3,7 @@ Add command - Add a model configuration to the config file.
 """
 import json
 from pathlib import Path
+from typing import NoReturn
 
 import click
 
@@ -19,6 +20,42 @@ from ..modules.config_options import (
     resolve_config_values,
 )
 from ..utils import validate_model_path
+
+
+class ContextWindowType(click.ParamType):
+    """``--context-window`` accepts a positive integer (tokens) or ``auto``.
+
+    Opt-in: when omitted the load config carries no ``context_window``. ``auto``
+    reads the model's real max_position_embeddings; a plain integer is advertised
+    as-is (and warned if it exceeds that real limit).
+    """
+
+    name = "context_window"
+
+    MSG = "must be a positive integer (tokens) or 'auto'"
+
+    def convert(self, value, param, ctx):
+        # Raise UsageError directly (not self.fail): ParamType.fail's signature
+        # changed between click 8.2 and 8.4, UsageError(message) has not.
+        def _fail(extra: str = "") -> NoReturn:
+            raise click.UsageError(f"`{value}` {self.MSG} {extra}".strip())
+
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            _fail()
+        if isinstance(value, str):
+            token = value.strip()
+            if token.lower() == "auto":
+                return "auto"
+            try:
+                tokens = int(token)
+            except ValueError:
+                _fail()
+            if tokens <= 0:
+                _fail(f"(was {tokens})")
+            return tokens
+        _fail()
 
 
 @cli.command()
@@ -74,10 +111,15 @@ from ..utils import validate_model_path
     default=None,
     help='Tool-call output format for this model (qwen35 XML, hermes JSON, gemma4 call syntax, or museglimmer Harmony atem). llm/vlm only; required for tool calling.')
 @click.option('--context-window', '--cw',
-    type=int,
+    type=ContextWindowType(),
     required=False,
     default=None,
-    help='Context window (tokens) for this model, advertised in the /v1/models response so clients can size their conversation (e.g. for auto-compaction). When omitted the value is discovered from the model\'s config.json (first present of max_position_embeddings / n_positions / seq_len / seq_length / n_ctx / sliding_window).')
+    help='Opt-in context window (tokens) advertised for this model in the /v1/models response '
+    '(as the OpenAI-standard context_window field and as meta.n_ctx) so clients can size their '
+    "conversation (e.g. for auto-compaction). Omit to leave it unset (nothing is advertised). "
+    "Use 'auto' to advertise the model's own max_position_embeddings read from config.json, "
+    "or a positive integer to advertise that value as-is; a pinned integer larger than the "
+    "model's real max_position_embeddings triggers a loud warning on `openarc serve`/`openarc load`.")
 @config_options
 @click.pass_context
 def add(ctx, model_path, model_name, engine, model_type, device, runtime_config, cache_dir, draft_model_path, draft_device, num_assistant_tokens, assistant_confidence_threshold, tool_call_parser, context_window, **config_values):
@@ -191,6 +233,7 @@ _LOAD_OPTIONS = [
     "num_assistant_tokens",
     "assistant_confidence_threshold",
     "tool_call_parser",
+    "context_window",
 ]
 
 # One help panel per config.yaml key, keyed by the command path rich_click

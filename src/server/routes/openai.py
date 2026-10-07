@@ -155,11 +155,10 @@ async def openai_list_models():
                 "owned_by": "OpenArc",
             }
 
-            # Propagate the model's context window so OpenAI-compatible
-            # clients can size their conversation (e.g. for auto-compaction).
-            # `context_window` is the OpenAI-standard field; but some clients
-            # read the non-standard `meta.n_ctx` (llama.cpp / Ollama convention)
-            # from /v1/models, so both are emitted from the same resolved value.
+            # Opt-in: the record only carries a value when the operator set
+            # load_config.context_window, so nothing is advertised unless it was.
+            # context_window (OpenAI-standard) and meta.n_ctx (llama.cpp/Ollama)
+            # are emitted from the same resolved value.
             if isinstance(context_window, int) and context_window > 0:
                 item["context_window"] = context_window
                 item["meta"] = {"n_ctx": context_window}
