@@ -158,11 +158,17 @@ def get_gpu_info():
 async def load_model(load_config: ModelLoadConfig):
     try:
         model_id = await _registry.register_load(load_config)
-        return {
+        result = {
             "model_id": model_id,
             "model_name": load_config.model_name,
             "status": "loaded",
         }
+        # Relay an over-sized context_window warning to the CLI (registered only
+        # when the operator pinned a value above the real max_position_embeddings).
+        warning = _registry.get_context_window_warning(load_config.model_name)
+        if warning:
+            result["warning"] = warning
+        return result
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:

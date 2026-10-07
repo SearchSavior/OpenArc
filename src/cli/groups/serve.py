@@ -5,6 +5,8 @@ import os
 
 import click
 
+from src.server.utils.context import check_context_window_exceeded
+
 from ..main import cli, console
 
 
@@ -14,6 +16,24 @@ def serve():
     - Start the OpenArc server.
     """
     pass
+
+
+def _startup_context_window_warning(server_config, name: str):
+    """Mirror the server-side check up-front so a pinned context_window larger
+    than the real max_position_embeddings is warned about in the foreground.
+    Advertisement-only; returns None (unset / "auto" / a config that can't be
+    resolved) when there is nothing to warn about."""
+    try:
+        load_config = server_config.get_model_load_config(name)
+    except Exception:
+        return None
+    if load_config is None:
+        return None
+    return check_context_window_exceeded(
+        load_config.model_name,
+        load_config.model_path,
+        load_config.context_window,
+    )
 
 
 @serve.command("start")
@@ -71,6 +91,16 @@ def start(ctx, host, port, load_models, use_api_key, verbose, startup_models):
 
         os.environ["OPENARC_STARTUP_MODELS"] = ",".join(models_to_load)
         console.print(f"[blue]Models to load on startup:[/blue] {', '.join(models_to_load)}\n")
+
+        # Warn up-front (foreground) for startup models that pin an over-large
+        # context_window; register_load logs the same warning on the server side.
+        # Models missing from the config are already flagged above and skipped.
+        for name in models_to_load:
+            if name in missing:
+                continue
+            warning = _startup_context_window_warning(ctx.obj.server_config, name)
+            if warning:
+                console.print(f"[red bold]{warning}[/red bold]\n")
 
     if use_api_key:
         if not os.getenv("OPENARC_API_KEY"):

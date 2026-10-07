@@ -141,17 +141,29 @@ def _apply_tool_choice(
 async def openai_list_models():
     try:
         registry_status = await _registry.status()
+        created = int(datetime.datetime.now().timestamp())
 
         models = []
-        for model_name in registry_status["openai_model_names"]:
-            models.append(
-                {
-                    "id": model_name,
-                    "object": "model",
-                    "created": int(datetime.datetime.now().timestamp()),
-                    "owned_by": "OpenArc",
-                }
-            )
+        for entry in registry_status["models"]:
+            model_name = entry["model_name"]
+            context_window = entry.get("context_window")
+
+            item: Dict[str, Any] = {
+                "id": model_name,
+                "object": "model",
+                "created": created,
+                "owned_by": "OpenArc",
+            }
+
+            # Opt-in: the record only carries a value when the operator set
+            # load_config.context_window, so nothing is advertised unless it was.
+            # context_window (OpenAI-standard) and meta.n_ctx (llama.cpp/Ollama)
+            # are emitted from the same resolved value.
+            if isinstance(context_window, int) and context_window > 0:
+                item["context_window"] = context_window
+                item["meta"] = {"n_ctx": context_window}
+
+            models.append(item)
 
         return {"object": "list", "data": models}
     except Exception as exc:
