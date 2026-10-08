@@ -1,11 +1,12 @@
 """OV GenAI engine utilities."""
 import logging
-from typing import Literal
+from typing import Any, Literal, Mapping
 
-from openvino_genai import GenerationConfig, SchedulerConfig
+from openvino_genai import GenerationConfig, SchedulerConfig, StructuredOutputConfig
 
 from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import SchedulerConfigSchema
 from src.server.schemas.registration import ModelLoadConfig
+from src.server.utils.structured_output import structured_output_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,18 @@ def apply_temperature(generation_config: GenerationConfig, temperature: float) -
     generation_config.temperature = temperature
     if temperature <= 0:
         generation_config.do_sample = False
+
+
+def build_structured_output_config(
+    response_format: Mapping[str, Any] | None,
+) -> StructuredOutputConfig | None:
+    """Build the OpenVINO GenAI structured-output config for a request, if any.
+
+    Returns ``None`` when the request asks for no constraint, so callers leave
+    the generation config's own default untouched.
+    """
+    kwargs = structured_output_kwargs(response_format)
+    return StructuredOutputConfig(**kwargs) if kwargs else None
 
 
 def generate_ov_scheduler_config(scheduler_config: SchedulerConfigSchema) -> dict:
