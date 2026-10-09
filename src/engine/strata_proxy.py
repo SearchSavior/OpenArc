@@ -295,17 +295,18 @@ class StrataProxyLLM(OVGenAI_LLM):
                         yield {"chat_delta": [{"reasoning_content": reasoning}]}
                     if content:
                         yield content
-        except httpx.StreamError as exc:
+        except (httpx.HTTPError, httpx.StreamError) as exc:
+            # Two disjoint hierarchies: transport errors (ReadError etc.) are
+            # HTTPError; stream-state errors (StreamClosed) are RuntimeErrors.
             if request_id and request_id in self._cancelled:
-                # cancel() closed the stream; end quietly, no metrics.
+                # cancel() closed the stream; the parked read surfaces as a
+                # transport or stream-state error depending on where it was
+                # blocked. A proxy must never let a client disconnect look
+                # like an inference failure: that unloads the registry entry.
                 logger.info(
                     f"[{self.load_config.model_name}] request {request_id} stream closed by cancel"
                 )
                 return
-            raise RuntimeError(
-                f"[{self.load_config.model_name}] Strata stream interrupted: {exc}"
-            ) from exc
-        except httpx.HTTPError as exc:
             raise RuntimeError(
                 f"[{self.load_config.model_name}] Strata request failed: {exc}"
             ) from exc

@@ -308,6 +308,68 @@ async def test_cancel_unknown_request_id_returns_false(load_config: ModelLoadCon
 
 
 @pytest.mark.asyncio
+async def test_cancel_read_error_ends_quietly(load_config: ModelLoadConfig) -> None:
+    """Regression: a cancelled stream's parked read raises httpx.ReadError
+    (a transport error, NOT a StreamError). It must end quietly -- a RuntimeError
+    here makes the worker registry unload the model on a mere client disconnect."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/models":
+            return ok_models_handler(request)
+
+        async def body():
+            yield sse([delta(content="Hello")])
+            raise httpx.ReadError("connection closed")
+
+        return httpx.Response(
+            200, content=body(), headers={"content-type": "text/event-stream"}
+        )
+
+    engine = make_engine(load_config, handler)
+
+    gen_config = OVGenAI_GenConfig(
+        messages=[{"role": "user", "content": "hi"}], stream=True, request_id="req-read-err"
+    )
+    stream = engine.generate_type(gen_config)
+    first = await stream.__anext__()
+    assert first == "Hello"
+
+    # Mark as cancelled (what cancel() does) before the ReadError surfaces.
+    engine._cancelled.add("req-read-err")
+
+    remaining = [item async for item in stream]
+    assert remaining == []  # no RuntimeError, no metrics
+    assert "req-read-err" not in engine._active_streams
+
+
+@pytest.mark.asyncio
+async def test_uncancelled_read_error_raises(load_config: ModelLoadConfig) -> None:
+    """A ReadError on a request nobody cancelled is a genuine upstream failure."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/models":
+            return ok_models_handler(request)
+
+        async def body():
+            yield sse([delta(content="Hello")])
+            raise httpx.ReadError("connection closed")
+
+        return httpx.Response(
+            200, content=body(), headers={"content-type": "text/event-stream"}
+        )
+
+    engine = make_engine(load_config, handler)
+    gen_config = OVGenAI_GenConfig(
+        messages=[{"role": "user", "content": "hi"}], stream=True, request_id="req-real-err"
+    )
+    stream = engine.generate_type(gen_config)
+    assert await stream.__anext__() == "Hello"
+    with pytest.raises(RuntimeError, match="Strata request failed"):
+        async for _ in stream:
+            pass
+
+
+@pytest.mark.asyncio
 async def test_cancel_calls_response_aclose(load_config: ModelLoadConfig) -> None:
     engine = make_engine(load_config, ok_models_handler)
     fake_response = MagicMock()
