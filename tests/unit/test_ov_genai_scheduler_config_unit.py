@@ -2,8 +2,9 @@
 
 ``scheduler_config.max_num_batched_tokens`` (configured in ``config.yaml``).
 These tests pin that the operator's own ``scheduler_config`` flows through to the
-compiled ``openvino.genai.SchedulerConfig`` -- and that nothing is emitted when
-the operator has left it unset.
+compiled ``openvino.genai.SchedulerConfig`` -- and that a PA-backend loader
+always emits one, because prefix caching defaults on for PA (operator knobs
+override the defaults; SDPA still emits nothing).
 
 Needs ``openvino_genai`` (real pipeline types).
 """
@@ -59,17 +60,21 @@ class TestOperatorMaxNumBatchedTokens:
         assert "scheduler_config" in out
         assert out["scheduler_config"].max_num_batched_tokens == 131072
 
-    def test_no_scheduler_block_emits_nothing(self):
-        # No scheduler block at all -> emit no scheduler_config, so openvino uses
-        # its own (uncapped) default rather than a phantom one.
+    def test_no_scheduler_block_emits_only_defaults(self):
+        # No scheduler block at all -> the PA defaults are emitted (prefix
+        # caching on, 8K prefill chunks); nothing operator-set.
         lo = _loader()
-        assert "scheduler_config" not in extract_scheduler_config_from_loader(lo)
+        sched_config = extract_scheduler_config_from_loader(lo)["scheduler_config"]
+        assert sched_config.enable_prefix_caching is True
+        assert sched_config.max_num_batched_tokens == 8192
 
-    def test_empty_scheduler_block_emits_nothing(self):
-        # A present-but-fully-unset scheduler block (all fields left None) is the
-        # same as none: no operator knob was set, so nothing is emitted.
+    def test_empty_scheduler_block_emits_only_defaults(self):
+        # A present-but-fully-unset scheduler block (all fields left None) is
+        # the same as none: the PA defaults, nothing operator-set.
         lo = _loader(scheduler_config=SchedulerConfigSchema())
-        assert "scheduler_config" not in extract_scheduler_config_from_loader(lo)
+        sched_config = extract_scheduler_config_from_loader(lo)["scheduler_config"]
+        assert sched_config.enable_prefix_caching is True
+        assert sched_config.max_num_batched_tokens == 8192
 
     def test_operator_max_and_kv_pool_coexist(self):
         # max_num_batched_tokens (per-sequence content cap) and num_kv_blocks
@@ -99,10 +104,13 @@ class TestOperatorMaxNumBatchedTokens:
 def test_context_window_does_not_drive_scheduler():
     """The context window is advertisement only: it never enters the compiled
     scheduler config. An opt-in context_window (a pinned int or "auto") with an
-    all-unset scheduler block must emit no scheduler_config at all -- proving
-    the two are decoupled.
+    all-unset scheduler block must leave every operator knob at openvino's
+    built-in default -- proving the two are decoupled. (The PA prefix-caching
+    default is still emitted.)
     """
     lo = _loader(context_window=131072)  # advertised value, no scheduler block
-    assert extract_scheduler_config_from_loader(lo) == {}
+    sched_config = extract_scheduler_config_from_loader(lo)["scheduler_config"]
+    assert sched_config.max_num_batched_tokens == 8192  # the tuned default, untouched
+    assert sched_config.enable_prefix_caching is True
     # And the advertised value lands on the loader untouched, as-is.
     assert lo.context_window == 131072

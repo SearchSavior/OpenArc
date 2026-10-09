@@ -53,10 +53,13 @@ class EngineType(str, Enum):
 
     Options:
     - optimum: Optimum-Intel engine
-    - ovgenai: OpenVINO GenAI engine"""
+    - ovgenai: OpenVINO GenAI engine
+    - ovgenai_cb: OpenVINO GenAI ContinuousBatchingPipeline engine (llm/vlm only;
+      requires the nightly-ov dependency group)"""
 
     OV_OPTIMUM = "optimum"
     OV_GENAI = "ovgenai"
+    OV_GENAI_CB = "ovgenai_cb"
     OPENVINO = "openvino"
 
 

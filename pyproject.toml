@@ -44,6 +44,17 @@ test = [
     "pytest-asyncio>=1.4.0",
     "httpx>=0.27",
 ]
+# OpenVINO nightly wheels (opt-in). Some models require a GenAI nightly newer
+# than the pinned stable release. Sync with:
+#   uv sync --group nightly-ov \
+#     --extra-index-url https://storage.openvinotoolkit.org/simple/wheels/nightly \
+#     --index-strategy unsafe-best-match
+# Pin the exact nightly here once validated (see docs/openvino-nightly.md).
+nightly-ov = [
+    "openvino>=2026.5.0.dev20261007",
+    "openvino-genai>=2026.5.0.0.dev20261007",
+    "openvino-tokenizers>=2026.5.0.0.dev20261007",
+]
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]

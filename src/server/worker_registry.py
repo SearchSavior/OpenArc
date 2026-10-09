@@ -11,6 +11,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional, Union
 
 from src.engine.ov_genai.llm import OVGenAI_LLM
 from src.engine.ov_genai.vlm import OVGenAI_VLM
+from src.engine.ov_genai.continuous_batch_llm import OVGenAI_ContinuousBatch
 from src.engine.ov_genai.whisper import OVGenAI_Whisper
 from src.engine.audio import AudioDecodeError
 from src.engine.openvino.kokoro import OV_Kokoro
@@ -114,6 +115,26 @@ def _commit_completed_packet(
     if packet.result_future is not None and not packet.result_future.done():
         packet.result_future.set_result(completed)
     return False
+
+async def _consume_llm_packet(
+    model_name: str,
+    packet: WorkerPacket,
+    llm_model,
+    registry: ModelRegistry,
+) -> bool:
+    """Run one packet through an LLM-style engine and commit the result.
+
+    Shared by the strict-FIFO queue_worker_llm and the concurrent
+    queue_worker_cb. Returns True when the worker should exit (hard inference
+    error, model unload triggered).
+    """
+    completed_packet = await InferWorker.infer_llm(packet, llm_model)
+
+    if completed_packet.metrics:
+        logger.info(f"[LLM Worker: {model_name}] Metrics: {completed_packet.metrics}")
+
+    return _commit_completed_packet(packet, completed_packet, model_name, registry)
+
 
 class InferWorker:
     """
@@ -420,16 +441,43 @@ class QueueWorker:
                 logger.info(f"[LLM Worker: {model_name}] Shutdown signal received.")
                 break
 
-            completed_packet = await InferWorker.infer_llm(packet, llm_model)
-
-            if completed_packet.metrics:
-                logger.info(f"[LLM Worker: {model_name}] Metrics: {completed_packet.metrics}")
-
-            if _commit_completed_packet(packet, completed_packet, model_name, registry):
-                model_queue.task_done()
-                break
+            should_exit = await _consume_llm_packet(model_name, packet, llm_model, registry)
 
             model_queue.task_done()
+            if should_exit:
+                break
+
+    @staticmethod
+    async def queue_worker_cb(model_name: str, model_queue: asyncio.Queue, cb_model: OVGenAI_ContinuousBatch, registry: ModelRegistry):
+        """Continuous-batching inference worker.
+
+        Unlike queue_worker_llm (strict FIFO, one request at a time), every
+        packet gets its own consume task as soon as it arrives so requests
+        overlap in the engine's ContinuousBatchingPipeline. The None sentinel
+        shuts the worker down after the outstanding consume tasks complete.
+        """
+        logger.info(f"[CB Worker: {model_name}] Started, waiting for packets...")
+        outstanding: set[asyncio.Task] = set()
+
+        async def _consume(packet: WorkerPacket) -> None:
+            if await _consume_llm_packet(model_name, packet, cb_model, registry):
+                # Hard inference error: the model is unloading. Requeue the
+                # sentinel so the main loop stops accepting packets.
+                await model_queue.put(None)
+
+        while True:
+            packet = await model_queue.get()
+            if packet is None:
+                logger.info(f"[CB Worker: {model_name}] Shutdown signal received.")
+                break
+
+            task = asyncio.create_task(_consume(packet))
+            outstanding.add(task)
+            task.add_done_callback(outstanding.discard)
+            model_queue.task_done()
+
+        if outstanding:
+            await asyncio.gather(*outstanding, return_exceptions=True)
 
     @staticmethod
     async def queue_worker_vlm(model_name: str, model_queue: asyncio.Queue, vlm_model: OVGenAI_VLM, registry: ModelRegistry):
@@ -643,7 +691,16 @@ class WorkerRegistry:
         instance = record.model_instance
 
         async with self._lock:
-            if mt == ModelType.LLM and isinstance(instance, OVGenAI_LLM):
+            if mt in (ModelType.LLM, ModelType.VLM) and isinstance(instance, OVGenAI_ContinuousBatch):
+                # Continuous-batching engine: same queue structures as LLM,
+                # but the worker spawns a consume task per packet.
+                if record.model_name not in self._model_queues_llm:
+                    q: asyncio.Queue = asyncio.Queue()
+                    self._model_queues_llm[record.model_name] = q
+                    task = asyncio.create_task(QueueWorker.queue_worker_cb(record.model_name, q, instance, self._model_registry))
+                    self._model_tasks_llm[record.model_name] = task
+
+            elif mt == ModelType.LLM and isinstance(instance, OVGenAI_LLM):
                 if record.model_name not in self._model_queues_llm:
                     q: asyncio.Queue = asyncio.Queue()
                     self._model_queues_llm[record.model_name] = q

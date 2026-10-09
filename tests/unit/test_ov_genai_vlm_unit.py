@@ -174,11 +174,15 @@ def test_load_model_sets_pipeline_and_vision_token(monkeypatch: pytest.MonkeyPat
 
     vlm.load_model(load_config)
 
-    pipeline_factory.assert_called_once_with(
-        load_config.model_path,
-        load_config.device,
+    pipeline_factory.assert_called_once()
+    args, kwargs = pipeline_factory.call_args
+    assert args == (load_config.model_path, load_config.device)
+    assert kwargs == {
         **load_config.runtime_config,
-    )
+        "scheduler_config": kwargs["scheduler_config"],
+    }
+    # PA-backend default: a scheduler_config with prefix caching on is emitted.
+    assert kwargs["scheduler_config"].enable_prefix_caching is True
     vlm_module.AutoTokenizer.from_pretrained.assert_called_once_with(load_config.model_path)
     assert vlm.model_path is pipeline_instance
     assert vlm.tokenizer is tokenizer_instance

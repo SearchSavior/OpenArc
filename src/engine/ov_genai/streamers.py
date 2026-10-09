@@ -9,20 +9,74 @@ from src.engine.ov_genai.tool_parse import museglimmer as museglimmer_tool_parse
 from src.engine.ov_genai.tool_parse import qwen35 as qwen35_tool_parse
 
 
+class IncrementalChunkDecoder:
+    """
+    Incremental detokenizer that emits decoded text in chunks of N tokens.
+    - tokens_len == 1 → token-by-token emission.
+    - tokens_len  > 1 → emit after every N tokens.
+
+    Only the tokens since the last emit are decoded (BPE decode is
+    concatenative, so decoding the pending segment yields exactly the suffix a
+    full re-decode would produce). A decoded segment containing U+FFFD is held
+    back until more tokens complete the character, matching the old full-cache
+    behavior. Cost per emit is constant instead of growing with the square of
+    the output length.
+
+    Plain helper shared by ChunkStreamer and the continuous-batching engine;
+    it owns no queues or callbacks.
+    """
+    def __init__(self, decoder_tokenizer, tokens_len: int):
+        self.decoder_tokenizer = decoder_tokenizer
+        self.tokens_len = tokens_len  # enforce at least 1
+        self.tokens_pending: List[int] = []      # tokens not yet emitted as text
+        self.since_last_emit: int = 0            # tokens collected since last emit
+
+    def feed(self, token_ids: Union[int, List[int]]) -> Optional[str]:
+        """Buffer token ids; return decoded text at a chunk boundary, else None.
+
+        None is also returned when the decoded segment holds a partial UTF-8
+        character (U+FFFD): the pending buffer keeps every unemitted token, so
+        the next attempt decodes the same suffix the old full-cache decode
+        would.
+        """
+        # Normalize input to a list of ints
+        if isinstance(token_ids, list):
+            self.tokens_pending.extend(token_ids)
+            self.since_last_emit += len(token_ids)
+        else:
+            self.tokens_pending.append(token_ids)
+            self.since_last_emit += 1
+
+        # Only emit when we've reached the chunk boundary
+        if self.since_last_emit >= self.tokens_len:
+            text = self.decoder_tokenizer.decode(self.tokens_pending)
+            if chr(65533) in text:
+                return None
+            self.tokens_pending = []
+            self.since_last_emit = 0
+            return text if text else None
+        return None
+
+    def flush(self) -> Optional[str]:
+        """Decode and return any tokens still pending at end of generation."""
+        if not self.tokens_pending:
+            return None
+        text = self.decoder_tokenizer.decode(self.tokens_pending)
+        self.tokens_pending = []
+        self.since_last_emit = 0
+        return text if text else None
+
+
 class ChunkStreamer(StreamerBase):
     """
-    Streams decoded text in chunks of N tokens.
-    - tokens_len == 1 → token-by-token streaming.
-    - tokens_len  > 1 → emit after every N tokens.
-    Uses cumulative decode + delta slicing to avoid subword boundary artifacts.
+    Streams decoded text in chunks of N tokens via IncrementalChunkDecoder.
+    Enqueues emitted chunks (and the None EOF sentinel) on .text_queue.
     """
     def __init__(self, decoder_tokenizer, gen_config: OVGenAI_GenConfig):
         super().__init__()
-        self.decoder_tokenizer = decoder_tokenizer
-        self.tokens_len = (gen_config.stream_chunk_tokens)  # enforce at least 1
-        self.tokens_cache: List[int] = []          # cumulative token buffer
-        self.since_last_emit: int = 0              # tokens collected since last emit
-        self.last_print_len: int = 0               # length of decoded text we've already emitted
+        self._decoder = IncrementalChunkDecoder(
+            decoder_tokenizer, gen_config.stream_chunk_tokens
+        )
         self.text_queue: "asyncio.Queue[Optional[str]]" = asyncio.Queue()
         self._cancelled = asyncio.Event()
         try:
@@ -43,27 +97,9 @@ class ChunkStreamer(StreamerBase):
             self._enqueue(None)
             return openvino_genai.StreamingStatus.CANCEL
 
-        # Normalize input to a list of ints
-        if isinstance(token, list):
-            self.tokens_cache.extend(token)
-            self.since_last_emit += len(token)
-        else:
-            self.tokens_cache.append(token)
-            self.since_last_emit += 1
-
-        # Only emit when we've reached the chunk boundary
-        if self.since_last_emit >= self.tokens_len:
-            text = self.decoder_tokenizer.decode(self.tokens_cache)
-            # Emit only the newly materialized portion
-            if len(text) > self.last_print_len:
-                chunk = text[self.last_print_len:]
-                if chr(65533) in chunk:
-                    self.since_last_emit -= 1
-                    return openvino_genai.StreamingStatus.RUNNING
-                if chunk:
-                    self._enqueue(chunk)
-                self.last_print_len = len(text)
-            self.since_last_emit = 0
+        text = self._decoder.feed(token)
+        if text:
+            self._enqueue(text)
 
         return openvino_genai.StreamingStatus.RUNNING
 
@@ -77,11 +113,9 @@ class ChunkStreamer(StreamerBase):
 
     def end(self) -> None:
         # Flush any remaining tokens at the end
-        text = self.decoder_tokenizer.decode(self.tokens_cache)
-        if len(text) > self.last_print_len:
-            chunk = text[self.last_print_len:]
-            if chunk:
-                self._enqueue(chunk)
+        text = self._decoder.flush()
+        if text:
+            self._enqueue(text)
         self._enqueue(None)
 
 
