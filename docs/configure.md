@@ -167,6 +167,8 @@ openarc add \
 
 `engine=strata` does not load a local model: it proxies requests to a running [Strata](https://github.com/Niko1221/Strata) server's OpenAI-compatible API, which lets OpenArc front models OpenVINO cannot run (GGUF MoE models, for example). `--model-path` carries the endpoint base URL instead of an IR directory, and `--device` is a placeholder. The served model id is discovered from the server's `GET /v1/models` at load time. Alternatively, set the URL as `endpoint` in `--runtime-config` and use any placeholder for `--model-path`.
 
+The proxy deliberately speaks only the stable OpenAI wire protocol (`GET /v1/models`, `POST /v1/chat/completions`, SSE deltas, `usage` events) and nothing Strata-specific, so it is decoupled from Strata's release cadence — and works with any other OpenAI-compatible server that supports those endpoints. All proxy logic lives in the single module `src/engine/strata_proxy.py`.
+
 Metrics for strata models (`ttft`, throughputs, token counts) are measured client-side from the upstream usage event; they carry a `proxy: true` marker.
 
 ```

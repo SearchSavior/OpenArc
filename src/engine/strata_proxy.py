@@ -4,6 +4,15 @@ A "model" registered with engine=strata is not loaded locally; it is an HTTP
 endpoint (https://github.com/Niko1221/Strata) serving /v1/chat/completions for
 models OpenVINO cannot run (e.g. GGUF MoE models such as Qwen3.8-Flash-Next).
 
+Decoupling
+----------
+Strata moves fast, so by design this module only speaks the stable OpenAI wire
+protocol (GET /v1/models, POST /v1/chat/completions, SSE deltas, usage events)
+and assumes nothing about Strata's internals or version. Any other
+OpenAI-compatible server exposing those endpoints works too. Everything
+Strata-related lives in this one file; the rest of OpenArc only sees the
+engine registry entry and the "strata" EngineType.
+
 Configuration
 -------------
 ``load_config.model_path`` carries the endpoint base URL (e.g.
