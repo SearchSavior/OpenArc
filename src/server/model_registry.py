@@ -337,6 +337,8 @@ class ModelRegistry:
 MODEL_CLASS_REGISTRY = {
     (EngineType.OV_GENAI, ModelType.LLM): "src.engine.ov_genai.llm.OVGenAI_LLM",
     (EngineType.OV_GENAI, ModelType.VLM): "src.engine.ov_genai.vlm.OVGenAI_VLM",
+    (EngineType.OV_GENAI_CB, ModelType.LLM): "src.engine.ov_genai.continuous_batch_llm.OVGenAI_ContinuousBatch",
+    (EngineType.OV_GENAI_CB, ModelType.VLM): "src.engine.ov_genai.continuous_batch_llm.OVGenAI_ContinuousBatch",
     (EngineType.OV_GENAI, ModelType.WHISPER): "src.engine.ov_genai.whisper.OVGenAI_Whisper",
     (EngineType.OPENVINO, ModelType.QWEN3_ASR): "src.engine.openvino.qwen3_asr.qwen3_asr.OVQwen3ASR",
     (EngineType.OPENVINO, ModelType.KOKORO): "src.engine.openvino.kokoro.OV_Kokoro",

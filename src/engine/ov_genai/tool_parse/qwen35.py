@@ -565,8 +565,7 @@ class Qwen35ToolCallStreamer(StreamerBase):
             ids = tokenizer.encode(tag).input_ids.data.tolist()[0]
             if len(ids) == 1:
                 self._wrapper_ids[ids[0]] = tag
-        self.tokens_cache: List[int] = []
-        self.last_print_len = 0
+        self.tokens_pending: List[int] = []  # tokens not yet processed as text
         self.text_queue: "asyncio.Queue" = asyncio.Queue()
         self._cancelled = asyncio.Event()
         try:
@@ -600,28 +599,29 @@ class Qwen35ToolCallStreamer(StreamerBase):
             self._enqueue({"chat_delta": deltas})
 
     def _decode_available(self) -> None:
-        text = self.tokenizer.decode(self.tokens_cache)
-        if len(text) > self.last_print_len:
-            delta = text[self.last_print_len:]
-            if chr(65533) in delta:
-                # partial UTF-8 at the boundary; wait for more tokens
-                return
-            self.last_print_len = len(text)
-            self._process_delta(delta, [])
+        # Incremental detokenization: decode only the pending segment (BPE
+        # decode is concatenative, so this equals the suffix a full re-decode
+        # would produce) at constant cost per token.
+        text = self.tokenizer.decode(self.tokens_pending)
+        if chr(65533) in text:
+            # partial UTF-8 at the boundary; wait for more tokens
+            return
+        if text:
+            self._process_delta(text, [])
+        self.tokens_pending = []
 
     def _flush_text(self) -> None:
-        """Decode and process everything left in the cache, then reset it.
+        """Decode and process everything left pending, then reset it.
 
         Called before an atomically-detected boundary token: pre-boundary text
         must be processed before the boundary itself.
         """
-        if not self.tokens_cache:
+        if not self.tokens_pending:
             return
-        text = self.tokenizer.decode(self.tokens_cache)
-        if len(text) > self.last_print_len:
-            self._process_delta(text[self.last_print_len:], [])
-        self.tokens_cache = []
-        self.last_print_len = 0
+        text = self.tokenizer.decode(self.tokens_pending)
+        if text:
+            self._process_delta(text, [])
+        self.tokens_pending = []
 
     def write(self, token) -> StreamingStatus:
         if self._cancelled.is_set():
@@ -634,7 +634,7 @@ class Qwen35ToolCallStreamer(StreamerBase):
                 self._flush_text()
                 self._process_delta(tag, [int(tid)])
             else:
-                self.tokens_cache.append(int(tid))
+                self.tokens_pending.append(int(tid))
                 self._decode_available()
         return self.tool_parser.status
 

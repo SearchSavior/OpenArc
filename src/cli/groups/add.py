@@ -2,6 +2,7 @@
 Add command - Add a model configuration to the config file.
 """
 import json
+import shutil
 from pathlib import Path
 from typing import NoReturn
 
@@ -66,9 +67,9 @@ class ContextWindowType(click.ParamType):
     required=True,
     help='Path to OpenVINO IR converted model.')
 @click.option('--engine', '--en',
-    type=click.Choice(['ovgenai', 'openvino', 'optimum']),
+    type=click.Choice(['ovgenai', 'ovgenai_cb', 'openvino', 'optimum']),
     required=True,
-    help='Engine used to load the model (ovgenai, openvino, optimum)')
+    help='Engine used to load the model (ovgenai, ovgenai_cb, openvino, optimum)')
 @click.option('--model-type', '--mt',
     type=click.Choice([
         'llm', 'vlm', 'whisper', 'qwen3_asr', 'kokoro',
@@ -153,14 +154,25 @@ def add(ctx, model_path, model_name, engine, model_type, device, runtime_config,
             console.print(f"[red]Error parsing runtime_config JSON:[/red] {e}")
             console.print('[yellow]Example format: \'{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}\'[/yellow]')
             ctx.exit(1)
-    # llm/vlm always get a model cache: compiled blobs live alongside the IR.
-    # An explicit CACHE_DIR in --runtime-config wins. Resolved to an absolute
-    # path here because runtime_config values are passed to OpenVINO verbatim,
-    # unlike model_path they are not resolved against the config file.
+    # llm/vlm always get a compiled-model cache. OpenVINO keys cache blobs by
+    # model content, so one shared directory is safe for any number of models
+    # (and for draft models). An explicit CACHE_DIR in --runtime-config wins.
+    # Resolved to an absolute path here because runtime_config values are
+    # passed to OpenVINO verbatim, unlike model_path they are not resolved
+    # against the config file. Blobs can reach a sizeable fraction of the IR
+    # size, so warn when the disk looks tight.
     if model_type in ("llm", "vlm"):
-        parsed_runtime_config.setdefault(
-            "CACHE_DIR", str((Path(model_path) / "model_cache").resolve())
-        )
+        default_cache_dir = Path.home() / ".cache" / "openarc" / "ov_cache"
+        parsed_runtime_config.setdefault("CACHE_DIR", str(default_cache_dir))
+        if parsed_runtime_config["CACHE_DIR"] == str(default_cache_dir):
+            free_gb = shutil.disk_usage(Path.home()).free / 1e9
+            if free_gb < 20:
+                console.print(
+                    f"[yellow]Warning: only {free_gb:.1f} GB free on the home filesystem; "
+                    f"the OpenVINO compiled-model cache at {default_cache_dir} can take "
+                    f"several GB per model. Free space or set CACHE_DIR via "
+                    f"--runtime-config if loads fail.[/yellow]"
+                )
 
     # Route the contract-flagged values into their blocks. Validation happens
     # against the contracts themselves, so a bad value is caught here rather

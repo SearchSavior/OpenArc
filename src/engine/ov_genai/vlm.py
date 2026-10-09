@@ -1,6 +1,8 @@
 from src.engine.ov_genai.utils import (
     apply_temperature,
+    check_vram_budget,
     extract_scheduler_config_from_loader,
+    format_perf_metrics,
 )
 import asyncio
 import base64
@@ -324,25 +326,7 @@ class OVGenAI_VLM:
         """
         Collect and format performance metrics into a dictionary.
         """
-        ttft_seconds = perf_metrics.get_ttft().mean / 1000
-        input_tokens = perf_metrics.get_num_input_tokens()
-        prefill_throughput = round(input_tokens / ttft_seconds, 2) if ttft_seconds > 0 else 0
-
-        metrics: Dict[str, Any] = {
-            "load_time (s)": round(perf_metrics.get_load_time() / 1000, 2),
-            "ttft (s)": round(perf_metrics.get_ttft().mean / 1000, 2),
-            "tpot (ms)": round(perf_metrics.get_tpot().mean, 5),
-            "prefill_throughput (tokens/s)": prefill_throughput,
-            "decode_throughput (tokens/s)": round(perf_metrics.get_throughput().mean, 5),
-            "decode_duration (s)": round(perf_metrics.get_generate_duration().mean / 1000, 5),
-            "input_token": input_tokens,
-            "new_token": perf_metrics.get_num_generated_tokens(),
-            "total_token": input_tokens + perf_metrics.get_num_generated_tokens(),
-            "stream": gen_config.stream,
-        }
-        if gen_config.stream and hasattr(gen_config, "stream_chunk_tokens"):
-            metrics["stream_chunk_tokens"] = gen_config.stream_chunk_tokens
-        return metrics
+        return format_perf_metrics(gen_config, perf_metrics)
 
     def load_model(self, loader: ModelLoadConfig):
         """
@@ -350,6 +334,8 @@ class OVGenAI_VLM:
         """
         try:
             logger.info(f"{loader.model_type} on {loader.device} with {loader.runtime_config}")
+
+            check_vram_budget(loader)
 
             scheduler_config = extract_scheduler_config_from_loader(loader)
             pipeline_kwargs = {**(loader.runtime_config or {})}
@@ -371,6 +357,20 @@ class OVGenAI_VLM:
             self._detect_chat_template_defaults(loader)
 
             logger.info(f"{loader.model_name} loaded successfully")
+
+            # Warm up: one short generation so OpenVINO compiles its GPU
+            # kernels at load time instead of on the first request.
+            # OPENARC_WARMUP=0 opts out.
+            if os.getenv('OPENARC_WARMUP', '1') != '0':
+                try:
+                    warm_cfg = self.model_path.get_generation_config()
+                    warm_cfg.max_new_tokens = 8
+                    warm_cfg.do_sample = False
+                    warm_cfg.apply_chat_template = False
+                    self.model_path.generate(prompt="Hello", generation_config=warm_cfg)
+                    logger.info(f"{loader.model_name} warm-up generation complete")
+                except Exception as e:
+                    logger.warning(f"{loader.model_name} warm-up generation failed: {e}")
 
         except Exception as e:
             logger.error(f"[{loader.model_name}] Failed to initialize VLMPipeline: {e}", exc_info=True)

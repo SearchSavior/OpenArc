@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest  # type: ignore[import]
 
 import src.engine.ov_genai.llm as llm_module
+import src.engine.ov_genai.utils as utils_module
 from src.engine.ov_genai.llm import OVGenAI_LLM
 from src.server.schemas.registration import EngineType, ModelLoadConfig, ModelType
 from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_GenConfig
@@ -162,11 +163,12 @@ def test_load_model_sets_pipeline_and_tokenizer(monkeypatch: pytest.MonkeyPatch,
 
     llm.load_model(loader)
 
-    pipeline_factory.assert_called_once_with(
-        loader.model_path,
-        loader.device,
-        **loader.runtime_config,
-    )
+    pipeline_factory.assert_called_once()
+    args, kwargs = pipeline_factory.call_args
+    assert args == (loader.model_path, loader.device)
+    assert kwargs["hint"] == "value"
+    # PA-backend default: a scheduler_config with prefix caching on is emitted.
+    assert kwargs["scheduler_config"].enable_prefix_caching is True
     llm_module.AutoTokenizer.from_pretrained.assert_called_once_with(loader.model_path)
     assert llm.model is pipeline_instance
     assert llm.encoder_tokenizer is tokenizer_instance
@@ -193,12 +195,12 @@ def test_load_model_forwards_cache_dir(monkeypatch: pytest.MonkeyPatch) -> None:
 
     OVGenAI_LLM(loader).load_model(loader)
 
-    pipeline_factory.assert_called_once_with(
-        loader.model_path,
-        loader.device,
-        hint="value",
-        CACHE_DIR="/tmp/ov_cache",
-    )
+    pipeline_factory.assert_called_once()
+    args, kwargs = pipeline_factory.call_args
+    assert args == (loader.model_path, loader.device)
+    assert kwargs["hint"] == "value"
+    assert kwargs["CACHE_DIR"] == "/tmp/ov_cache"
+    assert kwargs["scheduler_config"].enable_prefix_caching is True
 
 
 def _draft_loader(cache_dir):
@@ -223,7 +225,7 @@ def _patch_llm_load(monkeypatch):
         MagicMock(return_value=MagicMock()),
     )
     draft_factory = MagicMock(return_value=object())
-    monkeypatch.setattr(llm_module.openvino_genai, "draft_model", draft_factory)
+    monkeypatch.setattr(utils_module.openvino_genai, "draft_model", draft_factory)
     return draft_factory
 
 

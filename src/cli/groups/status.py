@@ -9,9 +9,21 @@ from ..main import OpenArcCLI, cli, console
 
 
 @cli.command()
+@click.option("--doctor", is_flag=True, help="Run local Arc/GPU diagnostics (PCIe link, driver, compute-runtime, render access) instead of querying the server.")
 @click.pass_context
-def status(ctx):
+def status(ctx, doctor):
     """- GET Status of loaded models."""
+    if doctor:
+        from ..modules.doctor import collect_diagnostics, evaluate
+        console.print("[blue]Running local GPU diagnostics...[/blue]")
+        findings = evaluate(collect_diagnostics())
+        for level, message in findings:
+            style = "green" if level == "ok" else "yellow"
+            marker = "OK  " if level == "ok" else "WARN"
+            console.print(f"[{style}]{marker}[/{style}] {message}")
+        if any(level == "warn" for level, _ in findings):
+            ctx.exit(1)
+        return
     cli_instance = OpenArcCLI(server_config=ctx.obj.server_config)
     
     url = f"{cli_instance.base_url}/openarc/status"
