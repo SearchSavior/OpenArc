@@ -53,11 +53,14 @@ class EngineType(str, Enum):
 
     Options:
     - optimum: Optimum-Intel engine
-    - ovgenai: OpenVINO GenAI engine"""
+    - ovgenai: OpenVINO GenAI engine
+    - openvino: OpenVINO engine
+    - strata: proxy to a remote Strata server's OpenAI-compatible API"""
 
     OV_OPTIMUM = "optimum"
     OV_GENAI = "ovgenai"
     OPENVINO = "openvino"
+    STRATA = "strata"
 
 
 class ToolCallParser(str, Enum):
@@ -85,7 +88,10 @@ class ModelLoadConfig(BaseModel):
         description="""
         Top level path to directory containing OpenVINO IR converted model.
 
-        OpenArc does not support runtime conversion and cannot pull from HF.""")
+        OpenArc does not support runtime conversion and cannot pull from HF.
+
+        For engine=strata this instead carries the endpoint base URL of the
+        remote Strata server (e.g. http://localhost:8080).""")
     model_name: str = Field(
         ...,
         description="""

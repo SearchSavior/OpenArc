@@ -64,11 +64,11 @@ class ContextWindowType(click.ParamType):
     help='Public facing name of the model.')
 @click.option('--model-path', '--m',
     required=True,
-    help='Path to OpenVINO IR converted model.')
+    help="Path to OpenVINO IR converted model. For engine=strata this is the endpoint base URL instead (e.g. http://localhost:8080).")
 @click.option('--engine', '--en',
-    type=click.Choice(['ovgenai', 'openvino', 'optimum']),
+    type=click.Choice(['ovgenai', 'openvino', 'optimum', 'strata']),
     required=True,
-    help='Engine used to load the model (ovgenai, openvino, optimum)')
+    help='Engine used to load the model (ovgenai, openvino, optimum, strata)')
 @click.option('--model-type', '--mt',
     type=click.Choice([
         'llm', 'vlm', 'whisper', 'qwen3_asr', 'kokoro',
@@ -135,8 +135,13 @@ def add(ctx, model_path, model_name, engine, model_type, device, runtime_config,
     keeps using the contract's own default.
     """
 
-    # Validate model path
-    if not validate_model_path(model_path):
+    # Validate model path. engine=strata carries an endpoint URL in model_path,
+    # not an on-disk IR directory, so the file check does not apply.
+    if engine == "strata":
+        if "://" not in model_path:
+            console.print(f"[red]engine=strata expects an endpoint URL in --model-path (e.g. http://localhost:8080), got: {model_path}[/red]")
+            ctx.exit(1)
+    elif not validate_model_path(model_path):
         console.print(f"[red]Model file check failed! {model_path} does not contain openvino model files OR your chosen path is malformed. Verify chosen path is correct and acquired model files match source on the hub, or the destination of converted model.[/red]")
         ctx.exit(1)
 
@@ -157,7 +162,8 @@ def add(ctx, model_path, model_name, engine, model_type, device, runtime_config,
     # An explicit CACHE_DIR in --runtime-config wins. Resolved to an absolute
     # path here because runtime_config values are passed to OpenVINO verbatim,
     # unlike model_path they are not resolved against the config file.
-    if model_type in ("llm", "vlm"):
+    # engine=strata has no IR (model_path is a URL), so no cache applies.
+    if model_type in ("llm", "vlm") and engine != "strata":
         parsed_runtime_config.setdefault(
             "CACHE_DIR", str((Path(model_path) / "model_cache").resolve())
         )
