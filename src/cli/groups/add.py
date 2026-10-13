@@ -82,7 +82,7 @@ class ContextWindowType(click.ParamType):
     help='Device(s) to load the model on.')
 @click.option("--runtime-config", "--rtc",
     default=None,
-    help='OpenVINO runtime configuration as JSON string (e.g., \'{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}\').')
+    help='OpenVINO runtime configuration as JSON string (e.g., \'{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}\').\nDocs: https://searchsavior.github.io/OpenArc/configure/#runtime_config')
 @click.option('--cache-dir', '--cd',
     required=False,
     default=None,
