@@ -6,6 +6,7 @@ import numpy as np
 import pytest  # type: ignore[import]
 
 import src.engine.ov_genai.vlm as vlm_module
+import src.engine.ov_genai.utils as utils_module
 from src.engine.ov_genai.vlm import OVGenAI_VLM
 from src.server.schemas.registration import EngineType, ModelLoadConfig, ModelType
 from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_GenConfig
@@ -270,3 +271,32 @@ def test_vlm_create_generation_config_zero_temperature_disables_sampling(
 
     assert config.do_sample is False
     assert config.temperature == 0.0
+
+
+class CapturingVlmStructuredOutputConfig:
+    def __init__(self, **kwargs) -> None:
+        self.kwargs = kwargs
+
+
+def test_vlm_create_generation_config_applies_json_schema_clamp(
+    monkeypatch: pytest.MonkeyPatch, load_config: ModelLoadConfig
+) -> None:
+    monkeypatch.setattr(vlm_module, "GenerationConfig", DummyVlmGenerationConfig)
+    monkeypatch.setattr(
+        utils_module, "StructuredOutputConfig", CapturingVlmStructuredOutputConfig
+    )
+
+    vlm = OVGenAI_VLM(load_config)
+    vlm.model_path = None
+
+    gen_config = OVGenAI_GenConfig(
+        response_format={
+            "type": "json_schema",
+            "json_schema": {"name": "x", "schema": {"type": "object", "properties": {}}},
+        }
+    )
+    generation = vlm.create_generation_config(gen_config)
+
+    clamped = generation.structured_output_config
+    assert isinstance(clamped, CapturingVlmStructuredOutputConfig)
+    assert json.loads(clamped.kwargs["json_schema"]) == {"type": "object", "properties": {}}

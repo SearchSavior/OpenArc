@@ -1,5 +1,6 @@
 from src.engine.ov_genai.utils import (
     apply_temperature,
+    build_structured_output_config,
     extract_scheduler_config_from_loader,
 )
 import asyncio
@@ -430,4 +431,8 @@ class OVGenAI_VLM:
             generation_kwargs.frequency_penalty = config.frequency_penalty
         if config.presence_penalty:
             generation_kwargs.presence_penalty = config.presence_penalty
+
+        structured_output = build_structured_output_config(config.response_format)
+        if structured_output is not None:
+            generation_kwargs.structured_output_config = structured_output
         return generation_kwargs

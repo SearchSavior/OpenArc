@@ -97,6 +97,14 @@ class OVGenAI_GenConfig(BaseModel):
         default={},
         description="Additional arguments to apply to the chat template."
     )
+    response_format: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "OpenAI response_format. 'json_schema' or 'json_object' clamps "
+            "generation to that grammar (OpenVINO GenAI StructuredOutputConfig / "
+            "xgrammar); 'text'/None leaves it unconstrained."
+        ),
+    )
 
     @property
     def text_messages(self) -> List[Dict[str, Any]]:

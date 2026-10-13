@@ -46,6 +46,7 @@ class OpenAIChatCompletionRequest(BaseModel):
     frequency_penalty: Optional[float] = None
     presence_penalty: Optional[float] = None
     chat_template_kwargs: Optional[dict] = {}
+    response_format: Optional[Dict[str, Any]] = None
 
 
 class OpenAICompletionRequest(BaseModel):

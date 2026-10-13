@@ -1,11 +1,14 @@
+import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest  # type: ignore[import]
 
 import src.engine.ov_genai.llm as llm_module
+import src.engine.ov_genai.utils as utils_module
 from src.engine.ov_genai.llm import OVGenAI_LLM
 from src.server.schemas.registration import EngineType, ModelLoadConfig, ModelType
 from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_GenConfig
+from src.server.utils.structured_output import ResponseFormatError
 
 
 MODEL_PATH ="some_fake_url/Qwen3-Reranker-0.6B-fp16-ov"
@@ -270,9 +273,18 @@ async def test_unload_model_resets_state(monkeypatch: pytest.MonkeyPatch, load_c
     gc_mock.assert_called_once()
 
 
-
 class DummyGenerationConfig:
     pass
+
+
+class CapturingStructuredOutputConfig:
+    def __init__(self, **kwargs) -> None:
+        self.kwargs = kwargs
+
+
+def _patch_generation(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(llm_module, "GenerationConfig", DummyGenerationConfig)
+    monkeypatch.setattr(utils_module, "StructuredOutputConfig", CapturingStructuredOutputConfig)
 
 
 def test_create_generation_config_zero_temperature_disables_sampling(
@@ -299,3 +311,46 @@ def test_create_generation_config_positive_temperature_keeps_sampling(
 
     assert getattr(config, "do_sample", None) is None
     assert config.temperature == 0.7
+
+
+def test_create_generation_config_applies_json_schema_clamp(
+    monkeypatch: pytest.MonkeyPatch, load_config: ModelLoadConfig
+) -> None:
+    _patch_generation(monkeypatch)
+    llm = OVGenAI_LLM(load_config)
+    llm.model = None
+
+    gen_config = OVGenAI_GenConfig(
+        response_format={
+            "type": "json_schema",
+            "json_schema": {"name": "x", "strict": True, "schema": {"type": "object"}},
+        }
+    )
+    generation = llm.create_generation_config(gen_config)
+
+    clamped = generation.structured_output_config
+    assert isinstance(clamped, CapturingStructuredOutputConfig)
+    assert json.loads(clamped.kwargs["json_schema"]) == {"type": "object"}
+
+
+def test_create_generation_config_without_response_format_leaves_it_unset(
+    monkeypatch: pytest.MonkeyPatch, load_config: ModelLoadConfig
+) -> None:
+    _patch_generation(monkeypatch)
+    llm = OVGenAI_LLM(load_config)
+    llm.model = None
+
+    generation = llm.create_generation_config(OVGenAI_GenConfig())
+
+    assert getattr(generation, "structured_output_config", None) is None
+
+
+def test_create_generation_config_rejects_unsupported_response_format(
+    monkeypatch: pytest.MonkeyPatch, load_config: ModelLoadConfig
+) -> None:
+    _patch_generation(monkeypatch)
+    llm = OVGenAI_LLM(load_config)
+    llm.model = None
+
+    with pytest.raises(ResponseFormatError):
+        llm.create_generation_config(OVGenAI_GenConfig(response_format={"type": "regex"}))
