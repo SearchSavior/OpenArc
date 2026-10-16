@@ -6,7 +6,7 @@ OpenArc uses a YAML based configuration system! Models are added to `config.yaml
 There are a few different blocks in a models config that accept different parameters. Some will be common across implementations while others are specific. `openarc add` writes to these blocks; `openarc add --help` shows one help panel per key.
 
 ### load_config
-- engine: ovgenai, openvino, optimum
+- engine: ovgenai, openvino, optimum, strata
 - model_type: llm, vlm, whisper, kokoro, emb, rerank, qwen3_tts_*
 - device: device for this model
 - tool_call_parser: gemma4, qwen35, hermes
@@ -161,6 +161,25 @@ openarc add \
   --model-type whisper \
   --device GPU.0 \
   --runtime-config '{"PERFORMANCE_HINT": "LATENCY"}'
+```
+
+### Strata (remote proxy)
+
+`engine=strata` does not load a local model: it proxies requests to a running [Strata](https://github.com/Niko1221/Strata) server's OpenAI-compatible API, which lets OpenArc front models OpenVINO cannot run (GGUF MoE models, for example). `--model-path` carries the endpoint base URL instead of an IR directory, and `--device` is a placeholder. The served model id is discovered from the server's `GET /v1/models` at load time. Alternatively, set the URL as `endpoint` in `--runtime-config` and use any placeholder for `--model-path`.
+
+The proxy deliberately speaks only the stable OpenAI wire protocol (`GET /v1/models`, `POST /v1/chat/completions`, SSE deltas, `usage` events) and nothing Strata-specific, so it is decoupled from Strata's release cadence — and works with any other OpenAI-compatible server that supports those endpoints. All proxy logic lives in the single module `src/engine/strata_proxy.py`.
+
+Metrics for strata models (`ttft`, throughputs, token counts) are measured client-side from the upstream usage event; they carry a `proxy: true` marker.
+
+```
+openarc add \
+  --model-name flash-next \
+  --model-path http://localhost:8080 \
+  --engine strata \
+  --model-type llm \
+  --device strata \
+  --temperature 0.7 \
+  --max-tokens 4096
 ```
 
 ### Qwen3-TTS

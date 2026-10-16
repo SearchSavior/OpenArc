@@ -263,11 +263,13 @@ class ServerConfig:
 
     def _resolve_model_paths(self, model_config: Dict[str, Any]) -> Dict[str, Any]:
         """Return a copy of model_config with relative model_path, draft_model_path,
-        and cache_dir made absolute by joining them onto the config file's directory."""
+        and cache_dir made absolute by joining them onto the config file's directory.
+
+        URL values (e.g. a strata engine's endpoint in model_path) are left alone."""
         resolved = dict(model_config)
 
         path = resolved.get("model_path")
-        if path and not Path(path).is_absolute():
+        if path and "://" not in path and not Path(path).is_absolute():
             resolved["model_path"] = str((self.config_file.parent / path).resolve())
 
         draft_model_path = resolved.get("draft_model_path")
