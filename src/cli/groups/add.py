@@ -153,14 +153,6 @@ def add(ctx, model_path, model_name, engine, model_type, device, runtime_config,
             console.print(f"[red]Error parsing runtime_config JSON:[/red] {e}")
             console.print('[yellow]Example format: \'{"MODEL_DISTRIBUTION_POLICY": "PIPELINE_PARALLEL"}\'[/yellow]')
             ctx.exit(1)
-    # llm/vlm always get a model cache: compiled blobs live alongside the IR.
-    # An explicit CACHE_DIR in --runtime-config wins. Resolved to an absolute
-    # path here because runtime_config values are passed to OpenVINO verbatim,
-    # unlike model_path they are not resolved against the config file.
-    if model_type in ("llm", "vlm"):
-        parsed_runtime_config.setdefault(
-            "CACHE_DIR", str((Path(model_path) / "model_cache").resolve())
-        )
 
     # Route the contract-flagged values into their blocks. Validation happens
     # against the contracts themselves, so a bad value is caught here rather
