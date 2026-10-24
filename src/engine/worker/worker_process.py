@@ -84,6 +84,10 @@ _WORKER_LOG_FORMAT = (
 # environment can't be mistaken for ours.
 _WORKER_MODEL_ENV = "OPENARC_WORKER_MODEL"
 _WORKER_LOGFILE_ENV_PREFIX = "OPENARC_WORKER_LOGFILE_"
+# Parallel per-model key for the log LEVEL: the value the supervisor hands over
+# is the server's own log level, so the worker's file traces the protocol at
+# DEBUG only when the server is at DEBUG (see _configure_logging).
+_WORKER_LOGLEVEL_ENV_PREFIX = "OPENARC_WORKER_LOGLEVEL_"
 
 
 def _worker_logfile_from_env(model_name: str) -> Optional[str]:
@@ -96,6 +100,20 @@ def _worker_logfile_from_env(model_name: str) -> Optional[str]:
     if not model_name:
         return None
     key = _WORKER_LOGFILE_ENV_PREFIX + model_name.replace("-", "_")
+    value = os.environ.get(key, "").strip()
+    return value or None
+
+
+def _worker_loglevel_from_env(model_name: str) -> Optional[str]:
+    """The log LEVEL the supervisor handed us: our per-model key
+    OPENARC_WORKER_LOGLEVEL_<model> (dash -> underscore; it matches the
+    supervisor's _worker_loglevel_env because both splice the same model name,
+    exactly like the log-file key), or None if none was handed -- then we keep
+    our own default level (INFO), as we did before a server could set it.
+    """
+    if not model_name:
+        return None
+    key = _WORKER_LOGLEVEL_ENV_PREFIX + model_name.replace("-", "_")
     value = os.environ.get(key, "").strip()
     return value or None
 
@@ -155,9 +173,29 @@ def _configure_logging() -> None:
     file the supervisor handed over, keyed on our model name (which we know from
     OPENARC_WORKER_MODEL), so our output never reaches the main log. With no file
     handed over we just log to our own stderr and nothing is forwarded anywhere.
+
+    The LEVEL the root is set to comes from the supervisor, handed over in the
+    per-model key OPENARC_WORKER_LOGLEVEL_<model> (the same dash -> underscore
+    scheme as the log-file key), mirroring the server's OWN log level (launch_server
+    sets the 'src'/'OpenArc' loggers from the -v count). We take the MORE verbose of
+    that and our usual INFO floor: at -vvv (DEBUG) we drop to DEBUG and additionally
+    record the full protocol trace ('< in', '> out', see _Worker); at a quieter run a
+    WARNING/ERROR server level never drops us below INFO, so our own INFO logs (a
+    real worker always reports building/ready pipeline at INFO) are not hidden. A
+    missing / 'NOTSET' / unrecognised key -- the common bypass, or a run with no
+    dictConfig -- keeps us at the historical default, INFO.
     """
     root = logging.getLogger()
-    root.setLevel(logging.INFO)
+    name = (
+        _worker_loglevel_from_env(os.environ.get(_WORKER_MODEL_ENV, "").strip()) or ""
+    ).upper()
+    if name and name != "NOTSET":
+        # The more verbose of the server's level and our INFO floor == min(...):
+        # a quieter server setting (WARNING/ERROR, or a NOTSET we mapped to INFO)
+        # must never make us quieter than our usual INFO.
+        root.setLevel(min(getattr(logging, name, logging.INFO), logging.INFO))
+    else:
+        root.setLevel(logging.INFO)
     root.handlers.clear()
 
     log_file = _worker_logfile_from_env(os.environ.get(_WORKER_MODEL_ENV, "").strip())
@@ -316,6 +354,13 @@ class _Worker:
         self._worker_sessions = WorkerSessionManager()
 
     async def send(self, data: bytes) -> None:
+        # A message sent OUT to the parent, marked '>': the worker's own trace of
+        # the protocol going out, logged only at DEBUG (see _configure_logging).
+        # The render is bounded (see render_for_log), so this adds nothing on a
+        # quiet run and no more than a small head at DEBUG -- even for a multi-MB
+        # request -- and send itself stays a thin pipe write.
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"> {proto.render_for_log(data)}")
         async with self._send_lock:
             sys.stdout.buffer.write(data)
             sys.stdout.buffer.flush()
@@ -362,6 +407,13 @@ class _Worker:
             if not line:
                 logger.info("parent closed stdin; exiting")
                 break
+            # A line read IN from the parent, marked '<': the worker's own trace of
+            # the protocol coming in, logged only at DEBUG (which _configure_logging
+            # turns on when the server is, so a quieter run leaves the file quiet).
+            # The render is bounded (see render_for_log) so it does not re-decode a
+            # multi-MB line just to log it.
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"< {proto.render_for_log(line)}")
             try:
                 msg = proto.decode_request(line)
             except proto.ProtocolError as e:
@@ -573,10 +625,15 @@ def main() -> int:
         return 130
     except Exception as e:
         logger.error(f"worker main loop crashed: {e}", exc_info=True)
+        # The loop is gone, so this is the last-resort FATAL written straight to
+        # the pipe (not via send()); trace it the same '>' way when DEBUG is on.
+        fatal_line = proto.encode_response(
+            proto.MSG_FATAL, error=proto.serialize_error(e)
+        )
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"> {proto.render_for_log(fatal_line)}")
         try:
-            sys.stdout.buffer.write(
-                proto.encode_response(proto.MSG_FATAL, error=proto.serialize_error(e))
-            )
+            sys.stdout.buffer.write(fatal_line)
             sys.stdout.buffer.flush()
         except Exception:
             pass

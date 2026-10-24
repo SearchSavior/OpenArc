@@ -206,6 +206,32 @@ class WorkerSupervisor:
         match."""
         return f"OPENARC_WORKER_LOGFILE_{self._model_name.replace('-', '_')}"
 
+    def _worker_loglevel_env(self) -> str:
+        """The env key the supervisor hands the worker its log LEVEL in:
+        OPENARC_WORKER_LOGLEVEL_<model>, the dash written to an underscore -- the
+        same per-model scheme as _worker_logfile_env, so the two keys a model is
+        handed (its log file and its level) are built identically and the
+        worker's _worker_loglevel_from_env rebuilds the SAME key from
+        OPENARC_WORKER_MODEL (see worker_process), exactly as it does for the
+        file. The VALUE placed here is the server's own log level (see
+        _effective_log_level_name): the worker adopts it (taking the more verbose
+        of that and its own INFO floor), so its file records the full protocol
+        trace -- '< in', '> out' -- exactly when the server is at DEBUG (-vvv).
+        """
+        return f"OPENARC_WORKER_LOGLEVEL_{self._model_name.replace('-', '_')}"
+
+    def _effective_log_level_name(self) -> str:
+        """The log-level name to hand the worker: the server's OWN application
+        level, i.e. this supervisor's logger's effective level. launch_server
+        sets the 'src'/'OpenArc' loggers from the -v count (DEBUG at -vvv), so
+        this is exactly the level the operator chose for openarc.log, and the
+        worker traces its protocol to match. logging.getLevelName always yields a
+        name -- for NOTSET (a run with no dictConfig, e.g. some tests/bypasses)
+        it returns "NOTSET", which the worker maps back to its INFO default.
+        Never logs anything itself (so this path stays quiet, per the design).
+        """
+        return logging.getLevelName(logger.getEffectiveLevel())
+
     def _worker_log_file(self) -> Optional[str]:
         """The worker's own log file -- the value handed over via
         _worker_logfile_env. A value already set in that env key wins (honoured
@@ -254,6 +280,18 @@ class WorkerSupervisor:
         worker_log_file = self._worker_log_file()
         if worker_log_file is not None:
             env[self._worker_logfile_env()] = worker_log_file
+        # And hand the worker the server's OWN log level, under the per-model key
+        # that mirrors the file key above (OPENARC_WORKER_LOGLEVEL_<model>): the
+        # worker adopts it (more verbose of that and its own INFO floor), so its
+        # file records the full protocol trace -- '< in', '> out' -- exactly when
+        # the server is at DEBUG (-vvv). A value already set in that key wins over
+        # the derived one (so an operator can verbose- or quiet a SINGLE worker
+        # regardless of how the server was launched -- mirroring how a pre-set
+        # per-model log-file path wins). The supervisor itself writes no message
+        # trace to openarc.log (see the module docstring's log-isolation
+        # principle); it only hands the level down here.
+        if self._worker_loglevel_env() not in env:
+            env[self._worker_loglevel_env()] = self._effective_log_level_name()
         return env
 
     async def _spawn(self) -> None:

@@ -26,6 +26,7 @@ is what makes unload/load reliable.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Dict, Optional, Union
 
 PROTOCOL_VERSION = 1
@@ -172,3 +173,79 @@ def is_non_recoverable_error(exc: BaseException) -> bool:
     """
     text = f"{type(exc).__name__}: {exc}".lower()
     return any(marker in text for marker in _NON_RECOVERABLE_MARKERS)
+
+
+# --- DEBUG protocol trace (render only; the worker writes it to its own file) -
+# The supervisor does NOT log the wire into openarc.log (its module docstring's
+# log-isolation principle: child output never reaches the main log); it only
+# hands the worker the level that turns this on -- at DEBUG (-vvv) the worker
+# records '<' (a message it read in) / '>' (a message it wrote out) lines in its
+# own file. render_for_log turns one raw line into one such line: it decodes only
+# a small HEAD of the line (never the whole thing) because a message may be up to
+# PROTOCOL_LINE_LIMIT, and the outgoing side (worker send()) has no parse of its
+# own -- a full json.loads there would cost a multi-MB decode on every streaming
+# item. The control fields (op / type / req_id / request_id) always sit at the
+# front of the single-object line, before any large body (_LOG_ID_SCAN_BYTES <<
+# _LOG_PREVIEW_BYTES), so one bounded head feeds both the id scan and the body
+# preview, and the whole render is O(head): identical cost for a tiny PING and a
+# 256 MiB request.
+_LOG_PREVIEW_BYTES = 8 * 1024
+_LOG_ID_SCAN_BYTES = 4096
+_LOG_ID_FIELDS_RE = re.compile(
+    r'"(op|type|req_id|request_id)"\s*:\s*"((?:[^"\\]|\\.)*)"'
+)
+
+
+def render_for_log(line: Union[bytes, str]) -> str:
+    """Render one raw protocol line (bytes or str; a trailing newline is fine)
+    as ONE log-safe line for the DEBUG trace: the message op/type and its request
+    ids up front, then a body preview truncated to _LOG_PREVIEW_BYTES (flagged with
+    the remaining byte count) after the full on-the-wire length -- so a small
+    message (PING/READY/DONE) renders in full, while a huge one (a VLM chat request
+    carrying the whole conversation plus base64 images inside gen_config, up to
+    PROTOCOL_LINE_LIMIT) stays self-describing with only its bulk elided.
+
+    The render is deliberately BOUNDED (decodes a small head, never the whole
+    line; see the note above), so a 256 MiB request costs the same to render as a
+    tiny PING. It also never raises into the protocol path (worker send/run): the
+    live code path is guarded and any surprise in the input falls back to a raw,
+    bounded, repr-escaped preview.
+    """
+    try:
+        content = (
+            bytes(line) if isinstance(line, (bytes, bytearray)) else line.encode("utf-8")
+        )
+        # Strip only the trailing terminator(s) by reference (no full copy), so a
+        # multi-MB line is not duplicated just to be rendered.
+        strip = len(content)
+        while strip > 0 and content[strip - 1] in (0x0D, 0x0A):
+            strip -= 1
+        wire_len = strip
+        if wire_len == 0:
+            return "? len=0b"
+        head_n = min(wire_len, max(_LOG_ID_SCAN_BYTES, _LOG_PREVIEW_BYTES))
+        head = content[:head_n].decode("utf-8", errors="replace")
+        fields = _LOG_ID_FIELDS_RE.findall(head)
+        op = next((v for k, v in fields if k == "op"), None)
+        typ = next((v for k, v in fields if k == "type"), None)
+        prefix = op or typ or "??"
+        ids = [f"{k}={v}" for k, v in fields if k not in ("op", "type")]
+        if ids:
+            prefix = f"{prefix}({', '.join(ids)})"
+        if wire_len > _LOG_PREVIEW_BYTES:
+            body = f"{head[:_LOG_PREVIEW_BYTES]} ...[+{wire_len - _LOG_PREVIEW_BYTES} b]"
+        else:
+            body = head
+        return f"{prefix} len={wire_len}b: {body}"
+    except Exception:
+        # Logging must never take down the protocol; a surprise in the input
+        # (never a real caller, which pass bytes) falls back to a raw preview.
+        try:
+            fallback = (
+                bytes(line)
+                if isinstance(line, (bytes, bytearray))
+                else line.encode("utf-8")
+            )
+        except Exception:
+            fallback = b""
+        return f"? len={len(fallback)}b: {fallback[:_LOG_ID_SCAN_BYTES]!r}"
