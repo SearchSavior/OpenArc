@@ -18,6 +18,7 @@ from src.engine.openvino.qwen3_asr.qwen3_asr import OVQwen3ASR
 from src.engine.openvino.qwen3_tts.qwen3_tts import OVQwen3TTS
 from src.engine.optimum.optimum_emb import Optimum_EMB
 from src.engine.optimum.optimum_rr import Optimum_RR
+from src.engine.ov_genai.diffusion import GenerationCancelled, OVGenAI_Diffusion
 
 from src.server.schemas.modeling.contract_kokoro import OV_KokoroGenConfig
 from src.server.schemas.modeling.contract_qwen3asr import OV_Qwen3ASRGenConfig
@@ -26,6 +27,7 @@ from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_Gen
 from src.server.schemas.modeling.contract_whisper import OVGenAI_WhisperGenConfig
 from src.server.schemas.modeling.contract_optimum_emb import PreTrainedTokenizerConfig
 from src.server.schemas.modeling.contract_optimum_rerank import RerankerConfig
+from src.server.schemas.modeling.contract_ovgenai_diffusion import OVGenAI_DiffusionGenConfig
 from src.server.model_registry import ModelRecord, ModelRegistry
 from src.server.schemas.registration import ModelType
 
@@ -67,6 +69,7 @@ class WorkerPacket:
         OV_KokoroGenConfig,
         OV_Qwen3TTSGenConfig,
         PreTrainedTokenizerConfig,
+        OVGenAI_DiffusionGenConfig,
     ]
     response: Optional[str] = None
     metrics: Optional[Dict[str, Any]] = None
@@ -404,6 +407,41 @@ class InferWorker:
 
         return packet
 
+    @staticmethod
+    async def infer_diffusion(packet: WorkerPacket, diffusion_model: OVGenAI_Diffusion) -> WorkerPacket:
+        """Generate images for a single packet using the diffusion pipeline"""
+        metrics = None
+        images = []
+
+        try:
+            async for item in diffusion_model.generate_image(packet.gen_config):
+                if isinstance(item, dict):
+                    metrics = item
+                else:
+                    images.append(item)
+
+            # Always a list, one base64 PNG per image: a single-image request must not
+            # come back shaped differently from a multi-image one.
+            packet.response = images
+            packet.metrics = metrics
+
+        except GenerationCancelled as e:
+            # Request-level failure: the denoise loop was interrupted on request, so
+            # report it to this client only. packet.error would ask the registry to
+            # unload the model, which a cancelled request must not do.
+            logger.info(f"Diffusion generation cancelled: {e}")
+            packet.request_error = e
+        except ValueError as e:
+            # Same reasoning as above: a request the engine refused (bad size, no image
+            # tensor) must not tear the model down.
+            logger.info(f"Diffusion request rejected: {e}")
+            packet.request_error = e
+        except Exception as e:
+            logger.error("Diffusion inference failed!", exc_info=True)
+            _mark_inference_error(packet, e)
+
+        return packet
+
 class QueueWorker:
     """
     Manages inference worker loops for consuming and processing packets from model queues.
@@ -578,6 +616,22 @@ class QueueWorker:
                 break
             model_queue.task_done()
 
+    @staticmethod
+    async def queue_worker_diffusion(model_name: str, model_queue: asyncio.Queue, diffusion_model: OVGenAI_Diffusion, registry: ModelRegistry):
+        """Diffusion model inference worker that processes packets from queue"""
+        logger.info(f"[Diffusion Worker: {model_name}] Started, waiting for packets...")
+        while True:
+            packet = await model_queue.get()
+            if packet is None:
+                logger.info(f"[Diffusion Worker: {model_name}] Shutdown signal received.")
+                break
+
+            completed_packet = await InferWorker.infer_diffusion(packet, diffusion_model)
+            if _commit_completed_packet(packet, completed_packet, model_name, registry):
+                model_queue.task_done()
+                break
+            model_queue.task_done()
+
 class WorkerRegistry:
     """
     Central orchestrator for managing per-model inference workers and request routing.
@@ -617,6 +671,9 @@ class WorkerRegistry:
 
         self._model_queues_rerank: Dict[str, asyncio.Queue] = {}
         self._model_tasks_rerank: Dict[str, asyncio.Task] = {}
+
+        self._model_queues_diffusion: Dict[str, asyncio.Queue] = {}
+        self._model_tasks_diffusion: Dict[str, asyncio.Task] = {}
 
         self._lock = asyncio.Lock()
 
@@ -706,6 +763,13 @@ class WorkerRegistry:
                     self._model_queues_rerank[record.model_name] = q
                     task = asyncio.create_task(QueueWorker.queue_worker_rr(record.model_name, q, instance, self._model_registry))
                     self._model_tasks_rerank[record.model_name] = task
+
+            elif mt == ModelType.DIFFUSION and isinstance(instance, OVGenAI_Diffusion):
+                if record.model_name not in self._model_queues_diffusion:
+                    q: asyncio.Queue = asyncio.Queue()
+                    self._model_queues_diffusion[record.model_name] = q
+                    task = asyncio.create_task(QueueWorker.queue_worker_diffusion(record.model_name, q, instance, self._model_registry))
+                    self._model_tasks_diffusion[record.model_name] = task
             else:
                 logger.info(f"[WorkerRegistry] Model type/instance mismatch for {record.model_name}: {record.model_type}, {type(instance)}")
 
@@ -775,6 +839,14 @@ class WorkerRegistry:
             if t is not None and not t.done():
                 t.cancel()
 
+            # Try diffusion dicts
+            q = self._model_queues_diffusion.pop(record.model_name, None)
+            t = self._model_tasks_diffusion.pop(record.model_name, None)
+            if q is not None:
+                await q.put(None)
+            if t is not None and not t.done():
+                t.cancel()
+
     def _get_model_queue(self, model_name: str) -> asyncio.Queue:
         q = self._model_queues_llm.get(model_name)
         if q is not None:
@@ -819,6 +891,12 @@ class WorkerRegistry:
         if q is not None:
             return q
         raise ValueError(f"Rerank model '{model_name}' is not loaded or no worker is available")
+
+    def _get_diffusion_queue(self, model_name: str) -> asyncio.Queue:
+        q = self._model_queues_diffusion.get(model_name)
+        if q is not None:
+            return q
+        raise ValueError(f"Diffusion model '{model_name}' is not loaded or no worker is available")
 
     async def generate(self, model_name: str, gen_config: OVGenAI_GenConfig) -> Dict[str, Any]:
         """Generate text without streaming."""
@@ -1070,3 +1148,47 @@ class WorkerRegistry:
         await q.put(packet)
         completed = await result_future
         return {"data": completed.response, "metrics": completed.metrics or {}}
+
+    async def generate_image(self, model_name: str, gen_config: OVGenAI_DiffusionGenConfig) -> Dict[str, Any]:
+        """Generate images using a loaded diffusion model.
+
+        Returns a dict with base64-encoded PNG images and metrics.
+        """
+        request_id = uuid.uuid4().hex
+        result_future: asyncio.Future = asyncio.get_running_loop().create_future()
+        packet = WorkerPacket(
+            request_id=request_id,
+            id_model=model_name,
+            gen_config=gen_config,
+            result_future=result_future,
+        )
+        gen_config.request_id = request_id  # Set request_id for cancellation tracking
+
+        # Register the request so a cancellation can reach the in-flight denoise loop:
+        # image generation has no stream for a client to disconnect on, so the engine's
+        # callback hook is the only stop, and _active_requests is how it gets found.
+        async with self._lock:
+            self._active_requests[request_id] = (model_name, packet)
+
+        try:
+            q = self._get_diffusion_queue(model_name)
+            await q.put(packet)
+            try:
+                completed = await result_future
+            except asyncio.CancelledError:
+                # Handler task cancelled (client hung up): _active_requests still holds
+                # request_id, so the engine's cancel() fires before we re-raise. Same
+                # innermost-await fix stream_generate uses.
+                await self._cancel_locked(request_id)
+                raise
+        finally:
+            if not result_future.done():
+                result_future.cancel()
+            elif result_future.exception() is not None:
+                # Retrieve so the event loop does not log "never retrieved".
+                result_future.exception()
+            async with self._lock:
+                self._active_requests.pop(request_id, None)
+
+        # infer_diffusion guarantees a list; None only on error paths, which raise.
+        return {"images": completed.response or [], "metrics": completed.metrics or {}}

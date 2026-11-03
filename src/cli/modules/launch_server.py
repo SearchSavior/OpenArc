@@ -157,6 +157,7 @@ def start_server(host: str = "0.0.0.0", port: int = 8001, reload: bool = False, 
     print("  - POST   /v1/audio/speech: Kokoro only")
     print("  - POST   /v1/embeddings")
     print("  - POST   /v1/rerank")
+    print("  - POST   /v1/images/generations")
 
 
     uvicorn.run(

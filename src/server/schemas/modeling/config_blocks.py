@@ -19,6 +19,7 @@ from typing import Any, Dict, Optional, Type
 from pydantic import BaseModel, ValidationError
 
 from src.server.schemas.modeling.contract_kokoro import OV_KokoroGenConfig
+from src.server.schemas.modeling.contract_ovgenai_diffusion import OVGenAI_DiffusionGenConfig
 from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_GenConfig
 from src.server.schemas.modeling.contract_qwen3asr import OV_Qwen3ASRGenConfig
 from src.server.schemas.modeling.contract_qwen3tts import (
@@ -38,6 +39,7 @@ BLOCK_CONTRACTS: Dict[str, tuple[Type[BaseModel], Optional[str]]] = {
     "qwen3_tts_custom_voice_config": (OV_Qwen3TTSCustomVoice, "qwen3_tts_custom_voice"),
     "qwen3_tts_voice_design_config": (OV_Qwen3TTSVoiceDesign, "qwen3_tts_voice_design"),
     "qwen3_tts_voice_clone_config": (OV_Qwen3TTSVoiceClone, "qwen3_tts_voice_clone"),
+    "diffusion_config": (OVGenAI_DiffusionGenConfig, "diffusion"),
 }
 
 # sampler_config applies only to llm/vlm.

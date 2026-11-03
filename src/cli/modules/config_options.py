@@ -86,6 +86,7 @@ _GROUP_ORDER: List[str] = [
     "qwen3_tts_voice_clone_config",
     "kokoro_config",
     "qwen3_asr_config",
+    "diffusion_config",
     SCHEDULER_DEST,
 ]
 

@@ -10,6 +10,7 @@ from src.server.schemas.modeling.contract_qwen3tts import (
     OV_Qwen3TTSVoiceDesign,
 )
 from src.server.schemas.modeling.contract_optimum_emb import PreTrainedTokenizerConfig
+from src.server.schemas.modeling.contract_ovgenai_diffusion import OVGenAI_DiffusionGenConfig
 
 
 class OpenArcASRConfig(BaseModel):
@@ -104,3 +105,15 @@ class RerankRequest(BaseModel):
     prefix: Optional[str] = None
     suffix: Optional[str] = None
     instruction: Optional[str] = None
+
+
+# https://platform.openai.com/docs/api-reference/images
+class OpenAIImageGenerationRequest(BaseModel):
+    """OpenAI-compatible request for /v1/images/generations; backend config in openarc_diffusion."""
+    model: str
+    prompt: str
+    n: Optional[int] = None
+    size: Optional[str] = None  # "WIDTHxHEIGHT", e.g. "1024x1024"
+    response_format: Optional[str] = "b64_json"  # b64_json only; url not implemented
+    # end of openai api
+    openarc_diffusion: Optional[OVGenAI_DiffusionGenConfig] = None

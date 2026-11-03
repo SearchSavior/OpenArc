@@ -7,7 +7,7 @@ There are a few different blocks in a models config that accept different parame
 
 ### load_config
 - engine: ovgenai, openvino, optimum
-- model_type: llm, vlm, whisper, kokoro, emb, rerank, qwen3_tts_*
+- model_type: llm, vlm, whisper, kokoro, emb, rerank, qwen3_tts_*, diffusion
 - device: device for this model
 - tool_call_parser: gemma4, qwen35, hermes
 
@@ -215,4 +215,23 @@ Use `--model-type qwen3_tts_voice_design` and add:
 
 ```
   --voice-description "A red furry muppet with an orange nose."
+```
+
+### Diffusion
+
+Text-to-image models (Stable Diffusion, SDXL) generate images through the `/v1/images/generations` endpoint. Request defaults set here are overridden per request. `strength` drives image-to-image and is rejected by the text-to-image route. Leave `--seed` unset and the server draws a random seed per request, so generations are non-deterministic; set `--seed` to make them reproducible.
+
+```
+openarc add \
+  --model-name SD1.5 \
+  --model-path /mnt/models/stable-diffusion-v1-5-fp16-ov \
+  --engine ovgenai \
+  --model-type diffusion \
+  --device CPU \
+  --guidance-scale 7.5 \
+  --num-inference-steps 30 \
+  --num-images-per-prompt 1 \
+  --height 512 \
+  --width 512 \
+  --seed 42
 ```

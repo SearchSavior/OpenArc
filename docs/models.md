@@ -97,6 +97,13 @@ If you need help converting a particular model join Discord and we can help you!
 | --- |
 | [Qwen3-Reranker-0.6B-fp16-ov](https://huggingface.co/OpenVINO/Qwen3-Reranker-0.6B-fp16-ov) |
 
+=== "Diffusion"
+
+| **Models** |
+| --- |
+| [SD1.5](https://huggingface.co/OpenVINO/stable-diffusion-v1-5-fp16-ov) |
+| [SDXL](https://huggingface.co/OpenVINO/stable-diffusion-xl-base-1.0-int8-ov) |
+
 
 **How do I control thinking?**
 

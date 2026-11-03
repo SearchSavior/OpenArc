@@ -73,10 +73,10 @@ class ContextWindowType(click.ParamType):
     type=click.Choice([
         'llm', 'vlm', 'whisper', 'qwen3_asr', 'kokoro',
         'qwen3_tts_custom_voice', 'qwen3_tts_voice_design', 'qwen3_tts_voice_clone',
-        'emb', 'rerank',
+        'emb', 'rerank', 'diffusion',
     ]),
     required=True,
-    help='Model type (llm, vlm, whisper, qwen3_asr, kokoro, qwen3_tts_custom_voice, qwen3_tts_voice_design, qwen3_tts_voice_clone, emb, rerank)')
+    help='Model type (llm, vlm, whisper, qwen3_asr, kokoro, qwen3_tts_custom_voice, qwen3_tts_voice_design, qwen3_tts_voice_clone, emb, rerank, diffusion)')
 @click.option('--device', '--d',
     required=True,
     help='Device(s) to load the model on.')
@@ -126,7 +126,8 @@ def add(ctx, model_path, model_name, engine, model_type, device, runtime_config,
     """- Add a model configuration to the config file.
 
     \b
-    Model defaults (--temperature, --max-tokens, --max-num-seqs, ...) are
+    Model defaults (--temperature, --max-tokens, --max-num-seqs, --guidance-scale,
+    --num-inference-steps, ...) are
     generated from the pydantic contracts in src/server/schemas/modeling, so
     they never drift from the request schema. Each help panel below is one
     config.yaml key. A flag is written to the key that backs it for the chosen
