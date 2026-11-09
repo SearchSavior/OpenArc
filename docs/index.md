@@ -84,3 +84,4 @@ Below are some models to get started which are known to work. My huggingface has
     - [Qwen3-TTS](models.md#qwen3-tts)
 - [Embedding](models.md#embedding)
 - [Rerank](models.md#rerank)
+- [Image Diffusion](models.md#diffusion)

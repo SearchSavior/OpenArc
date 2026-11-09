@@ -34,7 +34,8 @@ class ModelType(str, Enum):
     - qwen3_tts_voice_design: Qwen3-TTS with free-form voice description
     - qwen3_tts_voice_clone: Qwen3-TTS cloning a reference audio
     - emb: Text-to-vector models
-    - rerank: Reranker models"""
+    - rerank: Reranker models
+    - diffusion: Text-to-image diffusion models"""
 
     LLM = "llm"
     VLM = "vlm"
@@ -46,6 +47,7 @@ class ModelType(str, Enum):
     QWEN3_TTS_VOICE_CLONE = "qwen3_tts_voice_clone"
     EMB = "emb"
     RERANK = "rerank"
+    DIFFUSION = "diffusion"
 
 
 class EngineType(str, Enum):

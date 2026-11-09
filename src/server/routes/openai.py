@@ -3,13 +3,16 @@ import base64
 import datetime
 import json
 import logging
+import re
 import time
 import uuid
+from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from src.engine.ov_genai.diffusion import GenerationCancelled
 from src.server.deps import _registry, _workers, verify_api_key
 from src.server.schemas.modeling.contract_kokoro import (
     KokoroLanguage,
@@ -19,6 +22,7 @@ from src.server.schemas.modeling.contract_kokoro import (
 from src.server.schemas.modeling.contract_optimum_emb import PreTrainedTokenizerConfig
 from src.server.schemas.modeling.contract_optimum_rerank import RerankerConfig
 from src.server.schemas.modeling.contract_qwen3asr import OV_Qwen3ASRGenConfig
+from src.server.schemas.modeling.contract_ovgenai_diffusion import OVGenAI_DiffusionGenConfig
 from src.server.schemas.modeling.contract_ovgenai_llm_and_vlm import OVGenAI_GenConfig
 from src.server.schemas.modeling.contract_qwen3tts import (
     OV_Qwen3TTSCustomVoice,
@@ -32,6 +36,7 @@ from src.server.schemas.requests_openai import (
     EmbeddingsRequest,
     OpenAIChatCompletionRequest,
     OpenAICompletionRequest,
+    OpenAIImageGenerationRequest,
     OpenAISpeechRequest,
     OpenArcASRConfig,
     RerankRequest,
@@ -51,6 +56,34 @@ _TOOL_PARSERS = {
     "gemma4": gemma4,
     "museglimmer": museglimmer,
 }
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+_GENERATED_IMAGE_DIR = _PROJECT_ROOT / "output"
+
+
+def _generated_image_path(model_name: str) -> Path:
+    """Return the next sequential path under output/ for one saved image.
+
+    Files are named after the model that produced them (sanitized: runs of
+    spaces/punctuation collapse to a single '-'), with a four-digit suffix that
+    continues across requests, e.g. SD1-5-0001.png, SD1-5-0002.png.
+    """
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", model_name or "").strip("-")
+    if not slug:
+        slug = "model"
+
+    prefix = f"{slug}-"
+    next_num = 1
+    for existing in _GENERATED_IMAGE_DIR.glob(f"{prefix}*.png"):
+        tail = existing.name[len(prefix):-len(".png")]
+        if tail.isdigit():
+            next_num = max(next_num, int(tail) + 1)
+
+    candidate = _GENERATED_IMAGE_DIR / f"{slug}-{next_num:04d}.png"
+    while candidate.exists():
+        next_num += 1
+        candidate = _GENERATED_IMAGE_DIR / f"{slug}-{next_num:04d}.png"
+    return candidate
 
 
 def _get_record(model_name: str):
@@ -863,3 +896,149 @@ async def rerank(request: RerankRequest):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Reranking failed: {str(exc)}")
+
+
+@router.post("/images/generations", dependencies=[Depends(verify_api_key)])
+async def openai_images_generations(request: OpenAIImageGenerationRequest, raw_request: Request):
+    try:
+        logger.info(f'"{request.model}" request received')
+
+        selected_model_type = None
+        async with _registry._lock:
+            for record in _registry._models.values():
+                if record.model_name == request.model:
+                    selected_model_type = record.model_type
+                    break
+
+        if selected_model_type is None:
+            raise ValueError(f"Model '{request.model}' is not loaded")
+
+        if ModelType(selected_model_type) is not ModelType.DIFFUSION:
+            raise ValueError(f"Model '{request.model}' is not a diffusion model")
+
+        diffusion_defaults = _record_defaults(request.model)
+
+        gen_config = build_config(
+            OVGenAI_DiffusionGenConfig,
+            request=request.openarc_diffusion.model_dump(exclude_unset=True) if request.openarc_diffusion else None,
+            defaults=diffusion_defaults,
+            prompt=request.prompt,
+        )
+
+        if gen_config.strength is not None:
+            raise ValueError(
+                "'strength' drives image-to-image generation, which is not exposed by /v1/images/generations; "
+                "use 'guidance_scale' to steer text-to-image results"
+            )
+
+        response_format = (request.response_format or "b64_json").lower()
+        if response_format != "b64_json":
+            raise ValueError(
+                f"Invalid response_format '{request.response_format}'. OpenArc always returns "
+                "'b64_json' base64 PNG; 'url' needs a public asset host that OpenArc does not provide"
+            )
+
+        if request.size is not None and "width" not in gen_config.model_fields_set:
+            try:
+                width_str, height_str = request.size.lower().split("x", 1)
+                gen_config.width = int(width_str)
+                gen_config.height = int(height_str)
+            except ValueError:
+                raise ValueError(f"Invalid size '{request.size}'. Expected format: 'WIDTHxHEIGHT', e.g. '1024x1024'")
+
+        if request.n is not None and "num_images_per_prompt" not in gen_config.model_fields_set:
+            gen_config.num_images_per_prompt = request.n
+
+        if gen_config.num_images_per_prompt is not None and gen_config.num_images_per_prompt < 1:
+            raise ValueError(
+                f"Invalid image count {gen_config.num_images_per_prompt}: at least one image must be requested"
+            )
+
+        # Sizes the pipeline cannot build a latent for are a bad request, not a broken
+        # model: GenAI throws a RuntimeError for an off-grid size, and an inference
+        # RuntimeError is what asks the registry to unload the model. Checked here so
+        # the client gets a 400 and the loaded model survives.
+        vae_scale_factor = 8
+        for name, value in (("width", gen_config.width), ("height", gen_config.height)):
+            if value is not None and (value <= 0 or value % vae_scale_factor):
+                raise ValueError(
+                    f"Invalid {name} {value}. Both 'width' and 'height' must be a positive "
+                    f"multiple of {vae_scale_factor}, the VAE's latent grid"
+                )
+
+        # Race the generation against a client-disconnect watcher: an image request
+        # has no stream for uvicorn to cancel on, so is_disconnected() is what notices
+        # the hangup. Each is_disconnected() call is a non-blocking peek: it cancel-
+        # scopes receive() and returns False unless a message is already queued. A
+        # tight loop around it therefore hot-spins without yielding, which starves
+        # the event loop so uvicorn never runs the connection_lost callback; poll at
+        # a sleep interval instead so the close is delivered and observed. Cancelling
+        # gen_task delivers CancelledError at the worker's inner await, where
+        # _cancel_locked fires the engine's cancel() hook.
+        gen_task = asyncio.create_task(
+            _workers.generate_image(request.model, gen_config)
+        )
+
+        async def _wait_for_hangup():
+            while not await raw_request.is_disconnected():
+                await asyncio.sleep(0.5)
+
+        disconnect_task = asyncio.create_task(_wait_for_hangup())
+        done, _pending = await asyncio.wait(
+            {gen_task, disconnect_task}, return_when=asyncio.FIRST_COMPLETED
+        )
+        if gen_task in done:
+            disconnect_task.cancel()
+            result = gen_task.result()
+        else:
+            gen_task.cancel()
+            await gen_task  # CancelledError unwinds here -> except below logs + re-raises
+        images = result.get("images", [])
+        metrics = result.get("metrics", {}) or {}
+        created_ts = int(time.time())
+        request_id = f"ov-{uuid.uuid4().hex[:24]}"
+
+        logger.info(f"[images/generations] model={request.model} metrics={metrics}")
+
+        data = []
+        try:
+            _GENERATED_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            logger.warning(f"Could not prepare output/ directory: {exc}", exc_info=True)
+
+        for idx, img in enumerate(images, start=1):
+            item = {"b64_json": img}
+            try:
+                png_bytes = base64.b64decode(img, validate=True)
+                image_path = _generated_image_path(request.model)
+                image_path.write_bytes(png_bytes)
+                try:
+                    item["file"] = str(image_path.relative_to(_PROJECT_ROOT))
+                except ValueError:
+                    item["file"] = str(image_path)
+                logger.info(f"[images/generations] saved {image_path}")
+            except (ValueError, OSError) as exc:
+                logger.warning(f"Could not save generated image: {exc}", exc_info=True)
+            data.append(item)
+
+        return {
+            "id": request_id,
+            "created": created_ts,
+            "model": request.model,
+            "object": "list",
+            "data": data,
+            "metrics": metrics,
+        }
+    except asyncio.CancelledError:
+        # Task cancelled on client disconnect: generate_image already fired the
+        # engine's cancel() through _active_requests, so this only reports.
+        logger.info(f"[images/generations] Task cancelled, cleaned up {gen_config.request_id}")
+        raise
+    except GenerationCancelled as exc:
+        logger.info(f"[images/generations] generation cancelled: {exc}")
+        raise HTTPException(status_code=400, detail=f"Image generation cancelled: {exc}")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.error(f"Image generation failed: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Image generation failed: {str(exc)}")

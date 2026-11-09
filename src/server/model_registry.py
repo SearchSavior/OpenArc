@@ -345,6 +345,7 @@ MODEL_CLASS_REGISTRY = {
     (EngineType.OPENVINO, ModelType.QWEN3_TTS_VOICE_CLONE): "src.engine.openvino.qwen3_tts.qwen3_tts.OVQwen3TTS",
     (EngineType.OV_OPTIMUM, ModelType.EMB): "src.engine.optimum.optimum_emb.Optimum_EMB",
     (EngineType.OV_OPTIMUM, ModelType.RERANK): "src.engine.optimum.optimum_rr.Optimum_RR",
+    (EngineType.OV_GENAI, ModelType.DIFFUSION): "src.engine.ov_genai.diffusion.OVGenAI_Diffusion",
 }
 
 async def create_model_instance(load_config: ModelLoadConfig) -> Any:
