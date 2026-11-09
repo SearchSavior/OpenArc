@@ -14,6 +14,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import openvino as ov
+import openvino_genai
 from openvino_genai import (
     GenerationConfig,
     VLMPipeline,
@@ -251,6 +252,12 @@ class OVGenAI_VLM:
         ensure_tool_call_parser(gen_config, self.load_config)
         generation_kwargs = self.create_generation_config(gen_config)
 
+        # DEBUG: Log what we're about to send
+        logger.error(f"[DEBUG] draft_model_loaded: {getattr(self, 'draft_model_loaded', False)}")
+        logger.error(f"[DEBUG] self.model_num_assistant_tokens: {getattr(self, 'model_num_assistant_tokens', 'NOT SET')}")
+        logger.error(f"[DEBUG] generation_kwargs.num_assistant_tokens: {getattr(generation_kwargs, 'num_assistant_tokens', 'NOT SET')}")
+        logger.error(f"[DEBUG] generation_kwargs.assistant_confidence_threshold: {getattr(generation_kwargs, 'assistant_confidence_threshold', 'NOT SET')}")
+
         decoder_tokenizer = self.model_path.get_tokenizer()
         streamer = select_streamer(decoder_tokenizer, gen_config)
         
@@ -352,10 +359,52 @@ class OVGenAI_VLM:
         try:
             logger.info(f"{loader.model_type} on {loader.device} with {loader.runtime_config}")
 
+            # Load draft model for speculative decoding if provided
+            draft_model = None
+            if loader.draft_model_path:
+                try:
+                    # Cache the draft model alongside the main model. OpenVINO keys
+                    # cache blobs by model content, so sharing one CACHE_DIR is safe.
+                    draft_model_properties = {}
+                    if loader.cache_dir:
+                        draft_model_properties['CACHE_DIR'] = loader.cache_dir
+                    draft_model = openvino_genai.draft_model(
+                        loader.draft_model_path,
+                        loader.draft_device,
+                        **draft_model_properties
+                    )
+                    logger.info(f"Loaded draft model from {loader.draft_model_path} on {loader.draft_device}")
+                    self.draft_model_loaded = True
+
+                    # Ensure we always have exactly one parameter set (XOR requirement)
+                    if loader.num_assistant_tokens is not None:
+                        self.model_num_assistant_tokens = loader.num_assistant_tokens
+                        self.model_assistant_confidence_threshold = None
+                    elif loader.assistant_confidence_threshold is not None:
+                        self.model_num_assistant_tokens = None
+                        self.model_assistant_confidence_threshold = loader.assistant_confidence_threshold
+                    else:
+                        default_tokens = int(os.getenv('OPENARC_DEFAULT_NUM_ASSISTANT_TOKENS', '3'))
+                        self.model_num_assistant_tokens = default_tokens
+                        self.model_assistant_confidence_threshold = None
+                        logger.info(f"Using default num_assistant_tokens={default_tokens} for speculative decoding")
+
+                except Exception as e:
+                    logger.warning(f"Failed to load draft model: {e}, continuing without speculative decoding")
+                    self.draft_model_loaded = False
+                    self.model_num_assistant_tokens = None
+                    self.model_assistant_confidence_threshold = None
+            else:
+                self.draft_model_loaded = False
+                self.model_num_assistant_tokens = None
+                self.model_assistant_confidence_threshold = None
+
             scheduler_config = extract_scheduler_config_from_loader(loader)
             pipeline_kwargs = {**(loader.runtime_config or {})}
             if loader.cache_dir:
                 pipeline_kwargs['CACHE_DIR'] = loader.cache_dir
+            if draft_model is not None:
+                pipeline_kwargs['draft_model'] = draft_model
 
             self.model_path = VLMPipeline(
                 loader.model_path,
@@ -431,6 +480,20 @@ class OVGenAI_VLM:
             generation_kwargs.frequency_penalty = config.frequency_penalty
         if config.presence_penalty:
             generation_kwargs.presence_penalty = config.presence_penalty
+
+        # Add speculative decoding parameters (mutually exclusive per OpenVINO docs)
+        if config.num_assistant_tokens is not None:
+            generation_kwargs.num_assistant_tokens = config.num_assistant_tokens
+        elif config.assistant_confidence_threshold is not None:
+            generation_kwargs.assistant_confidence_threshold = config.assistant_confidence_threshold
+        elif getattr(self, 'draft_model_loaded', False):
+            if self.model_num_assistant_tokens is not None:
+                generation_kwargs.num_assistant_tokens = self.model_num_assistant_tokens
+            elif self.model_assistant_confidence_threshold is not None:
+                generation_kwargs.assistant_confidence_threshold = self.model_assistant_confidence_threshold
+            else:
+                default_tokens = int(os.getenv('OPENARC_DEFAULT_NUM_ASSISTANT_TOKENS', '3'))
+                generation_kwargs.num_assistant_tokens = default_tokens
 
         structured_output = build_structured_output_config(config.response_format)
         if structured_output is not None:
