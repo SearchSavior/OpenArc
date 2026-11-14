@@ -19,7 +19,7 @@ from ..modules.config_options import (
     option_groups,
     resolve_config_values,
 )
-from ..utils import validate_model_path
+from ..utils import validate_model_path, resolve_tool_call_parser
 
 
 class ContextWindowType(click.ParamType):
@@ -208,8 +208,12 @@ def add(ctx, model_path, model_name, engine, model_type, device, runtime_config,
         entry["load_config"]["num_assistant_tokens"] = num_assistant_tokens
     if assistant_confidence_threshold is not None:
         entry["load_config"]["assistant_confidence_threshold"] = assistant_confidence_threshold
+
     if tool_call_parser:
         entry["load_config"]["tool_call_parser"] = tool_call_parser
+    else:
+        entry["load_config"]["tool_call_parser"] = resolve_tool_call_parser(model_path)
+
     if context_window is not None:
         entry["load_config"]["context_window"] = context_window
 

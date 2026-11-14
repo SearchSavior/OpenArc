@@ -11,7 +11,7 @@ from src.engine.ov_genai.tool_parse import gemma4, hermes, museglimmer, qwen35
 from src.server.schemas.registration import ModelType, ToolCallParser
 from src.server.schemas.requests_openai import OpenAIChatCompletionRequest
 from src.server.utils.chat import flatten_messages, normalize_tool_calls_for_template
-
+from src.cli.utils import resolve_tool_call_parser, TOOL_CALL_TYPES
 
 def test_normalize_tool_call_arguments_json_string_to_mapping() -> None:
     calls = normalize_tool_calls_for_template(
@@ -1460,3 +1460,29 @@ async def test_openai_chat_completions_streaming_museglimmer_engine_stream(
     assert names == ["get_weather"]
     assert json.loads(args) == {"city": "Warsaw"}
     assert payloads[-1]["choices"][0]["finish_reason"] == "tool_calls"
+
+
+# ---- generic tests ----
+
+
+def _write_config(model_dir, config) -> None:
+    model_dir.mkdir(exist_ok=True)
+    (model_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
+
+def test_infer_right(tmp_path) -> None:
+    for type in TOOL_CALL_TYPES:
+        _write_config(
+            tmp_path,
+            {"architectures": [type]}
+        )
+
+        assert resolve_tool_call_parser(str(tmp_path)) == TOOL_CALL_TYPES[type]
+
+def test_infer_invalid(tmp_path) -> None:
+    _write_config(
+        tmp_path,
+        {"architectures": ["invalid"]}
+    )
+
+    assert resolve_tool_call_parser(str(tmp_path)) is None
+
