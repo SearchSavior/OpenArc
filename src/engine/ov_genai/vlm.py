@@ -2,6 +2,7 @@ from src.engine.ov_genai.utils import (
     apply_temperature,
     build_structured_output_config,
     extract_scheduler_config_from_loader,
+    prefill_metrics,
 )
 import asyncio
 import base64
@@ -331,9 +332,7 @@ class OVGenAI_VLM:
         """
         Collect and format performance metrics into a dictionary.
         """
-        ttft_seconds = perf_metrics.get_ttft().mean / 1000
-        input_tokens = perf_metrics.get_num_input_tokens()
-        prefill_throughput = round(input_tokens / ttft_seconds, 2) if ttft_seconds > 0 else 0
+        prefill_throughput, new_input_tokens, prefix_cache_hit_tokens = prefill_metrics(perf_metrics)
 
         metrics: Dict[str, Any] = {
             "load_time (s)": round(perf_metrics.get_load_time() / 1000, 2),
@@ -342,9 +341,12 @@ class OVGenAI_VLM:
             "prefill_throughput (tokens/s)": prefill_throughput,
             "decode_throughput (tokens/s)": round(perf_metrics.get_throughput().mean, 5),
             "decode_duration (s)": round(perf_metrics.get_generate_duration().mean / 1000, 5),
-            "input_token": input_tokens,
+            "input_token": perf_metrics.get_num_input_tokens(),
+            "new_input_tokens": new_input_tokens,
+            "prefix_cache_hit_tokens": prefix_cache_hit_tokens,
+            "ovgenai_version": openvino_genai.__version__,
             "new_token": perf_metrics.get_num_generated_tokens(),
-            "total_token": input_tokens + perf_metrics.get_num_generated_tokens(),
+            "total_token": perf_metrics.get_num_input_tokens() + perf_metrics.get_num_generated_tokens(),
             "stream": gen_config.stream,
         }
         if gen_config.stream and hasattr(gen_config, "stream_chunk_tokens"):

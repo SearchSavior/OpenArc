@@ -267,6 +267,7 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs, depth, temperature, t
                             'input_token': metrics.get('input_token', 0),
                             'new_token': metrics.get('new_token', 0),
                             'total_token': metrics.get('total_token', 0),
+                            'prefix_cache_hit_tokens': metrics.get('prefix_cache_hit_tokens', 0),
                         }
                         results.append(result)
                         
@@ -308,6 +309,7 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs, depth, temperature, t
     results_table.add_column("[cyan]ttft(s)[/cyan]", justify="right")
     results_table.add_column("[cyan]tpot(ms)[/cyan]", justify="right")
     results_table.add_column("[cyan]prefill(t/s)[/cyan]", justify="right")
+    results_table.add_column("[cyan]cache_hit[/cyan]", justify="right")
     results_table.add_column("[cyan]decode(t/s)[/cyan]", justify="right")
     results_table.add_column("[cyan]duration(s)[/cyan]", justify="right")
 
@@ -323,6 +325,7 @@ def bench(ctx, model_name, input_tokens, max_tokens, runs, depth, temperature, t
             f"{result['ttft']:.2f}",
             f"{result['tpot']:.2f}",
             f"{result['prefill_throughput']:.1f}",
+            str(result['prefix_cache_hit_tokens']),
             f"{result['decode_throughput']:.1f}",
             f"{result['decode_duration']:.2f}",
         ])

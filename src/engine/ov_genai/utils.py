@@ -35,6 +35,28 @@ def build_structured_output_config(
     return StructuredOutputConfig(**kwargs) if kwargs else None
 
 
+def prefill_metrics(perf_metrics) -> tuple[float, int, int]:
+    """Return (prefill tokens/s, newly processed tokens, prefix-cache hit tokens).
+
+    OpenVINO GenAI reports the prompt length as tokenized (N) and TTFT as the
+    time to produce the first token, which only covers the tokens the pipeline
+    actually recomputed. When KV is reused from an earlier request, N - K tokens
+    were copied rather than computed, so dividing N by TTFT inflates the rate by
+    the cache-hit ratio. Subtracting the hit count keeps the numerator and the
+    denominator describing the same work.
+
+    The hit accessor is feature-detected because we track nightly wheels: a
+    build without it leaves the hit count at 0, so callers must surface it in
+    the reported metrics to tell a cold run from an unreported one.
+    """
+    hit_fn = getattr(perf_metrics, "get_num_prefix_cache_hit_tokens", None)
+    hit = hit_fn() if hit_fn else 0
+    total = perf_metrics.get_num_input_tokens()
+    new_tokens = total - hit
+    ttft_s = perf_metrics.get_ttft().mean / 1000
+    return (round(new_tokens / ttft_s, 2) if ttft_s > 0 else 0.0), new_tokens, hit
+
+
 def generate_ov_scheduler_config(scheduler_config: SchedulerConfigSchema) -> dict:
   """Generates a SchedulerConfig object from the scheduler config model.
 
