@@ -37,17 +37,9 @@ def build_structured_output_config(
 
 def prefill_metrics(perf_metrics) -> tuple[float, int, int]:
     """Return (prefill tokens/s, newly processed tokens, prefix-cache hit tokens).
-
-    OpenVINO GenAI reports the prompt length as tokenized (N) and TTFT as the
-    time to produce the first token, which only covers the tokens the pipeline
-    actually recomputed. When KV is reused from an earlier request, N - K tokens
-    were copied rather than computed, so dividing N by TTFT inflates the rate by
-    the cache-hit ratio. Subtracting the hit count keeps the numerator and the
-    denominator describing the same work.
-
-    The hit accessor is feature-detected because we track nightly wheels: a
-    build without it leaves the hit count at 0, so callers must surface it in
-    the reported metrics to tell a cold run from an unreported one.
+    old prefill math: n / ttft, where n = all tokens
+    new prefill math: (n-k) / ttft, where k = prefix cache hit tokens
+    hit defaults to 0 if get_num_prefix_cache_hit_tokens is not in ovgenai build
     """
     hit_fn = getattr(perf_metrics, "get_num_prefix_cache_hit_tokens", None)
     hit = hit_fn() if hit_fn else 0

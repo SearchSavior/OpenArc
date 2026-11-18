@@ -344,7 +344,6 @@ class OVGenAI_VLM:
             "input_token": perf_metrics.get_num_input_tokens(),
             "new_input_tokens": new_input_tokens,
             "prefix_cache_hit_tokens": prefix_cache_hit_tokens,
-            "ovgenai_version": openvino_genai.__version__,
             "new_token": perf_metrics.get_num_generated_tokens(),
             "total_token": perf_metrics.get_num_input_tokens() + perf_metrics.get_num_generated_tokens(),
             "stream": gen_config.stream,
