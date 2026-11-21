@@ -38,3 +38,5 @@ dist/
 # ComfyUI-style output dir: keep the folder, ignore its contents
 output/*
 !output/output_goes_here.txt
+
+.idea/
