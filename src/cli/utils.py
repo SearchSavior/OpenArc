@@ -1,9 +1,19 @@
 """
 Utility functions for OpenArc CLI.
 """
+import json
 import os
+from json import JSONDecodeError
 from pathlib import Path
+from typing import Any, Iterable
 
+TOOL_CALL_TYPES = {
+    "MuseGlimmerForConditionalGeneration": "museglimmer",
+    "Gemma4ForConditionalGeneration": "gemma4",
+    "Gemma4UnifiedForConditionalGeneration": "gemma4",
+    "Qwen3_5ForConditionalGeneration": "qwen35",
+    "Qwen3_5MoeForConditionalGeneration": "qwen35",
+}
 
 def validate_model_path(model_path):
     """
@@ -58,3 +68,34 @@ def get_config_file_path():
     else:
         project_root = Path(__file__).parent.parent.parent
         return project_root / "config.yaml"
+
+def _architecture_values(config: Any) -> Iterable[str]:
+    if not isinstance(config, dict):
+        return ()
+
+    architectures = config.get("architectures")
+    if isinstance(architectures, str):
+        return (architectures,)
+    if isinstance(architectures, list):
+        return tuple(item for item in architectures if isinstance(item, str))
+    return ()
+
+def resolve_tool_call_parser(model_path: str) -> str | None:
+    config_path = Path(model_path) / "config.json"
+
+    try:
+        config_text = config_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+    try:
+        config = json.loads(config_text)
+    except JSONDecodeError:
+        return None
+
+    for architecture in _architecture_values(config):
+        type = TOOL_CALL_TYPES.get(architecture)
+        if type is not None:
+            return type
+
+    return None
