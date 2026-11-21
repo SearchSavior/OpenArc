@@ -46,6 +46,36 @@ class DummyPerfMetrics:
         return self._generated_tokens
 
 
+class DummyPerfMetricsCacheHit:
+    def __init__(self) -> None:
+        self._input_tokens = 25
+        self._generated_tokens = 10
+
+    def get_load_time(self) -> int:
+        return 5000
+
+    def get_ttft(self) -> DummyMeanValue:
+        return DummyMeanValue(250.0)
+
+    def get_tpot(self) -> DummyMeanValue:
+        return DummyMeanValue(7.5)
+
+    def get_throughput(self) -> DummyMeanValue:
+        return DummyMeanValue(12.34567)
+
+    def get_generate_duration(self) -> DummyMeanValue:
+        return DummyMeanValue(1000.0)
+
+    def get_num_input_tokens(self) -> int:
+        return self._input_tokens
+
+    def get_num_generated_tokens(self) -> int:
+        return self._generated_tokens
+
+    def get_num_prefix_cache_hit_tokens(self) -> int:
+        return 20
+
+
 @pytest.fixture
 def load_config() -> ModelLoadConfig:
     return ModelLoadConfig(
@@ -137,8 +167,21 @@ def test_collect_metrics_prefill_throughput(load_config: ModelLoadConfig) -> Non
     metrics = llm.collect_metrics(gen_config, DummyPerfMetrics())
 
     assert metrics["prefill_throughput (tokens/s)"] == 100.0
+    assert metrics["new_input_tokens"] == 25
+    assert metrics["prefix_cache_hit_tokens"] == 0
     assert metrics["stream"] is True
     assert metrics["stream_chunk_tokens"] == 2
+
+
+def test_collect_metrics_prefill_throughput_cache_hit(load_config: ModelLoadConfig) -> None:
+    llm = OVGenAI_LLM(load_config)
+    gen_config = OVGenAI_GenConfig(stream=True, stream_chunk_tokens=2)
+
+    metrics = llm.collect_metrics(gen_config, DummyPerfMetricsCacheHit())
+
+    assert metrics["prefill_throughput (tokens/s)"] == 20.0
+    assert metrics["new_input_tokens"] == 5
+    assert metrics["prefix_cache_hit_tokens"] == 20
 
 
 def test_load_model_sets_pipeline_and_tokenizer(monkeypatch: pytest.MonkeyPatch, load_config: ModelLoadConfig) -> None:

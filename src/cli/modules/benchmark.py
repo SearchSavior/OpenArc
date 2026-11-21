@@ -48,7 +48,8 @@ class BenchmarkDB:
                 decode_duration_s TEXT,
                 input_token_count TEXT,
                 new_token_count TEXT,
-                total_token_count TEXT
+                total_token_count TEXT,
+                prefix_cache_hit_tokens INTEGER NOT NULL DEFAULT 0
             )
         """)
         
@@ -57,6 +58,7 @@ class BenchmarkDB:
         self._ensure_depth_column()
         self._ensure_device_column()
         self._ensure_runtime_config_column()
+        self._ensure_prefix_cache_column()
 
     def _ensure_depth_column(self) -> None:
         conn = sqlite3.connect(self.db_file)
@@ -94,6 +96,18 @@ class BenchmarkDB:
             conn.commit()
         conn.close()
 
+    def _ensure_prefix_cache_column(self) -> None:
+        conn = sqlite3.connect(self.db_file)
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(benchmark_results)")
+        cols = {row[1] for row in cursor.fetchall()}
+        if "prefix_cache_hit_tokens" not in cols:
+            cursor.execute(
+                "ALTER TABLE benchmark_results ADD COLUMN prefix_cache_hit_tokens INTEGER NOT NULL DEFAULT 0"
+            )
+            conn.commit()
+        conn.close()
+
     def save_result(
         self,
         model_name: str,
@@ -110,7 +124,7 @@ class BenchmarkDB:
             result: Dictionary containing benchmark results with keys:
                     'd', 'p', 'n', 'run', 'ttft', 'tpot', 'prefill_throughput',
                     'decode_throughput', 'decode_duration', 'input_token',
-                    'new_token', 'total_token'
+                    'new_token', 'total_token', 'prefix_cache_hit_tokens'
             run_id: Unique identifier for the benchmark run.
         """
         conn = sqlite3.connect(self.db_file)
@@ -120,8 +134,8 @@ class BenchmarkDB:
             INSERT INTO benchmark_results (
                 run_id, timestamp, model_name, device, runtime_config, depth_tokens, input_tokens, max_tokens, run_number,
                 ttft_s, tpot_ms, prefill_throughput_tokens_s, decode_throughput_tokens_s,
-                decode_duration_s, input_token_count, new_token_count, total_token_count
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                decode_duration_s, input_token_count, new_token_count, total_token_count, prefix_cache_hit_tokens
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             run_id,
             datetime.now().isoformat(),
@@ -139,7 +153,8 @@ class BenchmarkDB:
             str(result['decode_duration']),
             result['input_token'],
             result['new_token'],
-            result['total_token']
+            result['total_token'],
+            result.get('prefix_cache_hit_tokens', 0)
         ))
         
         conn.commit()

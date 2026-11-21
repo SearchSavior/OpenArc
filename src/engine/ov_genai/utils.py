@@ -35,6 +35,20 @@ def build_structured_output_config(
     return StructuredOutputConfig(**kwargs) if kwargs else None
 
 
+def prefill_metrics(perf_metrics) -> tuple[float, int, int]:
+    """Return (prefill tokens/s, newly processed tokens, prefix-cache hit tokens).
+    old prefill math: n / ttft, where n = all tokens
+    new prefill math: (n-k) / ttft, where k = prefix cache hit tokens
+    hit defaults to 0 if get_num_prefix_cache_hit_tokens is not in ovgenai build
+    """
+    hit_fn = getattr(perf_metrics, "get_num_prefix_cache_hit_tokens", None)
+    hit = hit_fn() if hit_fn else 0
+    total = perf_metrics.get_num_input_tokens()
+    new_tokens = total - hit
+    ttft_s = perf_metrics.get_ttft().mean / 1000
+    return (round(new_tokens / ttft_s, 2) if ttft_s > 0 else 0.0), new_tokens, hit
+
+
 def generate_ov_scheduler_config(scheduler_config: SchedulerConfigSchema) -> dict:
   """Generates a SchedulerConfig object from the scheduler config model.
 
