@@ -5,6 +5,7 @@ import gc
 import logging
 from typing import Any, AsyncIterator, Dict, List, Union
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import Tensor
@@ -59,11 +60,19 @@ class Optimum_EMB:
         # missing input and CPU computes on an unset tensor (NaN). Call the compiled model
         # with every input it expects.
         attention_mask = batch_dict["attention_mask"]
+        input_ids = batch_dict["input_ids"].cpu().numpy()
         inputs = {
-            "input_ids": batch_dict["input_ids"].cpu().numpy(),
+            "input_ids": input_ids,
             "attention_mask": attention_mask.cpu().numpy(),
             "position_ids": self.position_ids_from_mask(attention_mask).cpu().numpy(),
         }
+        if "token_type_ids" in input_names:  # same fallback as forward()
+            token_type_ids = batch_dict.get("token_type_ids")
+            inputs["token_type_ids"] = (
+                token_type_ids.cpu().numpy() if token_type_ids is not None else np.zeros_like(input_ids)
+            )
+        if "decoder_input_ids" in input_names:  # same as forward()
+            inputs["decoder_input_ids"] = input_ids
         self.model.compile()
         outputs = self.model._inference(inputs)
         return torch.from_numpy(outputs["last_hidden_state"])
@@ -123,7 +132,26 @@ class Optimum_EMB:
             **from_pretrained_kwargs)
 
         self.tokenizer = AutoTokenizer.from_pretrained(loader.model_path)
+        self._log_input_handling(loader.model_name)
         logging.info(f"Model loaded successfully: {loader.model_name}")
+
+    # Inputs this engine knows how to fill: forward() covers all but position_ids,
+    # which _last_hidden_state() builds from the attention mask.
+    KNOWN_INPUTS = {"input_ids", "attention_mask", "token_type_ids", "decoder_input_ids", "position_ids"}
+
+    def _log_input_handling(self, model_name: str) -> None:
+        input_names = set(getattr(self.model, "input_names", None) or {})
+        if "position_ids" in input_names:
+            logging.info(
+                f"[{model_name}] IR takes position_ids: building them from the attention mask "
+                "(decoder embedding export from optimum-intel < 1.26)"
+            )
+        unknown = input_names - self.KNOWN_INPUTS
+        if unknown:
+            logging.warning(
+                f"[{model_name}] IR has inputs this engine does not fill: {sorted(unknown)}. "
+                "Inference will likely fail; re-export with optimum-intel --task feature-extraction."
+            )
 
     async def unload_model(self, registry: ModelRegistry, model_name: str) -> bool:
         """Unregister model from registry and free memory resources.

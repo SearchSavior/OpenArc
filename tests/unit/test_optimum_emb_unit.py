@@ -232,3 +232,41 @@ def test_generate_embeddings_uses_forward_for_encoder_irs(load_config: ModelLoad
     model.assert_called_once()
     model._inference.assert_not_called()
     assert vectors[0] == [[0.0, 1.0]]
+
+
+def test_position_ids_path_also_fills_token_type_ids(load_config: ModelLoadConfig) -> None:
+    emb = Optimum_EMB(load_config)
+    emb.tokenizer = MagicMock(
+        return_value=_Batch({"input_ids": torch.tensor([[5, 6]]), "attention_mask": torch.tensor([[1, 1]])})
+    )
+    model = MagicMock()
+    model.device = "cpu"
+    model.input_names = {"input_ids": 0, "attention_mask": 1, "position_ids": 2, "token_type_ids": 3}
+    model._inference.return_value = {"last_hidden_state": torch.tensor([[[1.0, 0.0], [0.0, 1.0]]]).numpy()}
+    emb.model = model
+
+    _run_embeddings(emb, _tok_config())
+
+    sent = model._inference.call_args.args[0]
+    assert sent["token_type_ids"].tolist() == [[0, 0]]
+
+
+@pytest.mark.parametrize(
+    "input_names, expect_info, expect_warning",
+    [
+        ({"input_ids": 0, "attention_mask": 1}, False, False),
+        ({"input_ids": 0, "attention_mask": 1, "position_ids": 2}, True, False),
+        ({"input_ids": 0, "attention_mask": 1, "beam_idx": 2}, False, True),
+    ],
+)
+def test_load_logs_how_inputs_are_handled(
+    load_config: ModelLoadConfig, caplog: pytest.LogCaptureFixture, input_names, expect_info, expect_warning
+) -> None:
+    emb = Optimum_EMB(load_config)
+    emb.model = SimpleNamespace(input_names=input_names)
+
+    with caplog.at_level("INFO"):
+        emb._log_input_handling("test-emb")
+
+    assert ("takes position_ids" in caplog.text) is expect_info
+    assert ("does not fill" in caplog.text) is expect_warning

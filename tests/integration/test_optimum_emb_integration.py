@@ -1,4 +1,5 @@
 import asyncio
+import math
 
 import pytest  # type: ignore[import]
 
@@ -31,11 +32,14 @@ def test_optimum_emb_generate_embeddings_cpu_integration() -> None:
     emb.load_model(load_config)
 
     try:
+        # A batch of different lengths, padded like the /v1/embeddings defaults. Covers both IR
+        # layouts: decoder exports that take position_ids (optimum-intel < 1.26) and newer ones.
+        texts = ["OpenVINO embedding integration test.", "short", "a longer second text that needs padding"]
         tok_config = PreTrainedTokenizerConfig(
-            text=["OpenVINO embedding integration test."],
-            padding="longest",
+            text=texts,
+            padding=True,
             truncation=True,
-            max_length=32,
+            max_length=8192,
             return_tensors="pt",
         )
 
@@ -48,9 +52,23 @@ def test_optimum_emb_generate_embeddings_cpu_integration() -> None:
         outputs = asyncio.run(_run())
 
         assert len(outputs) == 1
-        embedding = outputs[0]
-        assert isinstance(embedding, list)
-        assert len(embedding) > 0
+        vectors = outputs[0]
+        assert len(vectors) == len(texts)
+        for vector in vectors:
+            assert len(vector) > 0
+            # issue #106: without position_ids, CPU gave NaN or a missing-input error
+            assert all(math.isfinite(value) for value in vector)
+            assert abs(math.sqrt(sum(value * value for value in vector)) - 1.0) < 1e-3
+
+        # padding must not change a text's vector
+        alone = PreTrainedTokenizerConfig(text=[texts[1]], padding=True, truncation=True, max_length=8192)
+
+        async def _run_alone():
+            return [item async for item in emb.generate_embeddings(alone)]
+
+        single = asyncio.run(_run_alone())[0][0]
+        dot = sum(a * b for a, b in zip(single, vectors[1]))
+        assert dot > 0.999
 
     finally:
         asyncio.run(emb.unload_model(_DummyRegistry(), load_config.model_name))
