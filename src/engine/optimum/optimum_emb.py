@@ -77,6 +77,26 @@ class Optimum_EMB:
         outputs = self.model._inference(inputs)
         return torch.from_numpy(outputs["last_hidden_state"])
 
+    # Cap for truncation when the client gives no max_length: the model's own limit, but no
+    # more than 8192 tokens (Qwen3-Embedding's reference max_length) to bound memory per request.
+    DEFAULT_MAX_INPUT_TOKENS = 8192
+
+    def _model_max_input_tokens(self) -> int:
+        limits = [self.DEFAULT_MAX_INPUT_TOKENS]
+        config = getattr(self.model, "config", None)
+        max_positions = getattr(config, "max_position_embeddings", None)
+        if isinstance(max_positions, int) and max_positions > 0:
+            limits.append(max_positions)
+        tokenizer_max = getattr(self.tokenizer, "model_max_length", None)
+        if isinstance(tokenizer_max, int) and 0 < tokenizer_max < 1_000_000:  # HF uses ~1e30 for "unset"
+            limits.append(tokenizer_max)
+        return min(limits)
+
+    def _resolve_max_length(self, tok_config: PreTrainedTokenizerConfig):
+        if tok_config.max_length is not None or not tok_config.truncation:
+            return tok_config.max_length
+        return self._model_max_input_tokens()
+
     async def generate_embeddings(self, tok_config: PreTrainedTokenizerConfig) -> AsyncIterator[Union[Dict[str, Any], str]]:
         
         # Tokenize the input texts
@@ -88,7 +108,7 @@ class Optimum_EMB:
             add_special_tokens=tok_config.add_special_tokens,
             padding=tok_config.padding,
             truncation=tok_config.truncation,
-            max_length=tok_config.max_length,
+            max_length=self._resolve_max_length(tok_config),
             stride=tok_config.stride,
             is_split_into_words=tok_config.is_split_into_words,
             pad_to_multiple_of=tok_config.pad_to_multiple_of,
@@ -108,6 +128,8 @@ class Optimum_EMB:
         # normalize embeddings
         if tok_config.return_tensors=="pt":
             embeddings = F.normalize(embeddings, p=2, dim=1)
+        input_tokens = int(batch_dict["attention_mask"].sum())
+        yield {"input_token": input_tokens, "total_token": input_tokens}
         yield embeddings.tolist()
 
     def collect_metrics(self, tok_config: PreTrainedTokenizerConfig, perf_metrics) -> Dict[str, Any]:

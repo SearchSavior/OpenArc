@@ -51,8 +51,8 @@ def test_optimum_emb_generate_embeddings_cpu_integration() -> None:
 
         outputs = asyncio.run(_run())
 
-        assert len(outputs) == 1
-        vectors = outputs[0]
+        assert outputs[0]["input_token"] > 0
+        vectors = outputs[-1]
         assert len(vectors) == len(texts)
         for vector in vectors:
             assert len(vector) > 0
@@ -66,7 +66,7 @@ def test_optimum_emb_generate_embeddings_cpu_integration() -> None:
         async def _run_alone():
             return [item async for item in emb.generate_embeddings(alone)]
 
-        single = asyncio.run(_run_alone())[0][0]
+        single = asyncio.run(_run_alone())[-1][0]
         dot = sum(a * b for a, b in zip(single, vectors[1]))
         assert dot > 0.999
 

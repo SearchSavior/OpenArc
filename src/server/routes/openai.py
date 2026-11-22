@@ -22,6 +22,7 @@ from src.server.schemas.modeling.contract_kokoro import (
 from src.server.schemas.modeling.contract_optimum_emb import (
     EMB_TOKENIZER_DEFAULTS,
     PreTrainedTokenizerConfig,
+    encode_embedding_base64,
     shorten_embedding,
 )
 from src.server.schemas.modeling.contract_optimum_rerank import RerankerConfig
@@ -838,6 +839,8 @@ async def embeddings(request: EmbeddingsRequest):
 
         if request.dimensions is not None:
             data = [shorten_embedding(vector, request.dimensions) for vector in data]
+        if request.encoding_format == "base64":
+            data = [encode_embedding_base64(vector) for vector in data]
 
         embs =[{"index": i, "object": "embedding", "embedding": data[i]} for i in range(len(data))]
 

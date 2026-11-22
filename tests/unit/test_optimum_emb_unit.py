@@ -82,8 +82,8 @@ def test_generate_embeddings_returns_normalized_vectors(load_config: ModelLoadCo
 
     vectors = asyncio.run(_run())
 
-    assert len(vectors) == 1
-    vec = torch.tensor(vectors[0])
+    assert len(vectors) == 2  # token counts, then the vectors
+    vec = torch.tensor(vectors[-1])
     assert torch.allclose(torch.norm(vec, dim=1), torch.ones(1), atol=1e-6)
     tokenizer_mock.assert_called_once()
 
@@ -211,7 +211,7 @@ def test_generate_embeddings_feeds_position_ids_when_ir_expects_them(load_config
     assert set(sent) == {"input_ids", "attention_mask", "position_ids"}
     assert sent["position_ids"].tolist() == [[0, 1, 1], [0, 1, 2]]
     # last real token of each row, normalized
-    assert torch.allclose(torch.tensor(vectors[0]), torch.tensor([[0.6, 0.8], [0.0, 1.0]]))
+    assert torch.allclose(torch.tensor(vectors[-1]), torch.tensor([[0.6, 0.8], [0.0, 1.0]]))
 
 
 def test_generate_embeddings_uses_forward_for_encoder_irs(load_config: ModelLoadConfig) -> None:
@@ -231,7 +231,7 @@ def test_generate_embeddings_uses_forward_for_encoder_irs(load_config: ModelLoad
 
     model.assert_called_once()
     model._inference.assert_not_called()
-    assert vectors[0] == [[0.0, 1.0]]
+    assert vectors[-1] == [[0.0, 1.0]]
 
 
 def test_position_ids_path_also_fills_token_type_ids(load_config: ModelLoadConfig) -> None:
@@ -270,3 +270,40 @@ def test_load_logs_how_inputs_are_handled(
 
     assert ("takes position_ids" in caplog.text) is expect_info
     assert ("does not fill" in caplog.text) is expect_warning
+
+
+
+def test_generate_embeddings_reports_input_tokens(load_config: ModelLoadConfig) -> None:
+    emb = Optimum_EMB(load_config)
+    emb.tokenizer = MagicMock(
+        return_value=_Batch({"input_ids": torch.tensor([[5, 6, 0], [7, 8, 9]]), "attention_mask": torch.tensor([[1, 1, 0], [1, 1, 1]])})
+    )
+    model = MagicMock()
+    model.device = "cpu"
+    model.input_names = {"input_ids": 0, "attention_mask": 1}
+    model.return_value = SimpleNamespace(last_hidden_state=torch.ones(2, 3, 2))
+    emb.model = model
+
+    items = _run_embeddings(emb, _tok_config())
+
+    assert items[0] == {"input_token": 5, "total_token": 5}  # padding not counted
+    assert len(items[1]) == 2
+
+
+@pytest.mark.parametrize(
+    "max_positions, tokenizer_max, expected",
+    [
+        (32768, 131072, 8192),   # Qwen3-Embedding: capped at 8192
+        (512, 512, 512),         # BERT-style: the model's own limit
+        (None, int(1e30), 8192), # nothing known: the cap
+        (8194, 8192, 8192),      # bge-m3 style: the smaller of the two
+    ],
+)
+def test_max_length_defaults_to_model_limit(load_config: ModelLoadConfig, max_positions, tokenizer_max, expected) -> None:
+    emb = Optimum_EMB(load_config)
+    emb.model = SimpleNamespace(config=SimpleNamespace(max_position_embeddings=max_positions))
+    emb.tokenizer = SimpleNamespace(model_max_length=tokenizer_max)
+
+    assert emb._resolve_max_length(PreTrainedTokenizerConfig(truncation=True)) == expected
+    assert emb._resolve_max_length(PreTrainedTokenizerConfig(truncation=True, max_length=100)) == 100
+    assert emb._resolve_max_length(PreTrainedTokenizerConfig(truncation=False)) is None

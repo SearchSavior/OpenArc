@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel
 
@@ -91,7 +91,7 @@ class EmbeddingsRequest(BaseModel):
     model: str
     input: Union[str, List[str], List[List[str]]]
     dimensions: Optional[int] = None
-    encoding_format: Optional[str] = "float"  # not implemented
+    encoding_format: Optional[Literal["float", "base64"]] = "float"
     user: Optional[str] = None  # not implemented
     # end of openai api
     config: Optional[PreTrainedTokenizerConfig] = None

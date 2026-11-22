@@ -1,4 +1,6 @@
+import base64
 import math
+import struct
 from typing import List, Union
 from pydantic import BaseModel, Field
 
@@ -195,14 +197,18 @@ class PreTrainedTokenizerConfig(BaseModel):
 
 # Server-side tokenizer defaults for /v1/embeddings. OpenAI-style clients never send
 # tokenizer settings, so a batch of different-length texts needs padding to become one
-# tensor. Truncation caps very long inputs instead of failing the request; 8192 tokens is
-# the max_length of Qwen3-Embedding's reference usage. Only fields the client leaves unset
-# in `config` take these values.
+# tensor. Long inputs are truncated (as TEI and Ollama do by default) instead of failing the
+# request; with no max_length the engine truncates to the model's limit, capped at 8192
+# tokens. Only fields the client leaves unset in `config` take these values.
 EMB_TOKENIZER_DEFAULTS = {
     "padding": True,
     "truncation": True,
-    "max_length": 8192,
 }
+
+
+def encode_embedding_base64(vector: List[float]) -> str:
+    """OpenAI encoding_format="base64": little-endian float32 bytes, base64-encoded."""
+    return base64.b64encode(struct.pack(f"<{len(vector)}f", *vector)).decode("ascii")
 
 
 def shorten_embedding(vector: List[float], dimensions: int) -> List[float]:
