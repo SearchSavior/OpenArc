@@ -38,6 +38,36 @@ class Optimum_EMB:
             batch_size = last_hidden_states.shape[0]
             return last_hidden_states[torch.arange(batch_size, device=last_hidden_states.device), sequence_lengths]
 
+    @staticmethod
+    def position_ids_from_mask(attention_mask: Tensor) -> Tensor:
+        """Positions 0..n-1 over the real tokens of each row, for left or right padding.
+
+        Same rule optimum-intel's OVModelForCausalLM uses when it builds position_ids.
+        """
+        position_ids = attention_mask.long().cumsum(-1) - 1
+        position_ids.masked_fill_(attention_mask == 0, 1)
+        return position_ids
+
+    def _last_hidden_state(self, batch_dict) -> Tensor:
+        input_names = getattr(self.model, "input_names", None) or {}
+        if "position_ids" not in input_names:
+            return self.model(**batch_dict).last_hidden_state
+
+        # Decoder-based embedding IRs exported before optimum-intel 1.26 (for example
+        # Echo9Zulu/Qwen3-Embedding-0.6B-int8_asym-ov) take position_ids as a graph input.
+        # OVModelForFeatureExtraction.forward() drops it, so the GPU plugin fails on the
+        # missing input and CPU computes on an unset tensor (NaN). Call the compiled model
+        # with every input it expects.
+        attention_mask = batch_dict["attention_mask"]
+        inputs = {
+            "input_ids": batch_dict["input_ids"].cpu().numpy(),
+            "attention_mask": attention_mask.cpu().numpy(),
+            "position_ids": self.position_ids_from_mask(attention_mask).cpu().numpy(),
+        }
+        self.model.compile()
+        outputs = self.model._inference(inputs)
+        return torch.from_numpy(outputs["last_hidden_state"])
+
     async def generate_embeddings(self, tok_config: PreTrainedTokenizerConfig) -> AsyncIterator[Union[Dict[str, Any], str]]:
         
         # Tokenize the input texts
@@ -64,8 +94,8 @@ class Optimum_EMB:
             verbose=tok_config.verbose
         )
         batch_dict.to(self.model.device)
-        outputs = self.model(**batch_dict)
-        embeddings = self.last_token_pool(outputs.last_hidden_state, batch_dict["attention_mask"])
+        last_hidden_state = self._last_hidden_state(batch_dict)
+        embeddings = self.last_token_pool(last_hidden_state, batch_dict["attention_mask"])
         # normalize embeddings
         if tok_config.return_tensors=="pt":
             embeddings = F.normalize(embeddings, p=2, dim=1)

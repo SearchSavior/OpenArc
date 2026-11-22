@@ -160,3 +160,75 @@ def test_unload_model_resets_state(monkeypatch: pytest.MonkeyPatch, load_config:
     registry.register_unload.assert_called_once_with("model-name")
     gc_mock.assert_called_once()
 
+
+
+def test_position_ids_from_mask_right_and_left_padding() -> None:
+    right = torch.tensor([[1, 1, 1, 0, 0], [1, 1, 1, 1, 1]])
+    left = torch.tensor([[0, 0, 1, 1, 1], [1, 1, 1, 1, 1]])
+
+    assert Optimum_EMB.position_ids_from_mask(right).tolist() == [[0, 1, 2, 1, 1], [0, 1, 2, 3, 4]]
+    assert Optimum_EMB.position_ids_from_mask(left).tolist() == [[1, 1, 0, 1, 2], [0, 1, 2, 3, 4]]
+
+
+class _Batch(dict):
+    def to(self, device):  # mimic HuggingFace BatchEncoding
+        return self
+
+
+def _tok_config() -> PreTrainedTokenizerConfig:
+    return PreTrainedTokenizerConfig(text=["a", "bbb"], padding=True, truncation=True, max_length=16)
+
+
+def _run_embeddings(emb: Optimum_EMB, tok_config: PreTrainedTokenizerConfig):
+    async def _run():
+        return [item async for item in emb.generate_embeddings(tok_config)]
+
+    return asyncio.run(_run())
+
+
+def test_generate_embeddings_feeds_position_ids_when_ir_expects_them(load_config: ModelLoadConfig) -> None:
+    """Decoder IRs (pre optimum-intel 1.26 Qwen3-Embedding exports) take position_ids."""
+    emb = Optimum_EMB(load_config)
+    attention_mask = torch.tensor([[1, 1, 0], [1, 1, 1]])
+    emb.tokenizer = MagicMock(
+        return_value=_Batch({"input_ids": torch.tensor([[5, 6, 0], [7, 8, 9]]), "attention_mask": attention_mask})
+    )
+    hidden = torch.tensor([
+        [[1.0, 0.0], [3.0, 4.0], [9.0, 9.0]],
+        [[1.0, 0.0], [0.0, 1.0], [0.0, 2.0]],
+    ])
+    model = MagicMock()
+    model.device = "cpu"
+    model.input_names = {"input_ids": 0, "attention_mask": 1, "position_ids": 2}
+    model._inference.return_value = {"last_hidden_state": hidden.numpy()}
+    emb.model = model
+
+    vectors = _run_embeddings(emb, _tok_config())
+
+    model.compile.assert_called_once()
+    model.assert_not_called()  # forward() would drop position_ids
+    sent = model._inference.call_args.args[0]
+    assert set(sent) == {"input_ids", "attention_mask", "position_ids"}
+    assert sent["position_ids"].tolist() == [[0, 1, 1], [0, 1, 2]]
+    # last real token of each row, normalized
+    assert torch.allclose(torch.tensor(vectors[0]), torch.tensor([[0.6, 0.8], [0.0, 1.0]]))
+
+
+def test_generate_embeddings_uses_forward_for_encoder_irs(load_config: ModelLoadConfig) -> None:
+    """IRs without position_ids (BERT-style, current optimum-intel exports) keep the forward() path."""
+    emb = Optimum_EMB(load_config)
+    attention_mask = torch.tensor([[1, 1]])
+    emb.tokenizer = MagicMock(
+        return_value=_Batch({"input_ids": torch.tensor([[1, 2]]), "attention_mask": attention_mask})
+    )
+    model = MagicMock()
+    model.device = "cpu"
+    model.input_names = {"input_ids": 0, "attention_mask": 1}
+    model.return_value = SimpleNamespace(last_hidden_state=torch.tensor([[[1.0, 0.0], [0.0, 3.0]]]))
+    emb.model = model
+
+    vectors = _run_embeddings(emb, _tok_config())
+
+    model.assert_called_once()
+    model._inference.assert_not_called()
+    assert vectors[0] == [[0.0, 1.0]]
