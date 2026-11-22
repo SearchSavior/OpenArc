@@ -1,3 +1,4 @@
+import math
 from typing import List, Union
 from pydantic import BaseModel, Field
 
@@ -190,3 +191,32 @@ class PreTrainedTokenizerConfig(BaseModel):
             "Whether or not to print more information and warnings."
         )
     )
+
+
+# Server-side tokenizer defaults for /v1/embeddings. OpenAI-style clients never send
+# tokenizer settings, so a batch of different-length texts needs padding to become one
+# tensor. Truncation caps very long inputs instead of failing the request; 8192 tokens is
+# the max_length of Qwen3-Embedding's reference usage. Only fields the client leaves unset
+# in `config` take these values.
+EMB_TOKENIZER_DEFAULTS = {
+    "padding": True,
+    "truncation": True,
+    "max_length": 8192,
+}
+
+
+def shorten_embedding(vector: List[float], dimensions: int) -> List[float]:
+    """Keep the first `dimensions` values and re-normalize to unit length.
+
+    This is what the OpenAI `dimensions` parameter means. It is only meaningful for
+    models trained for it (Matryoshka representation learning, e.g. Qwen3-Embedding).
+    """
+    if dimensions > len(vector):
+        raise ValueError(
+            f"dimensions={dimensions} is larger than the model's embedding size ({len(vector)})"
+        )
+    head = vector[:dimensions]
+    norm = math.sqrt(sum(value * value for value in head))
+    if norm == 0.0:
+        return head
+    return [value / norm for value in head]
