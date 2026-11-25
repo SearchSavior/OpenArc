@@ -19,7 +19,12 @@ from src.server.schemas.modeling.contract_kokoro import (
     KokoroVoice,
     OV_KokoroGenConfig,
 )
-from src.server.schemas.modeling.contract_optimum_emb import PreTrainedTokenizerConfig
+from src.server.schemas.modeling.contract_optimum_emb import (
+    EMB_TOKENIZER_DEFAULTS,
+    PreTrainedTokenizerConfig,
+    encode_embedding_base64,
+    shorten_embedding,
+)
 from src.server.schemas.modeling.contract_optimum_rerank import RerankerConfig
 from src.server.schemas.modeling.contract_qwen3asr import OV_Qwen3ASRGenConfig
 from src.server.schemas.modeling.contract_ovgenai_diffusion import OVGenAI_DiffusionGenConfig
@@ -805,15 +810,19 @@ async def embeddings(request: EmbeddingsRequest):
     try:
         logger.info(f'"{request.model}" request received')
 
-        tok_config = PreTrainedTokenizerConfig(text=request.input)
+        tok_config = request.config or PreTrainedTokenizerConfig()
+        if not tok_config.text:
+            tok_config.text = request.input
 
-        if request.config:
-            tok_config = request.config
-            if not tok_config.text:
-                tok_config.text = request.input
+        # OpenAI clients send no tokenizer settings, and a batch of different-length
+        # texts cannot become one tensor without padding. Fill in the server defaults
+        # for every field the client did not set itself.
+        for field, value in EMB_TOKENIZER_DEFAULTS.items():
+            if field not in tok_config.model_fields_set:
+                setattr(tok_config, field, value)
 
-        if not tok_config.max_length and request.dimensions:
-            tok_config.max_length = request.dimensions
+        if request.dimensions is not None and request.dimensions < 1:
+            raise ValueError("dimensions must be a positive integer")
 
         model_name = request.model
         created_ts = int(time.time())
@@ -828,7 +837,12 @@ async def embeddings(request: EmbeddingsRequest):
 
         logger.info(f"[embeddings] model={model_name} metrics={metrics}")
 
-        embs = [{"index": i, "object": "embedding", "embedding": data[i]} for i in range(len(data))]
+        if request.dimensions is not None:
+            data = [shorten_embedding(vector, request.dimensions) for vector in data]
+        if request.encoding_format == "base64":
+            data = [encode_embedding_base64(vector) for vector in data]
+
+        embs =[{"index": i, "object": "embedding", "embedding": data[i]} for i in range(len(data))]
 
         return {
             "id": request_id,
